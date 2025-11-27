@@ -1,0 +1,17 @@
+model:
+  yolo_world_weight: "yolov8s-worldv2.pt"
+  yolo_world_class_filter:
+    - person
+    - car
+    - dog
+
+tracking:
+  track_thresh: 0.5
+  track_buffer: 30
+
+inference:
+  conf_thresh: 0.3
+  iou_thresh: 0.45
+
+device: "auto"
+video_input: "data/videos/test.mp4"
