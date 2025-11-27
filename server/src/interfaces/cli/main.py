@@ -2,14 +2,14 @@
 
 from pathlib import Path
 
-from robotics.infrastructure.config.yaml_loader import load_config
-from robotics.infrastructure.detection.yolo_world import YoloWorldAdapter
-from robotics.domain.scene_graph.relations import SimpleRelationInfer
-from robotics.domain.scene_graph.builder import SceneGraphBuilder
-from robotics.domain.scene_graph.reasoning import SceneGraphReasoner
-from robotics.application.use_cases.process_frame import ProcessFrameUseCase
-from robotics.application.use_cases.run_stream import VideoStreamRunner
-from robotics.interfaces.viz.opencv_overlay import OpenCVOverlayVisualizer
+from server.src.infrastructure.config.yaml_loader import load_config
+from server.src.infrastructure.detection.yolo_world import YoloWorldAdapter
+from server.src.domain.scene_graph.relations import SimpleRelationInfer
+from server.src.domain.scene_graph.builder import SceneGraphBuilder
+from server.src.domain.scene_graph.reasoning import SceneGraphReasoner
+from server.src.application.use_cases.process_frame import ProcessFrameUseCase
+from server.src.application.use_cases.run_stream import VideoStreamRunner
+from server.src.interfaces.viz.opencv_overlay import OpenCVOverlayVisualizer
 
 
 def main():

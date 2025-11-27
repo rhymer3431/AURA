@@ -1,7 +1,7 @@
 # src/robotics/interfaces/viz/opencv_overlay.py
 
 import cv2
-from robotics.domain.detection.detected_object import DetectedObject
+from server.src.domain.detection.detected_object import DetectedObject
 
 
 class OpenCVOverlayVisualizer:

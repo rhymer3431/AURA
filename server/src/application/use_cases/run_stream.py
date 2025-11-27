@@ -1,7 +1,7 @@
 import cv2
 import time
-from robotics.domain.frame.frame_context import FrameContext
-from robotics.application.use_cases.process_frame import ProcessFrameUseCase
+from server.src.domain.frame.frame_context import FrameContext
+from server.src.application.use_cases.process_frame import ProcessFrameUseCase
 
 
 class VideoStreamRunner:
