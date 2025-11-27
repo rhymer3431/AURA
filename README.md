@@ -1,4 +1,4 @@
-# Robotics Perception & Reasoning Pipeline  
+# AURA: Robotics Perception & Reasoning Pipeline  
 YOLO-World · ByteTrack · Lightweight-GNN · SGCL · GRIN · LLM
 
 지능형 로봇을 위한 **실시간 인지 → 추론 → 행동 결정** 전체 파이프라인을 구현한 프로젝트입니다.  
