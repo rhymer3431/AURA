@@ -1,5 +1,7 @@
 import cv2
 import time
+import threading
+import queue
 from server.src.domain.frame.frame_context import FrameContext
 from server.src.application.use_cases.process_frame import ProcessFrameUseCase
 
@@ -14,6 +16,7 @@ class VideoStreamRunner:
         target_fps: int = 20,
         send_every: int = 1,
         jpeg_quality: int = 70,
+        graph_send_interval: int = 5,
     ):
         self.use_case = use_case
         self.video_input = video_input
@@ -22,7 +25,12 @@ class VideoStreamRunner:
         self.frame_id = 0
         self.target_fps = target_fps
         self.send_every = max(1, send_every)
-        self.jpeg_quality = max(30, min(95, jpeg_quality))
+        self.jpeg_quality = max(30, min(95, jpeg_quality))  # retained for compatibility
+        self.graph_send_interval = max(1, graph_send_interval)
+
+        self.stop_event = threading.Event()
+        self.video_queue: queue.Queue = queue.Queue(maxsize=1)
+        self.graph_queue: queue.Queue = queue.Queue(maxsize=1)
 
     def _graph_to_json(self, scene_graph):
         if not scene_graph:
@@ -43,7 +51,12 @@ class VideoStreamRunner:
 
         frame_interval = 1.0 / self.target_fps if self.target_fps > 0 else 0
 
-        while True:
+        video_thread = threading.Thread(target=self._video_sender, daemon=True)
+        graph_thread = threading.Thread(target=self._graph_sender, daemon=True)
+        video_thread.start()
+        graph_thread.start()
+
+        while not self.stop_event.is_set():
             loop_start = time.time()
             ret, frame = cap.read()
             if not ret:
@@ -70,28 +83,62 @@ class VideoStreamRunner:
             else:
                 vis_frame = frame
 
-            # Stream to web UI server (frame + scene graph)
+            # Queue video frame for streaming (send_every controls bandwidth)
             if self.vis_client and (self.frame_id % self.send_every == 0):
-                ok, buf = cv2.imencode(
-                    ".jpg",
-                    vis_frame,
-                    [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality],
-                )
-                if ok:
-                    self.vis_client.send_frame(buf.tobytes())
+                # push raw BGR frame; downstream UI converts to texture
+                self._offer_queue(self.video_queue, vis_frame.copy())
+
+            # Queue graph every graph_send_interval frames
+            if self.vis_client and (self.frame_id % self.graph_send_interval == 0):
                 if ctx.scene_graph:
-                    self.vis_client.send_graph(self._graph_to_json(ctx.scene_graph))
+                    self._offer_queue(self.graph_queue, self._graph_to_json(ctx.scene_graph))
+
+            # 로컬 디스플레이 (optional)
+            # cv2.imshow("YOLO + ByteTrack", vis_frame)
 
             # 종료 조건
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
 
-            # Frame pacing to target FPS
+            # Frame pacing to target FPS (0 => as fast as possible)
             if frame_interval > 0:
                 elapsed = time.time() - loop_start
                 sleep_time = frame_interval - elapsed
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
+        self.stop_event.set()
         cap.release()
         cv2.destroyAllWindows()
+        video_thread.join(timeout=1)
+        graph_thread.join(timeout=1)
+
+    def _offer_queue(self, q: queue.Queue, item):
+        try:
+            if q.full():
+                q.get_nowait()
+            q.put_nowait(item)
+        except queue.Full:
+            pass
+        except queue.Empty:
+            pass
+
+    def _video_sender(self):
+        if not self.vis_client:
+            return
+        while not self.stop_event.is_set():
+            try:
+                frame_data = self.video_queue.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            self.vis_client.send_frame(frame_data)
+
+    def _graph_sender(self):
+        if not self.vis_client:
+            return
+        while not self.stop_event.is_set():
+            try:
+                graph_json = self.graph_queue.get(timeout=0.1)
+            except queue.Empty:
+                continue
+            self.vis_client.send_graph(graph_json)

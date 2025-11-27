@@ -1,26 +1,22 @@
 # src/robotics/interfaces/cli/main.py
-
-import subprocess
+import threading
 from pathlib import Path
 
 from server.src.infrastructure.config.yaml_loader import load_config
 from server.src.infrastructure.detection.yolo_world import YoloWorldAdapter
-from server.src.infrastructure.sgg.vis_client import VisClient
+from server.src.infrastructure.sgg.dearpygui_client import DearPyGuiClient, UiBridge
 from server.src.domain.scene_graph.relations import SimpleRelationInfer
 from server.src.domain.scene_graph.builder import SceneGraphBuilder
 from server.src.domain.scene_graph.reasoning import SceneGraphReasoner
 from server.src.application.use_cases.process_frame import ProcessFrameUseCase
 from server.src.application.use_cases.run_stream import VideoStreamRunner
 from server.src.interfaces.viz.opencv_overlay import OpenCVOverlayVisualizer
+from server.src.interfaces.ui.dearpygui_monitor import run_dpg
 
 
 def main():
     cfg = load_config("configs/server_dev.yaml")
-    project_root = Path(__file__).resolve().parents[4]
-
-    # 0. Spin up visualization backend/front (FastAPI + React dev server) using WebRTC server
-    vis_server_proc = start_vis_server(project_root)
-    webui_proc = start_webui(project_root)
+    Path(__file__).resolve().parents[4]  # project_root (reserved if needed)
 
     # 1. Detector
     weight_path = Path("model_weights/yolo_world") / cfg["model"]["yolo_world_weight"]
@@ -42,52 +38,33 @@ def main():
         sg_reasoner=sg_reasoner,
     )
 
-    # 4. Visualization client (push frames/graphs to FastAPI)
-    vis_client = VisClient(base_url="http://localhost:7000")
+    # 4. Local UI bridge + client (no HTTP/WebRTC)
+    ui_bridge = UiBridge()
+    vis_client = DearPyGuiClient(ui_bridge)
     visualizer = OpenCVOverlayVisualizer()
 
-    # 5. 비디오 스트림 실행
+    # 5. Video stream runner (runs on worker thread)
     runner = VideoStreamRunner(
         use_case,
         cfg["video_input"],
         visualizer=visualizer,
         vis_client=vis_client,
-        target_fps=0,       # 0 -> no pacing, run at max achievable FPS
-        send_every=1,       # send every frame
-        jpeg_quality=70,    # balance quality and bandwidth
+        target_fps=0,          # 0 => run at max achievable FPS
+        send_every=1,          # send every frame to UI
+        jpeg_quality=70,
+        graph_send_interval=5, # send graph every 5 frames
     )
+
+    stop_event = threading.Event()
+    pipeline_thread = threading.Thread(target=runner.run, daemon=True)
+    pipeline_thread.start()
+
+    # 6. Run DearPyGui UI on main thread
     try:
-        runner.run()
+        run_dpg(ui_bridge, stop_event, target_fps=60)
     finally:
-        for proc in (vis_server_proc, webui_proc):
-            if proc and proc.poll() is None:
-                proc.terminate()
-
-
-def start_vis_server(project_root: Path):
-    try:
-        return subprocess.Popen(
-            ["uvicorn", "server.webrtc_server:app", "--host", "0.0.0.0", "--port", "7000"],
-            cwd=project_root,
-        )
-    except FileNotFoundError:
-        print("Warning: uvicorn not found; visualization backend not started.")
-        return None
-
-
-def start_webui(project_root: Path):
-    webui_dir = project_root / "webui"
-    if not webui_dir.exists():
-        print("Warning: webui directory not found; skipping frontend start.")
-        return None
-    try:
-        return subprocess.Popen(
-            ["npm", "start"],
-            cwd=webui_dir,
-        )
-    except FileNotFoundError:
-        print("Warning: npm not found; frontend not started.")
-        return None
+        stop_event.set()
+        pipeline_thread.join(timeout=2)
 
 
 if __name__ == "__main__":
