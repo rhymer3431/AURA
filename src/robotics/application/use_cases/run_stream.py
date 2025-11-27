@@ -25,13 +25,12 @@ class VideoStreamRunner:
 
         while True:
             ret, frame = cap.read()
-            print(self.frame_id)
             if not ret:
                 break
 
             timestamp = time.time()
 
-            # FrameContext 생성 (표준화된 domain model)
+            # FrameContext 생성 (도메인 모델)
             ctx = FrameContext(
                 frame_id=self.frame_id,
                 timestamp=timestamp,
@@ -39,12 +38,12 @@ class VideoStreamRunner:
             )
             self.frame_id += 1
 
-            # 유즈케이스 실행 → detection + tracking
+            # 유즈케이스 실행: detection + tracking (+ scene graph)
             ctx = self.use_case.execute(ctx)
 
             # 시각화
             if self.visualizer:
-                vis_frame = self.visualizer.draw(ctx.raw_frame, ctx.detections)
+                vis_frame = self.visualizer.draw(ctx.raw_frame, ctx.detections, ctx.scene_graph)
                 cv2.imshow("YOLO + ByteTrack", vis_frame)
             else:
                 cv2.imshow("YOLO + ByteTrack", frame)

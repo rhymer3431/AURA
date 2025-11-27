@@ -9,7 +9,7 @@ class OpenCVOverlayVisualizer:
         self.show_track_id = show_track_id
         self.show_score = show_score
 
-    def draw(self, frame, detections: list[DetectedObject]):
+    def draw(self, frame, detections: list[DetectedObject], scene_graph=None):
         vis = frame.copy()
 
         for det in detections:
@@ -30,5 +30,17 @@ class OpenCVOverlayVisualizer:
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.5, color, 2
             )
+
+        if scene_graph and getattr(scene_graph, "edges", None):
+            for edge in scene_graph.edges:
+                cv2.putText(
+                    vis,
+                    f"{edge.source}->{edge.target}:{edge.relation}",
+                    (10, 20 + 15 * (scene_graph.edges.index(edge) % 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (0, 165, 255),
+                    1,
+                )
 
         return vis
