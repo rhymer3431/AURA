@@ -4,7 +4,7 @@ from pathlib import Path
 import cv2
 from robotics.infrastructure.config.yaml_loader import load_config
 from robotics.infrastructure.detection.yolo_world import YoloWorldAdapter
-from robotics.infrastructure.tracking.bytetrack import ByteTrackAdapter
+
 
 from robotics.application.use_cases.process_frame import ProcessFrameUseCase
 from robotics.application.use_cases.run_stream import VideoStreamRunner
@@ -22,16 +22,11 @@ def main():
         classes=cfg["model"]["yolo_world_class_filter"],
     )
 
-    # 2. Tracker
-    tracker = ByteTrackAdapter(
-        track_thresh=cfg["tracking"]["track_thresh"],
-        track_buffer=cfg["tracking"]["track_buffer"],
-    )
+
 
     # 3. UseCase (Detection + Tracking만)
     use_case = ProcessFrameUseCase(
         detector=detector,
-        tracker=tracker,
     )
 
     # 4. 시각화

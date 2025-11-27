@@ -25,6 +25,7 @@ class VideoStreamRunner:
 
         while True:
             ret, frame = cap.read()
+            print(self.frame_id)
             if not ret:
                 break
 

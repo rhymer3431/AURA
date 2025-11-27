@@ -5,14 +5,17 @@ import torch
 from typing import List
 from ultralytics import YOLOWorld
 
-from robotics.domain.detection.detection_port import DetectionPort, DetectedObject
+from robotics.domain.detection.detection_port import DetectionPort
+from robotics.domain.detection.detected_object import DetectedObject
 
 
 class YoloWorldAdapter(DetectionPort):
     """
     Ultralytics YOLO-World Detector Adapter.
-    Domain layer에서는 YOLO 구현체를 알지 못하고,
-    오직 DetectionPort 인터페이스로만 접근합니다.
+    ROI:
+      - detect() 제거
+      - track()에 Tracker 통합
+      - Domain Layer에 track_id가 포함된 DetectedObject 전달
     """
 
     def __init__(
@@ -23,7 +26,7 @@ class YoloWorldAdapter(DetectionPort):
         iou_threshold: float = 0.45,
         classes: List[str] | None = None,
     ):
-        # Device
+        # Device 자동 설정
         if device == "auto":
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -35,21 +38,23 @@ class YoloWorldAdapter(DetectionPort):
         self.iou_threshold = iou_threshold
         self.class_filter = set(classes) if classes else None
 
-    def detect(self, raw_frame) -> List[DetectedObject]:
+    def track(self, raw_frame) -> List[DetectedObject]:
         """
-        입력: BGR 프레임 (OpenCV)
-        출력: 추상화된 DetectionResult 리스트
+        입력: BGR frame (OpenCV)
+        출력: Domain layer DetectedObject with tracking id
         """
-
-        results = self.model.predict(
-            raw_frame,
+        results = self.model.track(
+            source=raw_frame,
             conf=self.conf_threshold,
             iou=self.iou_threshold,
             device=self.device,
             verbose=False,
-        )[0]
+        )
 
-        boxes = results.boxes
+        if len(results) == 0:
+            return []
+
+        boxes = results[0].boxes
         detections: List[DetectedObject] = []
 
         for i in range(len(boxes)):
@@ -57,17 +62,23 @@ class YoloWorldAdapter(DetectionPort):
             conf = float(boxes.conf[i].item())
             class_name = self.model.names[cls_id]
 
-            # 클래스 필터링
+            # 클래스 필터 조건
             if self.class_filter and class_name not in self.class_filter:
                 continue
+
+            # Tracking ID 반환
+            # ByteTrack이 id를 못줬을 경우 None으로 처리
+            track_id = (
+                int(boxes.id[i].item()) if boxes.id is not None else None
+            )
 
             xyxy = boxes.xyxy[i].tolist()
             x1, y1, x2, y2 = map(int, xyxy)
 
             detection = DetectedObject(
-                track_id=None,  # TrackingPort에서 채울 것
+                track_id=track_id,
                 bbox=(x1, y1, x2, y2),
-                conf=conf,
+                score=conf,
                 class_id=cls_id,
                 class_name=class_name,
             )
