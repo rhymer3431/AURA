@@ -11,12 +11,18 @@ class VideoStreamRunner:
         video_input: str | int,
         visualizer=None,
         vis_client=None,
+        target_fps: int = 20,
+        send_every: int = 1,
+        jpeg_quality: int = 70,
     ):
         self.use_case = use_case
         self.video_input = video_input
         self.visualizer = visualizer
         self.vis_client = vis_client
         self.frame_id = 0
+        self.target_fps = target_fps
+        self.send_every = max(1, send_every)
+        self.jpeg_quality = max(30, min(95, jpeg_quality))
 
     def _graph_to_json(self, scene_graph):
         if not scene_graph:
@@ -35,7 +41,10 @@ class VideoStreamRunner:
             print(f"Failed to open video input: {self.video_input}")
             return
 
+        frame_interval = 1.0 / self.target_fps if self.target_fps > 0 else 0
+
         while True:
+            loop_start = time.time()
             ret, frame = cap.read()
             if not ret:
                 break
@@ -64,8 +73,12 @@ class VideoStreamRunner:
                 cv2.imshow("YOLO + ByteTrack", frame)
 
             # Stream to web UI server (frame + scene graph)
-            if self.vis_client:
-                ok, buf = cv2.imencode(".jpg", vis_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+            if self.vis_client and (self.frame_id % self.send_every == 0):
+                ok, buf = cv2.imencode(
+                    ".jpg",
+                    vis_frame,
+                    [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality],
+                )
                 if ok:
                     self.vis_client.send_frame(buf.tobytes())
                 if ctx.scene_graph:
@@ -74,6 +87,13 @@ class VideoStreamRunner:
             # 종료 조건
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
+
+            # Frame pacing to target FPS
+            if frame_interval > 0:
+                elapsed = time.time() - loop_start
+                sleep_time = frame_interval - elapsed
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
 
         cap.release()
         cv2.destroyAllWindows()

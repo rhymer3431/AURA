@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import CytoscapeComponent from "react-cytoscapejs";
 
-const WS_URL = "ws://localhost:7000/ws";
-const VIDEO_URL = "http://localhost:7000/video";
+const OFFER_URL = "http://localhost:7000/offer";
 
 const layout = { name: "cose", animate: true };
 const style = [
@@ -51,28 +50,37 @@ function toElements(graph) {
   return [...nodes, ...edges];
 }
 
+function waitForIceGathering(pc) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") {
+      resolve();
+    } else {
+      const checkState = () => {
+        if (pc.iceGatheringState === "complete") {
+          pc.removeEventListener("icegatheringstatechange", checkState);
+          resolve();
+        }
+      };
+      pc.addEventListener("icegatheringstatechange", checkState);
+    }
+  });
+}
+
 function App() {
   const cyRef = useRef(null);
+  const videoRef = useRef(null);
+  const pcRef = useRef(null);
   const [elements, setElements] = useState([]);
 
-  const [retryToken, setRetryToken] = useState(Date.now());
-  const videoSrc = `${VIDEO_URL}?t=${retryToken}`;
-
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRetryToken(Date.now());
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    let cancelled = false;
 
-  useEffect(() => {
-    let ws;
-    let retryTimer;
+    async function startWebRTC() {
+      const pc = new RTCPeerConnection({ iceServers: [] });
+      pcRef.current = pc;
 
-    const connect = () => {
-      ws = new WebSocket(WS_URL);
-
-      ws.onmessage = (evt) => {
+      const graphChannel = pc.createDataChannel("graph");
+      graphChannel.onmessage = (evt) => {
         try {
           const graph = JSON.parse(evt.data);
           const newElements = toElements(graph);
@@ -86,19 +94,35 @@ function App() {
         }
       };
 
-      ws.onopen = () => console.log("WS connected");
-      ws.onclose = () => {
-        console.log("WS closed, retrying...");
-        retryTimer = setTimeout(connect, 2000);
+      pc.ontrack = (event) => {
+        const [stream] = event.streams;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
       };
-      ws.onerror = (e) => console.error("WS error", e);
-    };
 
-    connect();
+      await pc.setLocalDescription(await pc.createOffer({ offerToReceiveVideo: true }));
+      await waitForIceGathering(pc);
+
+      if (cancelled) return;
+
+      const offer = pc.localDescription;
+      const res = await fetch(OFFER_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sdp: offer.sdp, type: offer.type }),
+      });
+      const answer = await res.json();
+      await pc.setRemoteDescription(answer);
+    }
+
+    startWebRTC();
 
     return () => {
-      if (ws) ws.close();
-      if (retryTimer) clearTimeout(retryTimer);
+      cancelled = true;
+      if (pcRef.current) {
+        pcRef.current.close();
+      }
     };
   }, []);
 
@@ -115,11 +139,12 @@ function App() {
       }}
     >
       <div style={{ flex: 1, borderRight: "1px solid #1f1f1f" }}>
-        <img
-          src={videoSrc}
-          alt="video stream"
-          onError={() => setRetryToken(Date.now())}
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          style={{ width: "100%", height: "100%", objectFit: "cover", background: "#000" }}
         />
       </div>
 

@@ -18,7 +18,7 @@ def main():
     cfg = load_config("configs/server_dev.yaml")
     project_root = Path(__file__).resolve().parents[4]
 
-    # 0. Spin up visualization backend/front (FastAPI + React dev server)
+    # 0. Spin up visualization backend/front (FastAPI + React dev server) using WebRTC server
     vis_server_proc = start_vis_server(project_root)
     webui_proc = start_webui(project_root)
 
@@ -51,7 +51,10 @@ def main():
         use_case,
         cfg["video_input"],
         visualizer=visualizer,
-        vis_client=vis_client
+        vis_client=vis_client,
+        target_fps=0,       # 0 -> no pacing, run at max achievable FPS
+        send_every=1,       # send every frame
+        jpeg_quality=70,    # balance quality and bandwidth
     )
     try:
         runner.run()
@@ -64,7 +67,7 @@ def main():
 def start_vis_server(project_root: Path):
     try:
         return subprocess.Popen(
-            ["uvicorn", "server.vis_server_ws:app", "--host", "0.0.0.0", "--port", "7000"],
+            ["uvicorn", "server.webrtc_server:app", "--host", "0.0.0.0", "--port", "7000"],
             cwd=project_root,
         )
     except FileNotFoundError:
