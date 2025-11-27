@@ -1,72 +1,67 @@
-# src/robotics/infrastructure/tracking/bytetrack_ultra.py
-
-from __future__ import annotations
-from typing import List, Tuple
+# src/robotics/infrastructure/tracking/bytetrack.py
+from types import SimpleNamespace
 import numpy as np
-
 from ultralytics.trackers.byte_tracker import BYTETracker
 
-from robotics.domain.ports.detection_port import DetectionResult
-from robotics.domain.ports.tracking_port import TrackingPort
+from robotics.domain.tracking.tracked_object import TrackedObject
+from robotics.domain.detection.detected_object import DetectedObject
 
 
-class ByteTrackAdapter(TrackingPort):
-    """
-    Ultralytics BYTETracker adapter to Track Port interface.
-    DetectionResult(track_id=None) -> DetectionResult(track_id=assigned)
-    """
-
-    def __init__(self, track_thresh=0.5, track_buffer=30, match_thresh=0.8):
-        self.tracker = BYTETracker(
+class ByteTrackAdapter:
+    def __init__(
+        self,
+        track_thresh: float = 0.5,
+        track_buffer: int = 30,
+        match_thresh: float = 0.8,
+        aspect_ratio_thresh: float = 1.6,
+        min_box_area: float = 10,
+        mot20: bool = False,
+        frame_rate: int = 30,
+    ) -> None:
+        args = SimpleNamespace(
             track_thresh=track_thresh,
             track_buffer=track_buffer,
             match_thresh=match_thresh,
-            frame_rate=30,
+            aspect_ratio_thresh=aspect_ratio_thresh,
+            min_box_area=min_box_area,
+            mot20=mot20,
+        )
+        self.tracker = BYTETracker(args, frame_rate=frame_rate)
+
+    def track(self, frame, detections):
+        img_h, img_w = frame.shape[:2]
+        img_size = (img_h, img_w)
+
+        # 1. Detection 변환
+        if len(detections) > 0:
+            dets = np.array([
+                [
+                    *det.bbox,         # x1,y1,x2,y2
+                    det.score,
+                    det.class_id
+                ]
+                for det in detections
+            ], dtype=np.float32)
+        else:
+            dets = np.empty((0, 6), dtype=np.float32)
+
+        # 2. ByteTrack update
+        track_results = self.tracker.update(
+            dets,
         )
 
-    def update_tracks(
-        self,
-        detections: List[DetectionResult],
-        frame_shape: Tuple[int, int, int],
-    ) -> List[DetectionResult]:
-
-        if not detections:
-            self.tracker.update([], frame_shape[:2])
-            return []
-
-        # 1) Convert to ByteTrack input format [x1,y1,x2,y2,score,class]
-        det_array = []
-        for det in detections:
-            x1, y1, x2, y2 = det.bbox
-            det_array.append([x1, y1, x2, y2, det.score, det.class_id])
-
-        det_array = np.array(det_array, dtype=float)
-
-        # 2) Update tracker
-        online_targets = self.tracker.update(det_array, frame_shape[:2])
-
-        tracked_results: List[DetectionResult] = []
-
-        # 3) Merge tracking result back
-        for t in online_targets:
-            track_id = int(t.track_id)
-            x1, y1, x2, y2 = map(int, t.tlbr)  # top-left bottom-right
-
-            # find closest detection for class + score
-            cls_id = int(t.class_id) if hasattr(t, "class_id") else -1
-            class_name = "unknown"
-
-            # domain에서 YOLO의 모델명을 모르므로 class_name은 unknown 처리
-            # 필요 시 application에서 다시 매핑 가능
-
-            tracked_results.append(
-                DetectionResult(
-                    track_id=track_id,
+        # 3. Domain 모델로 변환
+        tracked_objects = []
+        for trk in track_results:
+            x1, y1, x2, y2 = map(int, trk.xyxy)
+            tracked_objects.append(
+                TrackedObject(
+                    track_id=int(trk.track_id),
                     bbox=(x1, y1, x2, y2),
-                    score=float(t.score),
-                    class_id=cls_id,
-                    class_name=class_name,
+                    score=float(trk.score),
+                    class_id=int(trk.class_id),
+                    class_name=str(trk.class_id),
                 )
             )
 
-        return tracked_results
+        return tracked_objects

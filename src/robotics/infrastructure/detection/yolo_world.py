@@ -5,10 +5,10 @@ import torch
 from typing import List
 from ultralytics import YOLOWorld
 
-from robotics.domain.ports.detection_port import DetectionPort, DetectionResult
+from robotics.domain.detection.detection_port import DetectionPort, DetectedObject
 
 
-class YoloWorldDetector(DetectionPort):
+class YoloWorldAdapter(DetectionPort):
     """
     Ultralytics YOLO-World Detector Adapter.
     Domain layer에서는 YOLO 구현체를 알지 못하고,
@@ -35,14 +35,14 @@ class YoloWorldDetector(DetectionPort):
         self.iou_threshold = iou_threshold
         self.class_filter = set(classes) if classes else None
 
-    def detect(self, frame_bgr) -> List[DetectionResult]:
+    def detect(self, raw_frame) -> List[DetectedObject]:
         """
         입력: BGR 프레임 (OpenCV)
         출력: 추상화된 DetectionResult 리스트
         """
 
         results = self.model.predict(
-            frame_bgr,
+            raw_frame,
             conf=self.conf_threshold,
             iou=self.iou_threshold,
             device=self.device,
@@ -50,11 +50,11 @@ class YoloWorldDetector(DetectionPort):
         )[0]
 
         boxes = results.boxes
-        detections: List[DetectionResult] = []
+        detections: List[DetectedObject] = []
 
         for i in range(len(boxes)):
             cls_id = int(boxes.cls[i].item())
-            score = float(boxes.conf[i].item())
+            conf = float(boxes.conf[i].item())
             class_name = self.model.names[cls_id]
 
             # 클래스 필터링
@@ -64,10 +64,10 @@ class YoloWorldDetector(DetectionPort):
             xyxy = boxes.xyxy[i].tolist()
             x1, y1, x2, y2 = map(int, xyxy)
 
-            detection = DetectionResult(
+            detection = DetectedObject(
                 track_id=None,  # TrackingPort에서 채울 것
                 bbox=(x1, y1, x2, y2),
-                score=score,
+                conf=conf,
                 class_id=cls_id,
                 class_name=class_name,
             )

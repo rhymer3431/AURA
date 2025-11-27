@@ -1,7 +1,7 @@
 # src/robotics/interfaces/viz/opencv_overlay.py
 
 import cv2
-from robotics.domain.ports.detection_port import DetectionResult
+from robotics.domain.detection.detected_object import DetectedObject
 
 
 class OpenCVOverlayVisualizer:
@@ -9,7 +9,7 @@ class OpenCVOverlayVisualizer:
         self.show_track_id = show_track_id
         self.show_score = show_score
 
-    def draw(self, frame, detections: list[DetectionResult]):
+    def draw(self, frame, detections: list[DetectedObject]):
         vis = frame.copy()
 
         for det in detections:
