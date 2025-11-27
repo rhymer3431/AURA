@@ -9,12 +9,24 @@ class VideoStreamRunner:
         self,
         use_case: ProcessFrameUseCase,
         video_input: str | int,
-        visualizer=None
+        visualizer=None,
+        vis_client=None,
     ):
         self.use_case = use_case
         self.video_input = video_input
         self.visualizer = visualizer
+        self.vis_client = vis_client
         self.frame_id = 0
+
+    def _graph_to_json(self, scene_graph):
+        if not scene_graph:
+            return {"nodes": [], "edges": []}
+        nodes = [{"id": str(n.id), "label": n.label} for n in scene_graph.nodes]
+        edges = [
+            {"source": str(e.source), "target": str(e.target), "label": e.relation}
+            for e in scene_graph.edges
+        ]
+        return {"nodes": nodes, "edges": edges}
 
     def run(self):
         cap = cv2.VideoCapture(self.video_input)
@@ -43,10 +55,21 @@ class VideoStreamRunner:
 
             # 시각화
             if self.visualizer:
-                vis_frame = self.visualizer.draw(ctx.raw_frame, ctx.detections, ctx.scene_graph)
+                vis_frame = self.visualizer.draw(
+                    ctx.raw_frame, ctx.detections, ctx.scene_graph
+                )
                 cv2.imshow("YOLO + ByteTrack", vis_frame)
             else:
+                vis_frame = frame
                 cv2.imshow("YOLO + ByteTrack", frame)
+
+            # Stream to web UI server (frame + scene graph)
+            if self.vis_client:
+                ok, buf = cv2.imencode(".jpg", vis_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                if ok:
+                    self.vis_client.send_frame(buf.tobytes())
+                if ctx.scene_graph:
+                    self.vis_client.send_graph(self._graph_to_json(ctx.scene_graph))
 
             # 종료 조건
             if cv2.waitKey(1) & 0xFF == ord("q"):

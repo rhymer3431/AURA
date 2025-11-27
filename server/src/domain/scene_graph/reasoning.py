@@ -1,8 +1,8 @@
 from typing import List
 
-from robotics.domain.detection.detected_object import DetectedObject
-from robotics.domain.scene_graph.entities import Node, SceneGraph
-from robotics.domain.scene_graph.builder import SceneGraphBuilder
+from server.src.domain.detection.detected_object import DetectedObject
+from server.src.domain.scene_graph.entities import Node, SceneGraph
+from server.src.domain.scene_graph.builder import SceneGraphBuilder
 
 
 def nodes_from_detections(detections: List[DetectedObject]) -> List[Node]:

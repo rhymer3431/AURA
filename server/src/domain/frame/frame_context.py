@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from typing import List, Optional, Any
-from robotics.domain.detection.detected_object import DetectedObject
+from server.src.domain.detection.detected_object import DetectedObject
 
 
 @dataclass

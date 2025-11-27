@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from typing import List
-from robotics.domain.detection.detected_object import DetectedObject
+from server.src.domain.detection.detected_object import DetectedObject
 
 class DetectionPort(ABC):
     

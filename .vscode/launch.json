@@ -5,7 +5,7 @@
             "name": "Run Robotics Main",
             "type": "python",
             "request": "launch",
-            "module": "robotics.interfaces.cli.main",
+            "module": "server.src.interfaces.cli.main",
             "cwd": "${workspaceFolder}",
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"

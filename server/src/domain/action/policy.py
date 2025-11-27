@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from robotics.domain.scene_graph.entities import SceneGraph
+from server.src.domain.scene_graph.entities import SceneGraph
 
 
 @dataclass

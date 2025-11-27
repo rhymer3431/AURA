@@ -5,8 +5,8 @@ import torch
 from typing import List
 from ultralytics import YOLOWorld
 
-from robotics.domain.detection.detection_port import DetectionPort
-from robotics.domain.detection.detected_object import DetectedObject
+from server.src.domain.detection.detection_port import DetectionPort
+from server.src.domain.detection.detected_object import DetectedObject
 
 
 class YoloWorldAdapter(DetectionPort):
