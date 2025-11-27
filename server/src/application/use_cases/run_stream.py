@@ -67,10 +67,8 @@ class VideoStreamRunner:
                 vis_frame = self.visualizer.draw(
                     ctx.raw_frame, ctx.detections, ctx.scene_graph
                 )
-                cv2.imshow("YOLO + ByteTrack", vis_frame)
             else:
                 vis_frame = frame
-                cv2.imshow("YOLO + ByteTrack", frame)
 
             # Stream to web UI server (frame + scene graph)
             if self.vis_client and (self.frame_id % self.send_every == 0):
