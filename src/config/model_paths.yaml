@@ -1,0 +1,4 @@
+yolo_world: "model_weights/yolo_world/yolov8s-worldv2.pt"
+react_sgg: "model_weights/sgg/motifnet_sgg.pt"
+clip_text: "model_weights/clip/ViT-B-32.pt"
+llm: ""
