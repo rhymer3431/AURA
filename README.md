@@ -1,4 +1,4 @@
-# AURA: Robotics Perception & Reasoning Pipeline  
+# AURA: Autonomous Understanding Reactive & Attention
 YOLO-World · ByteTrack · Lightweight-GNN · SGCL · GRIN · LLM
 
 지능형 로봇을 위한 **실시간 인지 → 추론 → 행동 결정** 전체 파이프라인을 구현한 프로젝트입니다.  
@@ -11,22 +11,22 @@ YOLO-World · ByteTrack · Lightweight-GNN · SGCL · GRIN · LLM
 
 본 프로젝트는 다음 여섯 가지 목표를 중심으로 설계되었습니다.
 
-1. **실시간 객체 탐지·추적**  
-   YOLO-World(Open-Vocabulary Detection)과 ByteTrack을 활용해 다중 객체를 검출·추적합니다.
+1. **실시간 객체 탐지 및 추적**  
+   YOLO-World와 ByteTrack을 활용해 다중 객체를 검출 및 추적합니다.
 
 2. **Scene Graph 기반 장면 이해**  
-   Lightweight-GNN 또는 MotifNet(SGG)을 통해 노드(객체)와 엣지(관계)를 구조화합니다.
+   Lightweight-GNN 또는 Transformer기반 SGG 모델을 통해 Scene Graph를 만듭니다.
+   현재 여러 모델을 테스트 중에 있으며, 전체 파이프라인과 적합한 모델을 적용할 예정입니다.
 
-3. **SGCL 기반 정적·공간 논리 추론**  
-   Scene Graph로부터 거리, 방향, 상호작용 가능성 등 공간적 맥락을 분석합니다.
+5. **GRIN 기반 동적 이동 경로 예측**  
+   정적 Scene Graph를 만든 이후, 여러 프레임동안 Scene Graph 시퀀스를 저장했다 한번에 업데이트 하는 방식으로 동적인 관계를 예측합니다.
 
-4. **GRIN 기반 동적 이동 경로 예측**  
-   움직이는 객체의 향후 움직임을 예측해 위험도를 보정합니다.
-
-5. **LLM Reasoning**  
+6. **LLM Reasoning**  
    Scene Graph, 위험도, 미래 경로 정보를 종합해 행동 전략을 도출합니다.
+   기존에는 Scene Graph를 템플릿에 맞춰서 LLM에 프롬프트를 전달하는 구조지만,
+   최근에 VLM으로 전환하여 ROI Feature와 함께 건내주는 방식또한 고려 중입니다.
 
-6. **Jetson Edge–Server 스트리밍 파이프라인**  
+8. **Jetson Edge–Server 스트리밍 파이프라인**  
    Edge에서는 실시간 탐지·추적을, Server에서는 GNN·SGCL·GRIN·LLM을 수행하는 분산 구조입니다.
 
 ---
@@ -64,8 +64,7 @@ Static Geometric & Context Logic
 - SGCL 출력과 결합하여 Risk Score 업데이트
 
 ### 2.6 LLM Reasoning  
-- Scene Graph + Risk Score + Trajectory 기반 행동 전략 생성  
-- 예: “전방 2m 내 충돌 위험. 속도를 0.8m/s로 감소하세요.”
+- Scene Graph + Risk Score + Trajectory 기반 행동 전략 생성
 
 ---
 
