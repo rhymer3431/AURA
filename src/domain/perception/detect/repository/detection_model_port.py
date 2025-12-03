@@ -2,7 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import List
 
-from domain.detect.entity.detection import DetectedObject
+from src.domain.perception.detect.entity.detected_object import DetectedObject
 
 
 class DetectionModelPort(ABC):

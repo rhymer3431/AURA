@@ -1,7 +1,7 @@
 from typing import List
 
 from domain.detect.entity.detection import DetectedObject
-from domain.node.entity.node import Node
+from src.domain.node.entity.entity_node import Node
 from domain.sgg.entity.relation import SceneGraph
 from domain.sgg.service.scene_graph_builder import SceneGraphBuilder
 

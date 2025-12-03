@@ -1,7 +1,7 @@
 from typing import List
 
-from domain.detect.entity.detection import DetectedObject
-from domain.detect.repository.detection_model_port import DetectionModelPort
+from domain.perception.detect.entity.detected_object import DetectedObject
+from domain.perception.detect.repository.detection_model_port import DetectionModelPort
 
 
 class DetectionService:

@@ -1,6 +1,6 @@
 from typing import List
 
-from domain.node.entity.node import Node
+from src.domain.node.entity.entity_node import Node
 from domain.sgg.entity.relation import Edge, SceneGraph
 
 

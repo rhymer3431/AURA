@@ -2,7 +2,7 @@
 from dataclasses import dataclass, field
 from typing import List
 
-from domain.node.entity.node import Node
+from src.domain.node.entity.entity_node import Node
 
 
 @dataclass
