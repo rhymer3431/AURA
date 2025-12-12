@@ -3,14 +3,14 @@ import asyncio
 import cv2
 from typing import Dict, Any, Optional, List
 
-from domain.streaming.ports import (
+from src.domain.streaming.ports import (
     PerceptionPort,
     ScenePlanPort,
     VideoSinkPort,
     MetadataSinkPort,
 )
-from infrastructure.streaming.visualization.draw_bbox import FrameVisualizer
-from domain.utils.box_iou_xyxy import box_iou_xyxy
+from src.infrastructure.streaming.visualization.draw_bbox import FrameVisualizer
+from src.domain.utils.box_iou_xyxy import box_iou_xyxy
 
 
 async def run_perception_stream(
@@ -45,7 +45,7 @@ async def run_perception_stream(
             frame_idx += 1
             run_grin = frame_idx % 10 == 0
 
-            sg_frame, _ = perception.process_frame(
+            sg_frame, _, diff = perception.process_frame(
                 frame_bgr, frame_idx, run_grin, max_entities=16
             )
 
@@ -80,6 +80,15 @@ async def run_perception_stream(
             }
             
             await metadata_sink.send_metadata(metadata)
+
+            if diff is not None and not getattr(diff, "is_empty", lambda: True)():
+                await metadata_sink.send_metadata(
+                    {
+                        "type": "scene_graph_diff",
+                        "frameIdx": frame_idx,
+                        "diff": diff.to_dict(),
+                    }
+                )
 
             await video_sink.send_frame(frame_idx, frame_bgr)
 

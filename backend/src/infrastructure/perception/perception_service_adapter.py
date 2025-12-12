@@ -4,16 +4,19 @@ import math
 
 import torch
 
-from domain.memory.entity_record import EntityRecord
-from domain.memory.entity_long_term_memory import EntityLongTermMemory
-from domain.memory.short_term_graph_memory import ShortTermGraphMemory
-from domain.perception.entity_node import EntityNode
-from domain.perception.scene_graph_frame import SceneGraphFrame
-from domain.perception.simple_scene_graph_frame import SimpleSceneGraphFrame
-from infrastructure.perception.build_grin_input import build_grin_input
-from infrastructure.perception.grin_stub_model import GRINStubModel
-from infrastructure.perception.yolo_world_detector import YoloWorldDetector
-from infrastructure.logging.pipeline_logger import PipelineLogger
+from src.domain.memory.entity_record import EntityRecord
+from src.domain.memory.entity_long_term_memory import EntityLongTermMemory
+from src.domain.memory.short_term_graph_memory import (
+    GraphDiff,
+    ShortTermGraphMemory,
+)
+from src.domain.perception.entity_node import EntityNode
+from src.domain.perception.scene_graph_frame import SceneGraphFrame
+from src.domain.perception.simple_scene_graph_frame import SimpleSceneGraphFrame
+from src.infrastructure.perception.build_grin_input import build_grin_input
+from src.infrastructure.perception.grin_stub_model import GRINStubModel
+from src.infrastructure.perception.yolo_world_detector import YoloWorldDetector
+from src.infrastructure.logging.pipeline_logger import PipelineLogger
 
 
 class PerceptionServiceAdapter:
@@ -53,7 +56,11 @@ class PerceptionServiceAdapter:
             device=device,
             logger=logger,
         )
-        self.stm = ShortTermGraphMemory(max_frames=60, logger=logger)
+        self.stm = ShortTermGraphMemory(
+            max_frames=60,
+            logger=logger,
+            relation_id_to_name=self.RELATION_ID_TO_NAME,
+        )
         self.grin = GRINStubModel(node_dim=ltm_feat_dim).to(device)
 
     def _log(
@@ -309,6 +316,14 @@ class PerceptionServiceAdapter:
         grin_horizon: int = 16,
         max_entities: int = 16,
     ):
+        """
+        Run detection + relation building for a frame.
+
+        Returns:
+            sg_frame: immutable per-frame SceneGraphFrame snapshot.
+            grin_outputs: optional GRIN results keyed by entity id.
+            diff: GraphDiff capturing added/updated/removed nodes/edges since last frame.
+        """
         detections = self.detector.detect(frame_bgr)
         self._log(
             event="detect_done",
@@ -339,7 +354,7 @@ class PerceptionServiceAdapter:
             relations=relations,
         )
 
-        self.stm.push(sg_frame)
+        diff: GraphDiff = self.stm.update_from_frame(sg_frame)
 
         grin_outputs: Dict[int, Dict] = {}
         if run_grin:
@@ -368,4 +383,4 @@ class PerceptionServiceAdapter:
                 matched_brain="PPC",
             )
 
-        return sg_frame, grin_outputs
+        return sg_frame, grin_outputs, diff

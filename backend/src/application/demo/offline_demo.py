@@ -4,10 +4,10 @@ import torch
 from typing import List
 from pathlib import Path
 
-from infrastructure.perception.perception_service_adapter import PerceptionServiceAdapter
-from infrastructure.llm.local_scene_plan_worker import LocalScenePlanWorker
-from infrastructure.logging.pipeline_logger import PipelineLogger
-from domain.utils.box_iou_xyxy import box_iou_xyxy
+from src.infrastructure.perception.perception_service_adapter import PerceptionServiceAdapter
+from src.infrastructure.llm.local_scene_plan_worker import LocalScenePlanWorker
+from src.infrastructure.logging.pipeline_logger import PipelineLogger
+from src.domain.utils.box_iou_xyxy import box_iou_xyxy
 
 
 def run_video_demo(
@@ -45,7 +45,7 @@ def run_video_demo(
         frame_idx += 1
 
         run_grin = (frame_idx % 10 == 0) and (not skip_grin)
-        sg_frame, _ = system.process_frame(
+        sg_frame, _, _diff = system.process_frame(
             frame_bgr=frame,
             frame_idx=frame_idx,
             run_grin=run_grin,
