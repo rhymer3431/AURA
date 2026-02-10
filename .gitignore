@@ -108,3 +108,4 @@ ckpt/
 *.ply
 *.pcd
 *.stl
+AURA/models/mobileclip2_b.ts
