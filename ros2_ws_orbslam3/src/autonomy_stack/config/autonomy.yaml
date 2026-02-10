@@ -1,0 +1,87 @@
+navigator_node:
+  ros__parameters:
+    topics.rgb: /habitat/rgb
+    topics.depth: /habitat/depth
+    topics.rgb_info: /habitat/rgb/camera_info
+    topics.depth_info: /habitat/depth/camera_info
+    topics.goal: /goal_pose
+    topics.cmd_vel: /cmd_vel
+    topics.costmap: /costmap
+    topics.global_path: /global_path
+    topics.nav_status: /nav_status
+    frames.map: map
+    frames.odom: odom
+    frames.base_link: base_link
+    frames.camera: habitat_rgb
+
+    camera.fx: 0.0
+    camera.fy: 0.0
+    camera.cx: 0.0
+    camera.cy: 0.0
+    camera.width: 640
+    camera.height: 480
+    camera.hfov_deg: 90.0
+    camera.publish_camera_info: false
+    camera.camera_info_rate_hz: 1.0
+    camera.depth_encoding: 32FC1
+    camera.depth_scale: 1.0
+
+    costmap.resolution: 0.1
+    costmap.size_x: 8.0
+    costmap.size_y: 8.0
+    costmap.min_depth: 0.2
+    costmap.max_depth: 6.0
+    costmap.min_height: 0.05
+    costmap.max_height: 1.5
+    costmap.camera_height: 0.5
+    costmap.inflation_radius: 0.3
+    costmap.pixel_stride: 2
+    costmap.unknown_as_obstacle: true
+    costmap.safety_stop_distance: 0.6
+    costmap.safety_fov_deg: 60.0
+
+    planner.allow_diagonal: true
+    planner.occupied_threshold: 50
+    planner.unknown_as_obstacle: true
+    planner.max_iterations: 20000
+
+    controller.lookahead_distance: 0.6
+    controller.linear_speed: 0.3
+    controller.max_linear_speed: 0.5
+    controller.max_angular_speed: 1.0
+    controller.max_linear_accel: 0.5
+    controller.max_angular_accel: 1.5
+    controller.goal_tolerance: 0.3
+    controller.yaw_tolerance: 0.4
+    controller.angular_kp: 1.5
+
+    recovery.slam_lost_rotate_time: 3.0
+    recovery.slam_lost_rotate_speed: 0.6
+    recovery.stuck_time: 3.0
+    recovery.min_progress: 0.2
+    recovery.backup_time: 1.0
+    recovery.backup_speed: -0.15
+    recovery.rotate_time: 2.0
+    recovery.rotate_speed: 0.6
+
+    navigator.control_hz: 10.0
+    navigator.plan_hz: 1.0
+    navigator.max_depth_age: 0.5
+    navigator.replan_on_costmap: true
+    navigator.auto_goal_enable: false
+    navigator.auto_goal_distance: 2.0
+    navigator.auto_goal_interval: 8.0
+
+    tf.use_pose_topic: false
+    tf.pose_topic: /orbslam/pose
+    tf.pose_child_frame: base_link
+    tf.pose_in_map_frame: true
+    tf.publish_tf: true
+    tf.publish_static_tf: true
+    tf.pose_timeout: 0.5
+    tf.camera_in_base.x: 0.0
+    tf.camera_in_base.y: 0.0
+    tf.camera_in_base.z: 0.0
+    tf.camera_in_base.roll: 0.0
+    tf.camera_in_base.pitch: 0.0
+    tf.camera_in_base.yaw: 0.0

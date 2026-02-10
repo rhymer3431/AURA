@@ -1,0 +1,30 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint-and-sanity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shfmt shellcheck cmake ninja-build python3-pip
+          python3 -m pip install --upgrade pip
+          python3 -m pip install colcon-common-extensions pyyaml numpy
+      - name: Shell format
+        run: |
+          shfmt -d scripts/*.sh
+          shellcheck scripts/*.sh
+      - name: Sanity checks
+        run: |
+          cmake --version
+          ninja --version
+          colcon --version
+          python3 scripts/habitat_ros2_bridge.py --help
+          colcon list --base-paths ros2_ws_orbslam3

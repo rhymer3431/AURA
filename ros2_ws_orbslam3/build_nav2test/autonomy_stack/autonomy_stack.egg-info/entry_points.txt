@@ -1,0 +1,6 @@
+[console_scripts]
+navigator_node = autonomy_stack.navigator_node:main
+pose_tf_bridge_node = autonomy_stack.pose_tf_bridge_node:main
+semantic_fusion_node = autonomy_stack.semantic_fusion_node:main
+sparse_map_occupancy_node = autonomy_stack.sparse_map_occupancy_node:main
+yoloe_semantic_node = autonomy_stack.yoloe_semantic_node:main

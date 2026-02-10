@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: autonomy_stack
+Version: 0.1.0
+Summary: Minimal ROS 2 autonomy stack for Habitat-Sim RGB-D pipelines.
+Maintainer: mangoo
+Maintainer-email: mangoo@localhost
+License: Apache-2.0
+Requires-Dist: setuptools
+Dynamic: license
+Dynamic: maintainer
+Dynamic: maintainer-email
+Dynamic: requires-dist
+Dynamic: summary

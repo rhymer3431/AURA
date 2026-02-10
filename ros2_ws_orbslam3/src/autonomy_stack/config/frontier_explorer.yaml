@@ -1,0 +1,19 @@
+frontier_explorer_node:
+  ros__parameters:
+    map_topic: /map
+    pose_topic: /orbslam/pose
+    action_name: /navigate_to_pose
+    map_frame: map
+
+    tick_hz: 1.0
+    occupied_threshold: 65
+    min_frontier_cluster_size: 8
+
+    min_goal_distance: 0.8
+    max_goal_distance: 8.0
+    goal_timeout_sec: 45.0
+    goal_reached_dist: 0.45
+
+    blacklist_radius: 0.7
+    blacklist_ttl_sec: 120.0
+    no_frontier_idle_sec: 2.0

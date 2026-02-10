@@ -1,0 +1,110 @@
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs / temp
+*.log
+*.tmp
+*.temp
+
+# Environment files
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+ENV/
+.conda/
+.python-version
+
+# Local Python workspace artifacts
+AURA/.venv/
+AURA/**/__pycache__/
+habitat-sim/**/__pycache__/
+
+# Node / frontend
+node_modules/
+*/node_modules/
+dashboard/build/
+dashboard/dist/
+
+# ROS2 colcon outputs
+ros2_ws_orbslam3/build/
+ros2_ws_orbslam3/install/
+ros2_ws_orbslam3/log/
+
+# CMake / native build outputs
+build/
+cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+
+# Runtime outputs
+runs/
+
+# Generic virtual environments (any depth)
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+
+# Dataset / data artifacts
+data/
+dataset/
+datasets/
+**/data/
+**/dataset/
+**/datasets/
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.h5
+*.hdf5
+*.npz
+*.npy
+*.parquet
+*.feather
+*.pkl
+*.pickle
+*.joblib
+*.csv
+*.tsv
+
+# Model weights / checkpoints
+models/
+weights/
+checkpoints/
+ckpt/
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.engine
+*.tflite
+*.pb
+*.safetensors
+*.weights
+
+# 3D / scan assets often used as large datasets
+*.glb
+*.gltf
+*.obj
+*.ply
+*.pcd
+*.stl

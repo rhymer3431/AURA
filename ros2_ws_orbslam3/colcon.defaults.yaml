@@ -1,0 +1,5 @@
+build:
+  symlink-install: true
+  cmake-args:
+    - -DORB_SLAM3_ROOT_DIR=/home/mangoo/project/ORB_SLAM3
+    - -DCMAKE_BUILD_TYPE=Release

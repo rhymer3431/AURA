@@ -1,0 +1,1 @@
+/home/mangoo/project/ros2_ws_orbslam3/build_nav2test/orbslam3/ament_cmake_core/orbslam3Config-version.cmake

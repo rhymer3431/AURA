@@ -1,0 +1,115 @@
+{
+	"configurations" : 
+	[
+		{
+			"directories" : 
+			[
+				{
+					"build" : ".",
+					"hasInstallRule" : true,
+					"jsonFile" : "directory-.-ab6d7500ba187722727d.json",
+					"minimumCMakeVersion" : 
+					{
+						"string" : "3.12"
+					},
+					"projectIndex" : 0,
+					"source" : ".",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6
+					]
+				}
+			],
+			"name" : "",
+			"projects" : 
+			[
+				{
+					"directoryIndexes" : 
+					[
+						0
+					],
+					"name" : "orbslam3",
+					"targetIndexes" : 
+					[
+						0,
+						1,
+						2,
+						3,
+						4,
+						5,
+						6
+					]
+				}
+			],
+			"targets" : 
+			[
+				{
+					"directoryIndex" : 0,
+					"id" : "mono::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-mono-30604f782c4e3609375c.json",
+					"name" : "mono",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "orbslam3_uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-orbslam3_uninstall-8ccd258c7497a0c87c44.json",
+					"name" : "orbslam3_uninstall",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "rgbd::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-rgbd-adaa8dffa361f023fbe6.json",
+					"name" : "rgbd",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "rgbd-inertial::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-rgbd-inertial-96bb43e950993de1e3d8.json",
+					"name" : "rgbd-inertial",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "stereo::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-stereo-326d65058f62bb2ebbd0.json",
+					"name" : "stereo",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "stereo-inertial::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-stereo-inertial-1af42a630cbc99f6a9cb.json",
+					"name" : "stereo-inertial",
+					"projectIndex" : 0
+				},
+				{
+					"directoryIndex" : 0,
+					"id" : "uninstall::@6890427a1f51a3e7e1df",
+					"jsonFile" : "target-uninstall-731bf8e9151e6feaf484.json",
+					"name" : "uninstall",
+					"projectIndex" : 0
+				}
+			]
+		}
+	],
+	"kind" : "codemodel",
+	"paths" : 
+	{
+		"build" : "/home/mangoo/project/ros2_ws_orbslam3/build_nav2test/orbslam3",
+		"source" : "/home/mangoo/project/ros2_ws_orbslam3/src/orbslam3_ros2"
+	},
+	"version" : 
+	{
+		"major" : 2,
+		"minor" : 3
+	}
+}

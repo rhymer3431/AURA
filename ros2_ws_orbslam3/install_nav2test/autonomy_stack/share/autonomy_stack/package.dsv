@@ -1,0 +1,6 @@
+source;share/autonomy_stack/hook/pythonpath.ps1
+source;share/autonomy_stack/hook/pythonpath.dsv
+source;share/autonomy_stack/hook/pythonpath.sh
+source;../../build_nav2test/autonomy_stack/share/autonomy_stack/hook/pythonpath_develop.ps1
+source;../../build_nav2test/autonomy_stack/share/autonomy_stack/hook/pythonpath_develop.dsv
+source;../../build_nav2test/autonomy_stack/share/autonomy_stack/hook/pythonpath_develop.sh

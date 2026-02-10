@@ -1,0 +1,9 @@
+[submodule "habitat-sim"]
+  path = habitat-sim
+  url = https://github.com/facebookresearch/habitat-sim
+[submodule "ORB_SLAM3"]
+  path = ORB_SLAM3
+  url = https://github.com/zang09/ORB-SLAM3-STEREO-FIXED.git
+[submodule "orbslam3_ros2"]
+  path = ros2_ws_orbslam3/src/orbslam3_ros2
+  url = https://github.com/zang09/ORB_SLAM3_ROS2.git
