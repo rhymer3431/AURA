@@ -1,0 +1,4 @@
+[submodule "tmp/GR00T-WholeBodyControl"]
+	path = tmp/GR00T-WholeBodyControl
+	url = https://github.com/NVlabs/GR00T-WholeBodyControl.git
+
