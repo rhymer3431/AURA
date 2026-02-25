@@ -1,0 +1,74 @@
+[
+  {
+    "name": [
+      "left_hip_pitch_joint",
+      "right_hip_pitch_joint",
+      "waist_yaw_joint",
+      "left_hip_roll_joint",
+      "right_hip_roll_joint",
+      "waist_roll_joint",
+      "left_hip_yaw_joint",
+      "right_hip_yaw_joint"
+    ],
+    "position": [
+      -0.17165066301822662,
+      -0.16270264983177185,
+      0.009212572127580643,
+      0.10979025810956955,
+      -0.16273897886276245,
+      -0.01459597609937191,
+      0.07081156224012375,
+      0.05124665051698685
+    ],
+    "count_names": 29,
+    "count_positions": 29
+  },
+  {
+    "name": [
+      "left_hip_pitch_joint",
+      "right_hip_pitch_joint",
+      "waist_yaw_joint",
+      "left_hip_roll_joint",
+      "right_hip_roll_joint",
+      "waist_roll_joint",
+      "left_hip_yaw_joint",
+      "right_hip_yaw_joint"
+    ],
+    "position": [
+      -0.10201843082904816,
+      0.01990640163421631,
+      0.025214258581399918,
+      0.15724708139896393,
+      -0.22831757366657257,
+      -0.09221997857093811,
+      0.06585890799760818,
+      0.09661640226840973
+    ],
+    "count_names": 29,
+    "count_positions": 29
+  },
+  {
+    "name": [
+      "left_hip_pitch_joint",
+      "right_hip_pitch_joint",
+      "waist_yaw_joint",
+      "left_hip_roll_joint",
+      "right_hip_roll_joint",
+      "waist_roll_joint",
+      "left_hip_yaw_joint",
+      "right_hip_yaw_joint"
+    ],
+    "position": [
+      -0.31049177050590515,
+      0.23427364230155945,
+      0.2001766711473465,
+      -0.09622564911842346,
+      -0.2794802486896515,
+      -0.12803080677986145,
+      0.06112939864397049,
+      0.1100238561630249
+    ],
+    "count_names": 29,
+    "count_positions": 29
+  }
+]

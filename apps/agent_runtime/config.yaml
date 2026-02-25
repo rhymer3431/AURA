@@ -1,0 +1,106 @@
+{
+  "runtime": {
+    "log_level": "INFO",
+    "startup_command": "Pick up the apple and return to start.",
+    "interactive": true,
+    "exit_after_startup_command": false
+  },
+  "planner": {
+    "url": "http://127.0.0.1:8088/plan",
+    "timeout_s": 5.0,
+    "min_interval_s": 1.0,
+    "mock_fallback": false
+  },
+  "perception": {
+    "engine_path": "models/yoloe_26m_fp8.engine",
+    "mock_mode": false,
+    "fallback_to_mock": false,
+    "queue_size": 2,
+    "base_interval_s": 0.5,
+    "warmup_iters": 3,
+    "enable_fallback_variant": true,
+    "target_vram_gb": 1.8
+  },
+  "slam": {
+    "mock_mode": false,
+    "t_low": 0.35,
+    "t_high": 0.70,
+    "recover_hold_s": 2.0,
+    "covariance_scale": 2.5,
+    "mock_cycle_s": 20.0
+  },
+  "memory": {
+    "stm_window_s": 8.0,
+    "stm_max_entries": 128,
+    "ltm_threshold": 0.55,
+    "w_task_relevance": 0.35,
+    "w_frequency": 0.20,
+    "w_recency": 0.20,
+    "w_mentioned": 0.15,
+    "w_confidence": 0.10
+  },
+  "nav2": {
+    "mock_mode": false,
+    "default_timeout_s": 20.0,
+    "mock_failure_rate": 0.0,
+    "pose_uncertain_threshold": 0.35
+  },
+  "exploration": {
+    "radius_m": 1.2,
+    "max_cycles": 3,
+    "waypoint_timeout_s": 12.0
+  },
+  "manipulation": {
+    "backend": "gr00t_policy_server",
+    "mock_mode": false,
+    "fallback_to_mock": false,
+    "warmup_iters": 3,
+    "control_dt_s": 0.05,
+    "mock_failure_rate": 0.0,
+    "engine_path": "models/gr00t_n1_6_g1_pnp_apple_to_plate/trt_fp8/dit_model_fp8.trt",
+    "repo_id": "nvidia/GR00T-N1.6-G1-PnPAppleToPlate",
+    "local_model_dir": "models/gr00t_n1_6_g1_pnp_apple_to_plate",
+    "allow_remote_metadata": false,
+    "metadata_timeout_s": 10.0,
+    "image_size": 256,
+    "policy_server": {
+      "host": "127.0.0.1",
+      "port": 5555,
+      "timeout_s": 20.0,
+      "request_retries": 2,
+      "retry_backoff_s": 1.0,
+      "identity": "g1-agent-runtime",
+      "embodiment_tag": "UNITREE_G1",
+      "auto_start": false,
+      "start_command": "python scripts/run_groot_policy_server_fp8.py --groot-repo-root C:/Users/mango/project/Isaac-GR00T-tmp --model-path models/gr00t_n1_6_g1_pnp_apple_to_plate --trt-engine-path models/gr00t_n1_6_g1_pnp_apple_to_plate/trt_fp8/dit_model_fp8.trt --embodiment-tag UNITREE_G1 --use-sim-policy-wrapper",
+      "start_cwd": "",
+      "startup_timeout_s": 30.0,
+      "manage_server_process": true
+    },
+    "sonic_server": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 5556,
+      "timeout_s": 20.0,
+      "publish_navigate_command": false,
+      "control_dt_s": 0.02,
+      "joint_rate_limit_rad_s": 3.0,
+      "joint_blend_alpha": 0.6,
+      "default_style": "normal",
+      "default_vx": 0.0,
+      "default_vy": 0.0,
+      "default_yaw_rate": 0.0
+    },
+    "action_adapter": {
+      "backend": "ros2_topic",
+      "topic_prefix": "/g1/cmd"
+    },
+    "target_vram_gb": 3.5
+  },
+  "vram_guard": {
+    "check_interval_s": 2.0,
+    "safety_threshold_mb": 2900,
+    "device_index": 0,
+    "simulate_if_unavailable": false
+  }
+}

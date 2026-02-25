@@ -1,0 +1,571 @@
+#usda 1.0
+(
+    customLayerData = {
+        dictionary cameraSettings = {
+            dictionary Front = {
+                double3 position = (0, 0, 500)
+                double radius = 5
+            }
+            dictionary Perspective = {
+                double3 position = (1.195339781647374, 1.4544616737857352, -3.3313226586391456)
+                double3 target = (-1.684626238507292e-8, -1.7440500776899626e-7, -1.4243313151141024e-7)
+            }
+            dictionary Right = {
+                double3 position = (-500, 0, 0)
+                double radius = 5
+            }
+            dictionary Top = {
+                double3 position = (0, 500, 0)
+                double radius = 5
+            }
+            string boundCamera = "/OmniverseKit_Persp"
+        }
+        dictionary omni_layer = {
+            string authoring_layer = "./g1_29dof_with_hand_rev_1_0_physics.usd"
+        }
+        dictionary renderSettings = {
+        }
+    }
+    defaultPrim = "g1_29dof_with_hand_rev_1_0"
+    endTimeCode = 0
+    metersPerUnit = 1
+    startTimeCode = -1
+    timeCodesPerSecond = 60
+    upAxis = "Z"
+)
+
+over "g1_29dof_with_hand_rev_1_0" (
+    prepend apiSchemas = ["IsaacRobotAPI"]
+)
+{
+    string isaac:namespace (
+        displayName = "Namespace"
+        doc = "Namespace of the prim in Isaac Sim"
+    )
+    prepend rel isaac:physics:robotJoints = [
+        </g1_29dof_with_hand_rev_1_0/joints/left_hip_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_hip_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_hip_yaw_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_knee_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_ankle_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_ankle_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_hip_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_hip_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_hip_yaw_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_knee_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_ankle_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_ankle_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/waist_yaw_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/waist_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/waist_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_shoulder_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_shoulder_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_shoulder_yaw_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_elbow_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_wrist_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_wrist_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/left_wrist_yaw_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_shoulder_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_shoulder_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_shoulder_yaw_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_elbow_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_wrist_roll_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_wrist_pitch_joint>,
+        </g1_29dof_with_hand_rev_1_0/joints/right_wrist_yaw_joint>,
+    ]
+    prepend rel isaac:physics:robotLinks = [
+        </g1_29dof_with_hand_rev_1_0/pelvis>,
+        </g1_29dof_with_hand_rev_1_0/left_hip_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/left_hip_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/left_hip_yaw_link>,
+        </g1_29dof_with_hand_rev_1_0/left_knee_link>,
+        </g1_29dof_with_hand_rev_1_0/left_ankle_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/left_ankle_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/right_hip_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/right_hip_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/right_hip_yaw_link>,
+        </g1_29dof_with_hand_rev_1_0/right_knee_link>,
+        </g1_29dof_with_hand_rev_1_0/right_ankle_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/right_ankle_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/waist_yaw_link>,
+        </g1_29dof_with_hand_rev_1_0/waist_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/torso_link>,
+        </g1_29dof_with_hand_rev_1_0/left_shoulder_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/left_shoulder_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/left_shoulder_yaw_link>,
+        </g1_29dof_with_hand_rev_1_0/left_elbow_link>,
+        </g1_29dof_with_hand_rev_1_0/left_wrist_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/left_wrist_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/left_wrist_yaw_link>,
+        </g1_29dof_with_hand_rev_1_0/right_shoulder_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/right_shoulder_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/right_shoulder_yaw_link>,
+        </g1_29dof_with_hand_rev_1_0/right_elbow_link>,
+        </g1_29dof_with_hand_rev_1_0/right_wrist_roll_link>,
+        </g1_29dof_with_hand_rev_1_0/right_wrist_pitch_link>,
+        </g1_29dof_with_hand_rev_1_0/right_wrist_yaw_link>,
+    ]
+
+    over "pelvis" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+
+        over "pelvis_contour_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+
+        over "imu_in_pelvis" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+    }
+
+    over "left_hip_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_hip_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_hip_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+    }
+
+    over "left_knee_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_ankle_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_ankle_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_hip_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_hip_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_hip_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_knee_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+        string isaac:nameOverride (
+            displayName = "Name Override"
+            doc = "Name override for prim lookup in base name search"
+        )
+    }
+
+    over "right_ankle_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_ankle_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "waist_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "waist_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "torso_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+        over "d435_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+
+        over "head_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+
+        over "imu_in_torso" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+
+        over "logo_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+
+        over "mid360_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+    }
+
+    over "left_shoulder_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_shoulder_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_shoulder_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_elbow_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_wrist_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_wrist_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "left_wrist_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+        over "left_hand_palm_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+    }
+
+    over "right_shoulder_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_shoulder_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_shoulder_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_elbow_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_wrist_roll_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_wrist_pitch_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+    }
+
+    over "right_wrist_yaw_link" (
+        prepend apiSchemas = ["IsaacLinkAPI"]
+    )
+    {
+        over "right_hand_palm_link" (
+            prepend apiSchemas = ["IsaacReferencePointAPI"]
+        )
+        {
+        }
+    }
+
+    over "joints"
+    {
+        over "left_hip_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hip_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hip_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_knee_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_ankle_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_ankle_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_hip_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_hip_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_hip_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_knee_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_ankle_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_ankle_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "waist_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "waist_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "waist_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_shoulder_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_shoulder_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_shoulder_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_elbow_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_wrist_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_wrist_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_wrist_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_index_0_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_index_1_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_middle_0_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_middle_1_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_thumb_0_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_thumb_1_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "left_hand_thumb_2_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_shoulder_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_shoulder_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_shoulder_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_elbow_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_wrist_roll_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_wrist_pitch_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+
+        over "right_wrist_yaw_joint" (
+            prepend apiSchemas = ["IsaacJointAPI"]
+        )
+        {
+        }
+    }
+}
+

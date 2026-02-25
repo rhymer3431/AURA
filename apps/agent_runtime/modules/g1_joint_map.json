@@ -1,0 +1,38 @@
+{
+  "source": {
+    "gear_sonic_reference": "tmp/GR00T-WholeBodyControl/gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp",
+    "isaac_sim_probe": "tmp/inspect_g1_joints_data.json",
+    "output_order": "isaaclab_body_29dof"
+  },
+  "joints": [
+    {"sonic_idx": 0, "isaac_idx": 0, "name": "left_hip_pitch_joint", "group": "left_leg"},
+    {"sonic_idx": 1, "isaac_idx": 1, "name": "right_hip_pitch_joint", "group": "right_leg"},
+    {"sonic_idx": 2, "isaac_idx": 2, "name": "waist_yaw_joint", "group": "waist"},
+    {"sonic_idx": 3, "isaac_idx": 3, "name": "left_hip_roll_joint", "group": "left_leg"},
+    {"sonic_idx": 4, "isaac_idx": 4, "name": "right_hip_roll_joint", "group": "right_leg"},
+    {"sonic_idx": 5, "isaac_idx": 5, "name": "waist_roll_joint", "group": "waist"},
+    {"sonic_idx": 6, "isaac_idx": 6, "name": "left_hip_yaw_joint", "group": "left_leg"},
+    {"sonic_idx": 7, "isaac_idx": 7, "name": "right_hip_yaw_joint", "group": "right_leg"},
+    {"sonic_idx": 8, "isaac_idx": 8, "name": "waist_pitch_joint", "group": "waist"},
+    {"sonic_idx": 9, "isaac_idx": 9, "name": "left_knee_joint", "group": "left_leg"},
+    {"sonic_idx": 10, "isaac_idx": 10, "name": "right_knee_joint", "group": "right_leg"},
+    {"sonic_idx": 11, "isaac_idx": 11, "name": "left_shoulder_pitch_joint", "group": "left_arm"},
+    {"sonic_idx": 12, "isaac_idx": 12, "name": "right_shoulder_pitch_joint", "group": "right_arm"},
+    {"sonic_idx": 13, "isaac_idx": 13, "name": "left_ankle_pitch_joint", "group": "left_leg"},
+    {"sonic_idx": 14, "isaac_idx": 14, "name": "right_ankle_pitch_joint", "group": "right_leg"},
+    {"sonic_idx": 15, "isaac_idx": 15, "name": "left_shoulder_roll_joint", "group": "left_arm"},
+    {"sonic_idx": 16, "isaac_idx": 16, "name": "right_shoulder_roll_joint", "group": "right_arm"},
+    {"sonic_idx": 17, "isaac_idx": 17, "name": "left_ankle_roll_joint", "group": "left_leg"},
+    {"sonic_idx": 18, "isaac_idx": 18, "name": "right_ankle_roll_joint", "group": "right_leg"},
+    {"sonic_idx": 19, "isaac_idx": 19, "name": "left_shoulder_yaw_joint", "group": "left_arm"},
+    {"sonic_idx": 20, "isaac_idx": 20, "name": "right_shoulder_yaw_joint", "group": "right_arm"},
+    {"sonic_idx": 21, "isaac_idx": 21, "name": "left_elbow_joint", "group": "left_arm"},
+    {"sonic_idx": 22, "isaac_idx": 22, "name": "right_elbow_joint", "group": "right_arm"},
+    {"sonic_idx": 23, "isaac_idx": 23, "name": "left_wrist_roll_joint", "group": "left_arm"},
+    {"sonic_idx": 24, "isaac_idx": 24, "name": "right_wrist_roll_joint", "group": "right_arm"},
+    {"sonic_idx": 25, "isaac_idx": 25, "name": "left_wrist_pitch_joint", "group": "left_arm"},
+    {"sonic_idx": 26, "isaac_idx": 26, "name": "right_wrist_pitch_joint", "group": "right_arm"},
+    {"sonic_idx": 27, "isaac_idx": 27, "name": "left_wrist_yaw_joint", "group": "left_arm"},
+    {"sonic_idx": 28, "isaac_idx": 28, "name": "right_wrist_yaw_joint", "group": "right_arm"}
+  ]
+}
