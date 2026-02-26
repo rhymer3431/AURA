@@ -283,9 +283,17 @@ try {
       if (-not [string]::IsNullOrWhiteSpace($tensorRtRootWsl)) {
         $bashCommand += "export TensorRT_ROOT=$(Quote-BashString $tensorRtRootWsl); "
       }
-      $bashCommand += 'if [ -z "${TensorRT_ROOT:-}" ] || [ ! -f "${TensorRT_ROOT}/include/NvInfer.h" ]; then for c in /usr /usr/local /opt/tensorrt /usr/src/tensorrt /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu; do if [ -f "$c/include/NvInfer.h" ]; then export TensorRT_ROOT="$c"; break; fi; done; fi; '
+      $bashCommand += 'if [ -n "${TensorRT_ROOT:-}" ] && [ -f "${TensorRT_ROOT}/include/x86_64-linux-gnu/NvInfer.h" ]; then export TensorRT_ROOT="${TensorRT_ROOT}"; fi; '
+      $bashCommand += 'if [ -n "${TensorRT_ROOT:-}" ] && [ -f "${TensorRT_ROOT}/include/aarch64-linux-gnu/NvInfer.h" ]; then export TensorRT_ROOT="${TensorRT_ROOT}"; fi; '
+      $bashCommand += 'if [ -z "${TensorRT_ROOT:-}" ] || { [ ! -f "${TensorRT_ROOT}/include/NvInfer.h" ] && [ ! -f "${TensorRT_ROOT}/include/x86_64-linux-gnu/NvInfer.h" ] && [ ! -f "${TensorRT_ROOT}/include/aarch64-linux-gnu/NvInfer.h" ]; }; then '
+      $bashCommand += 'for c in /usr /usr/local /opt/tensorrt /usr/src/tensorrt; do '
+      $bashCommand += 'if [ -f "$c/include/NvInfer.h" ] || [ -f "$c/include/x86_64-linux-gnu/NvInfer.h" ] || [ -f "$c/include/aarch64-linux-gnu/NvInfer.h" ]; then export TensorRT_ROOT="$c"; break; fi; '
+      $bashCommand += 'done; fi; '
       $bashCommand += 'echo "[keyboard_planner] log: $planner_log"; '
-      $bashCommand += 'if [ -z "${TensorRT_ROOT:-}" ] || [ ! -f "${TensorRT_ROOT}/include/NvInfer.h" ]; then echo "[keyboard_planner] TensorRT not found (expected: ${TensorRT_ROOT:-<unset>}/include/NvInfer.h)." | tee -a "$planner_log"; echo "[keyboard_planner] Install TensorRT in WSL or pass -TensorRtRoot <path>." | tee -a "$planner_log"; read -r -p "Press Enter to close this planner window..." _; exit 90; fi; '
+      $bashCommand += 'if [ -z "${TensorRT_ROOT:-}" ] || { [ ! -f "${TensorRT_ROOT}/include/NvInfer.h" ] && [ ! -f "${TensorRT_ROOT}/include/x86_64-linux-gnu/NvInfer.h" ] && [ ! -f "${TensorRT_ROOT}/include/aarch64-linux-gnu/NvInfer.h" ]; }; then '
+      $bashCommand += 'echo "[keyboard_planner] TensorRT not found (checked: ${TensorRT_ROOT:-<unset>}/include/NvInfer.h, ${TensorRT_ROOT:-<unset>}/include/x86_64-linux-gnu/NvInfer.h, ${TensorRT_ROOT:-<unset>}/include/aarch64-linux-gnu/NvInfer.h)." | tee -a "$planner_log"; '
+      $bashCommand += 'echo "[keyboard_planner] Install TensorRT in WSL or pass -TensorRtRoot <path>." | tee -a "$planner_log"; '
+      $bashCommand += 'read -r -p "Press Enter to close this planner window..." _; exit 90; fi; '
       $bashCommand += "{ $plannerRuntimeCommand; } 2>&1 | tee -a " + '"$planner_log"' + "; status=`${PIPESTATUS[0]}; "
       $bashCommand += 'if [ "$status" -ne 0 ]; then echo "[keyboard_planner] exited with code $status" | tee -a "$planner_log"; echo "[keyboard_planner] log: $planner_log" | tee -a "$planner_log"; read -r -p "Press Enter to close this planner window..." _; exit "$status"; fi'
 
