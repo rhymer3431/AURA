@@ -73,6 +73,31 @@ function Normalize-LineEndingsToLf {
   Write-Host "[start_decoupled_wbc_keyboard_planner] normalized line endings to LF: $PathValue"
 }
 
+function Ensure-FileFromFallback {
+  param(
+    [string]$TargetPath,
+    [string]$FallbackPath,
+    [string]$Label
+  )
+
+  if (Test-Path $TargetPath) {
+    return $true
+  }
+  if (-not (Test-Path $FallbackPath)) {
+    Write-Warning "[start_decoupled_wbc_keyboard_planner] missing $Label and fallback not found: $FallbackPath"
+    return $false
+  }
+
+  $targetDir = Split-Path -Parent $TargetPath
+  if (-not (Test-Path $targetDir)) {
+    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+  }
+
+  Copy-Item -Path $FallbackPath -Destination $TargetPath -Force
+  Write-Host "[start_decoupled_wbc_keyboard_planner] hydrated $Label from fallback: $FallbackPath -> $TargetPath"
+  return $true
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $bridgeScript = Join-Path $root "scripts/start_decoupled_wbc_isaac_bridge.ps1"
 if (-not (Test-Path $bridgeScript)) {
@@ -114,6 +139,18 @@ if ($StartKeyboardPlanner) {
   foreach ($targetPath in $lineEndingTargets) {
     Normalize-LineEndingsToLf -PathValue $targetPath
   }
+
+  $legacyModelRoot = Join-Path $root "apps/gear_sonic_deploy"
+  $decoderTarget = Join-Path $KeyboardPlannerDir "policy/release/model_decoder.onnx"
+  $encoderTarget = Join-Path $KeyboardPlannerDir "policy/release/model_encoder.onnx"
+  $plannerTarget = Join-Path $KeyboardPlannerDir "planner/target_vel/V2/planner_sonic.onnx"
+  $decoderFallback = Join-Path $legacyModelRoot "model_decoder.onnx"
+  $encoderFallback = Join-Path $legacyModelRoot "model_encoder.onnx"
+  $plannerFallback = Join-Path $legacyModelRoot "planner_sonic.onnx"
+
+  Ensure-FileFromFallback -TargetPath $decoderTarget -FallbackPath $decoderFallback -Label "model_decoder.onnx" | Out-Null
+  Ensure-FileFromFallback -TargetPath $encoderTarget -FallbackPath $encoderFallback -Label "model_encoder.onnx" | Out-Null
+  Ensure-FileFromFallback -TargetPath $plannerTarget -FallbackPath $plannerFallback -Label "planner_sonic.onnx" | Out-Null
 }
 
 if ($StartTeleop -and $StartKeyboardPlanner) {
