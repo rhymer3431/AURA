@@ -112,6 +112,46 @@ function Ensure-FileFromFallback {
   return $true
 }
 
+function Repair-SharedObjectAliasFile {
+  param(
+    [string]$AliasPath,
+    [string]$TargetPath
+  )
+
+  if (-not (Test-Path $AliasPath)) {
+    return
+  }
+  if (-not (Test-Path $TargetPath)) {
+    return
+  }
+
+  $aliasItem = Get-Item $AliasPath -ErrorAction SilentlyContinue
+  if ($null -eq $aliasItem) {
+    return
+  }
+
+  # Some copied Linux symlinks become tiny text files on Windows mounts (e.g. "libddsc.so").
+  if ($aliasItem.Length -gt 512) {
+    return
+  }
+
+  $aliasText = ""
+  try {
+    $aliasText = [System.IO.File]::ReadAllText($AliasPath).Trim()
+  } catch {
+    return
+  }
+  if ([string]::IsNullOrWhiteSpace($aliasText)) {
+    return
+  }
+  if (-not $aliasText.Contains(".so")) {
+    return
+  }
+
+  Copy-Item -Path $TargetPath -Destination $AliasPath -Force
+  Write-Host "[start_decoupled_wbc_keyboard_planner] repaired shared library alias: $AliasPath <= $TargetPath"
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $bridgeScript = Join-Path $root "scripts/start_decoupled_wbc_isaac_bridge.ps1"
 if (-not (Test-Path $bridgeScript)) {
@@ -170,6 +210,16 @@ if ($StartKeyboardPlanner) {
   Ensure-FileFromFallback -TargetPath $decoderTarget -FallbackPath $decoderFallback -Label "model_decoder.onnx" | Out-Null
   Ensure-FileFromFallback -TargetPath $encoderTarget -FallbackPath $encoderFallback -Label "model_encoder.onnx" | Out-Null
   Ensure-FileFromFallback -TargetPath $plannerTarget -FallbackPath $plannerFallback -Label "planner_sonic.onnx" | Out-Null
+
+  $sharedLibAliasPairs = @(
+    @{ alias = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/x86_64/libddsc.so.0"); target = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/x86_64/libddsc.so") },
+    @{ alias = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/x86_64/libddscxx.so.0"); target = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/x86_64/libddscxx.so") },
+    @{ alias = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/aarch64/libddsc.so.0"); target = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/aarch64/libddsc.so") },
+    @{ alias = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/aarch64/libddscxx.so.0"); target = (Join-Path $KeyboardPlannerDir "thirdparty/unitree_sdk2/thirdparty/lib/aarch64/libddscxx.so") }
+  )
+  foreach ($pair in $sharedLibAliasPairs) {
+    Repair-SharedObjectAliasFile -AliasPath $pair.alias -TargetPath $pair.target
+  }
 }
 
 if ($StartTeleop -and $StartKeyboardPlanner) {
