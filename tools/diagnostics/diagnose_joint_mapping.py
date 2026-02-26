@@ -3,15 +3,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-import msgpack
-import msgpack_numpy
 import numpy as np
-import zmq
-
-msgpack_numpy.patch()
 
 
 def _default_map_path(root: Path) -> Path:
@@ -42,7 +38,9 @@ def _flatten_actions(payload: Any) -> np.ndarray:
 
 
 def main() -> None:
-    root = Path(__file__).resolve().parent
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
     parser = argparse.ArgumentParser(description="Diagnose SONIC joint index mapping against Isaac Sim DOF order.")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5556)
@@ -50,6 +48,15 @@ def main() -> None:
     parser.add_argument("--map", dest="map_path", default=str(_default_map_path(root)))
     parser.add_argument("--isaac-probe", default=str(root / "tmp" / "inspect_g1_joints_data.json"))
     args = parser.parse_args()
+
+    try:
+        import msgpack  # type: ignore
+        import msgpack_numpy  # type: ignore
+        import zmq  # type: ignore
+    except Exception as exc:
+        raise RuntimeError("Missing dependencies. Install: msgpack, msgpack-numpy, pyzmq") from exc
+
+    msgpack_numpy.patch()
 
     map_path = Path(args.map_path).resolve()
     if not map_path.exists():
@@ -64,7 +71,7 @@ def main() -> None:
 
     isaac_names = _load_isaac_names(isaac_probe_path)
     try:
-        import sonic_policy_server as sonic  # local module
+        from apps.sonic_policy_server import server as sonic
 
         default_isaac = np.asarray(sonic.DEFAULT_ANGLES_ISAAC, dtype=np.float32).reshape(-1)[:29]
     except Exception:

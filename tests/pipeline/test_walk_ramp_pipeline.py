@@ -4,9 +4,14 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import sys
 from pathlib import Path
 
-from pipeline_test_utils import (
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from tests.pipeline.pipeline_test_utils import (
     DEFAULT_CONFIG,
     DEFAULT_JOINT_MAP,
     GrootManipulator,
@@ -36,8 +41,8 @@ async def _run(args: argparse.Namespace) -> int:
     err: str | None = None
     try:
         await manip.warmup()
-        if not manip.sonic_enabled:
-            raise RuntimeError("SONIC backend is not enabled after warmup.")
+        if not bool(getattr(manip, "locomotion_enabled", False)):
+            raise RuntimeError("No locomotion backend is enabled after warmup.")
         manip.set_telemetry_phase(phase)
         steps = max(1, int(round(3.0 * 50.0)))
         dt = 1.0 / 50.0

@@ -1,9 +1,0 @@
-camera_count=8
-/g1_29dof_with_hand_rev_1_0/torso_link/d435_link/Realsense/RSD455/Camera_Pseudo_Depth
-/g1_29dof_with_hand_rev_1_0/torso_link/d435_link/Realsense/RSD455/Camera_OmniVision_OV9782_Color
-/g1_29dof_with_hand_rev_1_0/torso_link/d435_link/Realsense/RSD455/Camera_OmniVision_OV9782_Left
-/g1_29dof_with_hand_rev_1_0/torso_link/d435_link/Realsense/RSD455/Camera_OmniVision_OV9782_Right
-/OmniverseKit_Persp
-/OmniverseKit_Front
-/OmniverseKit_Top
-/OmniverseKit_Right

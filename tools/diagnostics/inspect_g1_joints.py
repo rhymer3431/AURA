@@ -5,7 +5,8 @@ from isaacsim import SimulationApp
 
 
 def main() -> None:
-    output_path = Path(__file__).resolve().parent / "tmp" / "inspect_g1_joints_data.json"
+    root = Path(__file__).resolve().parents[2]
+    output_path = root / "tmp" / "inspect_g1_joints_data.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
     result = {
         "usd_path": "",
@@ -26,7 +27,7 @@ def main() -> None:
         from omni.isaac.core.articulations import Articulation  # type: ignore
         from pxr import UsdPhysics  # type: ignore
 
-        usd_path = (Path(__file__).resolve().parent / "g1" / "g1_d455.usd").resolve()
+        usd_path = (root / "g1" / "g1_d455.usd").resolve()
         result["usd_path"] = str(usd_path)
         context = omni.usd.get_context()
         context.open_stage(str(usd_path))

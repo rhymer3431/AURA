@@ -1,0 +1,8 @@
+stage_valid=True
+articulation_root_count=1
+ART_ROOT /g1_29dof_with_hand_rev_1_0/pelvis
+PREF /g1_29dof_with_hand_rev_1_0 valid=1 type=Xform has_art=0
+PREF /World/g1_29dof_with_hand_rev_1_0 valid=0
+PREF /g1 valid=0
+PREF /World/g1 valid=0
+CHAIN /g1_29dof_with_hand_rev_1_0/pelvis <- /g1_29dof_with_hand_rev_1_0 <- /

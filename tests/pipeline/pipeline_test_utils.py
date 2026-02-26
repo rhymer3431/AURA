@@ -7,32 +7,33 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from telemetry_runtime import compute_stats, file_sha256, load_jsonl, resolve_run_dir, write_report_markdown
-
-
-ROOT = Path(__file__).resolve().parent
-AGENT_RUNTIME_DIR = ROOT / "apps" / "agent_runtime"
+ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-if str(AGENT_RUNTIME_DIR) not in sys.path:
-    sys.path.insert(0, str(AGENT_RUNTIME_DIR))
 
-from modules.manipulation_groot_trt import GrootManipulator  # noqa: E402
+from apps.agent_runtime.modules.manipulation_groot_trt import GrootManipulator  # noqa: E402
+from apps.sonic_policy_server.telemetry_runtime import (  # noqa: E402
+    compute_stats,
+    file_sha256,
+    load_jsonl,
+    resolve_run_dir,
+    write_report_markdown,
+)
 
 
 DEFAULT_CONFIG = ROOT / "apps" / "agent_runtime" / "config.yaml"
 DEFAULT_JOINT_MAP = ROOT / "apps" / "agent_runtime" / "modules" / "g1_joint_map.json"
 
 FILE_DIFF_SUMMARY = [
-    "telemetry_runtime.py",
+    "apps/sonic_policy_server/telemetry_runtime.py",
     "apps/agent_runtime/modules/g1_action_adapter.py",
     "apps/agent_runtime/modules/manipulation_groot_trt.py",
-    "sonic_policy_server.py",
+    "apps/sonic_policy_server/server.py",
     "apps/isaacsim_runner/run_headless.py",
-    "pipeline_test_utils.py",
-    "test_standing_pipeline.py",
-    "test_walk_ramp_pipeline.py",
-    "test_closed_loop_60s.py",
+    "tests/pipeline/pipeline_test_utils.py",
+    "tests/pipeline/test_standing_pipeline.py",
+    "tests/pipeline/test_walk_ramp_pipeline.py",
+    "tests/pipeline/test_closed_loop_60s.py",
 ]
 
 

@@ -2,13 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
+from pathlib import Path
 from typing import Any
 
 import msgpack
 import msgpack_numpy
 import numpy as np
 import zmq
+
+ROOT_DIR = Path(__file__).resolve().parents[2]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 msgpack_numpy.patch()
 
@@ -36,7 +42,7 @@ def main() -> None:
     velocities = np.linspace(0.0, float(args.vx_max), steps, dtype=np.float32)
 
     try:
-        import sonic_policy_server as sonic  # local module
+        from apps.sonic_policy_server import server as sonic
 
         current_joint_pos = np.asarray(sonic.DEFAULT_ANGLES_ISAAC, dtype=np.float32).reshape(29)
     except Exception:

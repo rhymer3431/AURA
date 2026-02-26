@@ -1,15 +1,20 @@
+from pathlib import Path
+
 import onnxruntime as ort
 
+ROOT_DIR = Path(__file__).resolve().parents[2]
+MODEL_DIR = ROOT_DIR / "apps" / "gear_sonic_deploy"
+
 models = {
-    "encoder": "gear_sonic_deploy/model_encoder.onnx",
-    "decoder": "gear_sonic_deploy/model_decoder.onnx",
-    "planner": "gear_sonic_deploy/planner_sonic.onnx",
+    "encoder": MODEL_DIR / "model_encoder.onnx",
+    "decoder": MODEL_DIR / "model_decoder.onnx",
+    "planner": MODEL_DIR / "planner_sonic.onnx",
 }
 
 for name, path in models.items():
     print(f"\n{'='*50}")
     print(f"Model: {name}  ({path})")
-    sess = ort.InferenceSession(path, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+    sess = ort.InferenceSession(str(path), providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
 
     print("  INPUTS:")
     for inp in sess.get_inputs():
