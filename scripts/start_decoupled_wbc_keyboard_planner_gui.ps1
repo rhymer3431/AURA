@@ -1,6 +1,6 @@
 param(
   [Parameter(ValueFromRemainingArguments = $true)]
-  [object[]]$ForwardArgs
+  [object[]]$ForwardArgs = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -15,4 +15,8 @@ if (-not (Test-Path $target)) {
 }
 
 Write-Host "[start_decoupled_wbc_keyboard_planner_gui] launching with -IsaacGui"
-& $target -IsaacGui @ForwardArgs
+if ($null -eq $ForwardArgs -or $ForwardArgs.Count -eq 0) {
+  & $target -IsaacGui
+} else {
+  & $target -IsaacGui @ForwardArgs
+}
