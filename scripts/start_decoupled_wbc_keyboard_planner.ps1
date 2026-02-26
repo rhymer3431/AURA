@@ -25,7 +25,7 @@ param(
   [string]$KeyboardPlannerInputType = "keyboard",
   [string]$KeyboardPlannerOutputType = "ros2",
   [string]$KeyboardPlannerExtraArgs = "",
-  [switch]$KeyboardPlannerAutoApprove = $true,
+  [switch]$KeyboardPlannerAutoApprove = $false,
   [switch]$KeyboardPlannerUseWsl = $true,
   [string]$WslDistro = ""
 )
@@ -87,6 +87,13 @@ if ($StartKeyboardPlanner -and -not (Test-Path $deployScript)) {
 
 if ($StartTeleop -and $StartKeyboardPlanner) {
   Write-Warning "Both teleop loop and keyboard planner will publish control goals. Prefer enabling only one publisher."
+}
+
+# Piping confirmation input makes stdin non-interactive and breaks keyboard planner control.
+$useKeyboardPlannerAutoApprove = [bool]$KeyboardPlannerAutoApprove
+if ($StartKeyboardPlanner -and $KeyboardPlannerInputType -eq "keyboard" -and $useKeyboardPlannerAutoApprove) {
+  Write-Warning "Keyboard planner auto-approve is not compatible with interactive keyboard input. Falling back to manual confirmation."
+  $useKeyboardPlannerAutoApprove = $false
 }
 
 Write-Host "[start_decoupled_wbc_keyboard_planner] root=$root"
@@ -155,7 +162,7 @@ try {
     if ($KeyboardPlannerUseWsl) {
       $plannerWorkspaceWsl = Convert-ToWslPath -PathValue $plannerWorkspace
       $bashCommand = "set -euo pipefail; cd $(Quote-BashString $plannerWorkspaceWsl); export ROS_DOMAIN_ID=$(Quote-BashString $RosDomainId); export RMW_IMPLEMENTATION=$(Quote-BashString $RmwImplementation); "
-      if ($KeyboardPlannerAutoApprove) {
+      if ($useKeyboardPlannerAutoApprove) {
         $bashCommand += "printf 'Y\n' | $plannerCommand"
       } else {
         $bashCommand += $plannerCommand
@@ -174,7 +181,7 @@ try {
       }
       $plannerWorkspacePosix = ($plannerWorkspace -replace "\\", "/")
       $bashCommand = "set -euo pipefail; cd $(Quote-BashString $plannerWorkspacePosix); export ROS_DOMAIN_ID=$(Quote-BashString $RosDomainId); export RMW_IMPLEMENTATION=$(Quote-BashString $RmwImplementation); "
-      if ($KeyboardPlannerAutoApprove) {
+      if ($useKeyboardPlannerAutoApprove) {
         $bashCommand += "printf 'Y\n' | $plannerCommand"
       } else {
         $bashCommand += $plannerCommand
