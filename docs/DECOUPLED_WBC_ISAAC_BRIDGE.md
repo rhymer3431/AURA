@@ -76,6 +76,13 @@ cd C:\Users\mango\project\isaac-aura
 .\scripts\start_decoupled_wbc_keyboard_planner.ps1
 ```
 
+GUI로 Isaac 창까지 확인하려면:
+
+```powershell
+cd C:\Users\mango\project\isaac-aura
+.\scripts\start_decoupled_wbc_keyboard_planner_gui.ps1
+```
+
 기본 동작:
 - `start_decoupled_wbc_isaac_bridge.ps1`를 먼저 실행 (Isaac + adapter + WBC control loop)
 - 이후 `apps/decoupled_wbc_workspace/gear_sonic_deploy/deploy.sh --input-type keyboard --output-type ros2 sim`를 실행
