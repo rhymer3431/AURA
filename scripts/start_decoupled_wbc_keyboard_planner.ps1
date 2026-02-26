@@ -166,7 +166,7 @@ try {
         $plannerArgs += @("-d", "$WslDistro")
       }
       $plannerArgs += @("--", "bash", "-lc", $bashCommand)
-      $plannerProc = Start-Process -FilePath "wsl.exe" -ArgumentList $plannerArgs -WorkingDirectory $root -PassThru -NoNewWindow
+      $plannerProc = Start-Process -FilePath "wsl.exe" -ArgumentList $plannerArgs -WorkingDirectory $root -PassThru
     } else {
       $bash = Get-Command bash -ErrorAction SilentlyContinue
       if ($null -eq $bash) {
@@ -179,7 +179,7 @@ try {
       } else {
         $bashCommand += $plannerCommand
       }
-      $plannerProc = Start-Process -FilePath $bash.Source -ArgumentList @("-lc", $bashCommand) -WorkingDirectory $plannerWorkspace -PassThru -NoNewWindow
+      $plannerProc = Start-Process -FilePath $bash.Source -ArgumentList @("-lc", $bashCommand) -WorkingDirectory $plannerWorkspace -PassThru
     }
 
     $procs += [pscustomobject]@{ Name = "keyboard_planner"; Process = $plannerProc }
