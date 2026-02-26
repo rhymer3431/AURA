@@ -56,6 +56,23 @@ function Quote-BashString {
   return "'$Value'"
 }
 
+function Normalize-LineEndingsToLf {
+  param([string]$PathValue)
+  if (-not (Test-Path $PathValue)) {
+    return
+  }
+
+  $raw = [System.IO.File]::ReadAllText($PathValue)
+  if (-not $raw.Contains("`r")) {
+    return
+  }
+
+  $normalized = $raw -replace "`r`n", "`n"
+  $normalized = $normalized -replace "`r", "`n"
+  [System.IO.File]::WriteAllText($PathValue, $normalized, [System.Text.UTF8Encoding]::new($false))
+  Write-Host "[start_decoupled_wbc_keyboard_planner] normalized line endings to LF: $PathValue"
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $bridgeScript = Join-Path $root "scripts/start_decoupled_wbc_isaac_bridge.ps1"
 if (-not (Test-Path $bridgeScript)) {
@@ -83,6 +100,20 @@ if ($StartKeyboardPlanner -and -not (Test-Path $KeyboardPlannerDir)) {
 $deployScript = Join-Path $KeyboardPlannerDir "deploy.sh"
 if ($StartKeyboardPlanner -and -not (Test-Path $deployScript)) {
   throw "Keyboard planner deploy script not found: $deployScript"
+}
+if ($StartKeyboardPlanner) {
+  $lineEndingTargets = @(
+    $deployScript,
+    (Join-Path $KeyboardPlannerDir "scripts/setup_env.sh"),
+    (Join-Path $KeyboardPlannerDir "scripts/install_deps.sh"),
+    (Join-Path $KeyboardPlannerDir "scripts/install_ros2_humble.sh"),
+    (Join-Path $KeyboardPlannerDir "scripts/restore_ubuntu_sources.sh"),
+    (Join-Path $KeyboardPlannerDir "scripts/setup_wifi.sh"),
+    (Join-Path $KeyboardPlannerDir "docker/run-ros2-dev.sh")
+  )
+  foreach ($targetPath in $lineEndingTargets) {
+    Normalize-LineEndingsToLf -PathValue $targetPath
+  }
 }
 
 if ($StartTeleop -and $StartKeyboardPlanner) {
@@ -210,11 +241,64 @@ try {
     }
 
     if ($exited.Count -gt 0) {
+      $exitedProcessIds = @{}
+      foreach ($entry in $exited) {
+        if ($null -ne $entry.Process) {
+          try { $exitedProcessIds[[int]$entry.Process.Id] = $true } catch { }
+        }
+      }
+
       foreach ($entry in $exited) {
         $code = "unknown"
         try { $code = [string]$entry.Process.ExitCode } catch { }
-        Write-Warning "[start_decoupled_wbc_keyboard_planner] $($entry.Name) exited (code=$code). stopping remaining processes."
+        Write-Warning "[start_decoupled_wbc_keyboard_planner] $($entry.Name) exited (code=$code)."
       }
+
+      $plannerExited = $false
+      foreach ($entry in $exited) {
+        if ($entry.Name -eq "keyboard_planner") {
+          $plannerExited = $true
+          break
+        }
+      }
+
+      $procs = @(
+        $procs | Where-Object {
+          $proc = $_.Process
+          if ($null -eq $proc) { return $false }
+          try {
+            return -not $exitedProcessIds.ContainsKey([int]$proc.Id)
+          } catch {
+            return $false
+          }
+        }
+      )
+
+      if ($plannerExited -or $procs.Count -eq 0) {
+        break
+      }
+
+      $nonPlannerExited = $false
+      foreach ($entry in $exited) {
+        if ($entry.Name -ne "keyboard_planner") {
+          $nonPlannerExited = $true
+          break
+        }
+      }
+      if ($nonPlannerExited) {
+        $plannerStillRunning = $false
+        foreach ($entry in $procs) {
+          if ($entry.Name -eq "keyboard_planner") {
+            $plannerStillRunning = $true
+            break
+          }
+        }
+        if ($plannerStillRunning) {
+          Write-Warning "[start_decoupled_wbc_keyboard_planner] bridge-side process exited; keeping keyboard planner alive for diagnostics/control."
+          continue
+        }
+      }
+
       break
     }
   }
