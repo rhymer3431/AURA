@@ -25,6 +25,7 @@ param(
   [string]$KeyboardPlannerInputType = "keyboard",
   [string]$KeyboardPlannerOutputType = "ros2",
   [string]$KeyboardPlannerExtraArgs = "",
+  [string]$TensorRtRoot = "",
   [switch]$KeyboardPlannerAutoApprove = $false,
   [switch]$KeyboardPlannerUseWsl = $true,
   [string]$WslDistro = ""
@@ -38,7 +39,20 @@ $OutputEncoding = [Console]::OutputEncoding
 
 function Convert-ToWslPath {
   param([string]$PathValue)
-  $resolved = (Resolve-Path $PathValue).Path
+  if ([string]::IsNullOrWhiteSpace($PathValue)) {
+    throw "Cannot convert empty path to WSL path."
+  }
+
+  $candidate = $PathValue
+  if (-not [System.IO.Path]::IsPathRooted($candidate)) {
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $PWD.Path $candidate))
+  }
+
+  if (Test-Path $candidate) {
+    $resolved = (Resolve-Path $candidate).Path
+  } else {
+    $resolved = [System.IO.Path]::GetFullPath($candidate)
+  }
   $normalized = $resolved -replace "\\", "/"
   if ($normalized -match "^([A-Za-z]):/(.*)$") {
     $drive = $matches[1].ToLowerInvariant()
@@ -102,6 +116,11 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $bridgeScript = Join-Path $root "scripts/start_decoupled_wbc_isaac_bridge.ps1"
 if (-not (Test-Path $bridgeScript)) {
   throw "Bridge launcher not found: $bridgeScript"
+}
+
+$plannerLogDir = Join-Path $root "tmp/planner_logs"
+if (-not (Test-Path $plannerLogDir)) {
+  New-Item -ItemType Directory -Path $plannerLogDir -Force | Out-Null
 }
 
 if ([string]::IsNullOrWhiteSpace($DecoupledWbcRoot)) {
@@ -173,6 +192,9 @@ if ($StartKeyboardPlanner) {
   Write-Host "[start_decoupled_wbc_keyboard_planner] planner_input=$KeyboardPlannerInputType"
   Write-Host "[start_decoupled_wbc_keyboard_planner] planner_output=$KeyboardPlannerOutputType"
   Write-Host "[start_decoupled_wbc_keyboard_planner] planner_use_wsl=$KeyboardPlannerUseWsl"
+  if (-not [string]::IsNullOrWhiteSpace($TensorRtRoot)) {
+    Write-Host "[start_decoupled_wbc_keyboard_planner] TensorRT_ROOT(override)=$TensorRtRoot"
+  }
 }
 
 $bridgeArgs = @(
@@ -229,12 +251,43 @@ try {
 
     if ($KeyboardPlannerUseWsl) {
       $plannerWorkspaceWsl = Convert-ToWslPath -PathValue $plannerWorkspace
-      $bashCommand = "set -euo pipefail; cd $(Quote-BashString $plannerWorkspaceWsl); export ROS_DOMAIN_ID=$(Quote-BashString $RosDomainId); export RMW_IMPLEMENTATION=$(Quote-BashString $RmwImplementation); "
-      if ($useKeyboardPlannerAutoApprove) {
-        $bashCommand += "printf 'Y\n' | $plannerCommand"
-      } else {
-        $bashCommand += $plannerCommand
+      $plannerLogPath = Join-Path $plannerLogDir ("keyboard_planner_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".log")
+      $plannerLogPathWsl = Convert-ToWslPath -PathValue $plannerLogPath
+
+      $tensorRtRootWsl = ""
+      if (-not [string]::IsNullOrWhiteSpace($TensorRtRoot)) {
+        if ($TensorRtRoot.StartsWith("/")) {
+          $tensorRtRootWsl = $TensorRtRoot
+        } elseif ([System.IO.Path]::IsPathRooted($TensorRtRoot)) {
+          if (-not (Test-Path $TensorRtRoot)) {
+            throw "TensorRtRoot not found: $TensorRtRoot"
+          }
+          $tensorRtRootWsl = Convert-ToWslPath -PathValue $TensorRtRoot
+        } else {
+          $tensorRtRootWsl = $TensorRtRoot
+        }
       }
+      Write-Host "[start_decoupled_wbc_keyboard_planner] planner_log=$plannerLogPath"
+
+      $plannerRuntimeCommand = $plannerCommand
+      if ($useKeyboardPlannerAutoApprove) {
+        $plannerRuntimeCommand = "printf 'Y\n' | $plannerRuntimeCommand"
+      }
+
+      $bashCommand = "set -uo pipefail; "
+      $bashCommand += "cd $(Quote-BashString $plannerWorkspaceWsl); "
+      $bashCommand += "export ROS_DOMAIN_ID=$(Quote-BashString $RosDomainId); "
+      $bashCommand += "export RMW_IMPLEMENTATION=$(Quote-BashString $RmwImplementation); "
+      $bashCommand += "planner_log=$(Quote-BashString $plannerLogPathWsl); "
+      $bashCommand += 'mkdir -p "${planner_log%/*}"; '
+      if (-not [string]::IsNullOrWhiteSpace($tensorRtRootWsl)) {
+        $bashCommand += "export TensorRT_ROOT=$(Quote-BashString $tensorRtRootWsl); "
+      }
+      $bashCommand += 'if [ -z "${TensorRT_ROOT:-}" ] || [ ! -f "${TensorRT_ROOT}/include/NvInfer.h" ]; then for c in /usr /usr/local /opt/tensorrt /usr/src/tensorrt /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu; do if [ -f "$c/include/NvInfer.h" ]; then export TensorRT_ROOT="$c"; break; fi; done; fi; '
+      $bashCommand += 'echo "[keyboard_planner] log: $planner_log"; '
+      $bashCommand += 'if [ -z "${TensorRT_ROOT:-}" ] || [ ! -f "${TensorRT_ROOT}/include/NvInfer.h" ]; then echo "[keyboard_planner] TensorRT not found (expected: ${TensorRT_ROOT:-<unset>}/include/NvInfer.h)." | tee -a "$planner_log"; echo "[keyboard_planner] Install TensorRT in WSL or pass -TensorRtRoot <path>." | tee -a "$planner_log"; read -r -p "Press Enter to close this planner window..." _; exit 90; fi; '
+      $bashCommand += "{ $plannerRuntimeCommand; } 2>&1 | tee -a " + '"$planner_log"' + "; status=`${PIPESTATUS[0]}; "
+      $bashCommand += 'if [ "$status" -ne 0 ]; then echo "[keyboard_planner] exited with code $status" | tee -a "$planner_log"; echo "[keyboard_planner] log: $planner_log" | tee -a "$planner_log"; read -r -p "Press Enter to close this planner window..." _; exit "$status"; fi'
 
       $plannerArgs = @()
       if (-not [string]::IsNullOrWhiteSpace($WslDistro)) {
