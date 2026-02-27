@@ -83,4 +83,16 @@ if ($null -ne $ForwardArgs -and $normalizedForwardArgs.Count -gt 0) {
 }
 
 Write-Host "[start_decoupled_wbc_keyboard_planner_gui] launching with $($launchArgs -join ' ')"
-& $target @launchArgs
+$psExe = Join-Path $PSHOME "powershell.exe"
+if (-not (Test-Path $psExe)) {
+  $psExe = "powershell.exe"
+}
+$psProc = Start-Process -FilePath $psExe -ArgumentList (@(
+  "-NoProfile",
+  "-ExecutionPolicy", "Bypass",
+  "-File", "$target"
+) + $launchArgs) -Wait -PassThru -NoNewWindow
+$exitCode = [int]$psProc.ExitCode
+if ($exitCode -ne 0) {
+  exit $exitCode
+}
