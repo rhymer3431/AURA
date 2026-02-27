@@ -14,6 +14,7 @@ param(
   [switch]$IsaacGui = $false,
   [switch]$MockIsaac = $false,
   [switch]$SkipPatchSync = $false,
+  [switch]$SkipControlLoop = $false,
   [switch]$StartTeleop = $false,
   [int]$TeleopFrequency = 20,
   [switch]$StartSonicServer = $false,
@@ -271,6 +272,7 @@ if (-not [string]::IsNullOrWhiteSpace($UsdPath)) {
 if ($IsaacGui) { $bridgeArgs += "-IsaacGui" }
 if ($MockIsaac) { $bridgeArgs += "-MockIsaac" }
 if ($SkipPatchSync) { $bridgeArgs += "-SkipPatchSync" }
+if ($SkipControlLoop) { $bridgeArgs += "-SkipControlLoop" }
 if ($StartTeleop) {
   $bridgeArgs += "-StartTeleop"
   $bridgeArgs += @("-TeleopFrequency", "$TeleopFrequency")

@@ -1,4 +1,5 @@
 param(
+  [switch]$SkipControlLoop = $false,
   [Parameter(ValueFromRemainingArguments = $true)]
   [object[]]$ForwardArgs = @()
 )
@@ -14,9 +15,13 @@ if (-not (Test-Path $target)) {
   throw "Launcher not found: $target"
 }
 
-Write-Host "[start_decoupled_wbc_keyboard_planner_gui] launching with -IsaacGui"
-if ($null -eq $ForwardArgs -or $ForwardArgs.Count -eq 0) {
-  & $target -IsaacGui
-} else {
-  & $target -IsaacGui @ForwardArgs
+$launchArgs = @("-IsaacGui")
+if ($SkipControlLoop) {
+  $launchArgs += "-SkipControlLoop"
 }
+if ($null -ne $ForwardArgs -and $ForwardArgs.Count -gt 0) {
+  $launchArgs += $ForwardArgs
+}
+
+Write-Host "[start_decoupled_wbc_keyboard_planner_gui] launching with $($launchArgs -join ' ')"
+& $target @launchArgs
