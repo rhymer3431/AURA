@@ -252,7 +252,6 @@ $bridgeArgs = @(
   "-NoProfile",
   "-ExecutionPolicy", "Bypass",
   "-File", "$bridgeScript",
-  "-IsaacSimRoot", "$IsaacSimRoot",
   "-DecoupledPythonExe", "$DecoupledPythonExe",
   "-DecoupledWbcRoot", "$DecoupledWbcRoot",
   "-Namespace", "$Namespace",
@@ -263,6 +262,9 @@ $bridgeArgs = @(
   "-StatePublishHz", "$StatePublishHz",
   "-ControlFrequency", "$ControlFrequency"
 )
+if (-not [string]::IsNullOrWhiteSpace($IsaacSimRoot)) {
+  $bridgeArgs += @("-IsaacSimRoot", "$IsaacSimRoot")
+}
 if (-not [string]::IsNullOrWhiteSpace($IsaacPythonExe)) {
   $bridgeArgs += @("-IsaacPythonExe", "$IsaacPythonExe")
 }
