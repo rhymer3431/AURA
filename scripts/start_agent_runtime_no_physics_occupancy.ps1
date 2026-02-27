@@ -52,6 +52,54 @@ function Resolve-Executable {
   return $Candidate
 }
 
+function Invoke-StageBuild {
+  param(
+    [string]$PythonExe,
+    [string]$BuildScriptPath,
+    [string]$G1Usd,
+    [string]$StageUsd,
+    [string]$MapOutDir,
+    [string]$MapOutName,
+    [double]$MapResolution,
+    [double]$WidthM,
+    [double]$HeightM,
+    [double]$MapOriginX,
+    [double]$MapOriginY,
+    [string]$RobotPath,
+    [string]$ObstacleSpecPath,
+    [switch]$BuildHeadless,
+    [string]$BuildLogLevel
+  )
+
+  $buildArgs = @(
+    "$BuildScriptPath",
+    "--g1-usd", "$G1Usd",
+    "--stage-out", "$StageUsd",
+    "--map-dir", "$MapOutDir",
+    "--map-name", "$MapOutName",
+    "--resolution", "$MapResolution",
+    "--map-width-m", "$WidthM",
+    "--map-height-m", "$HeightM",
+    "--origin-x", "$MapOriginX",
+    "--origin-y", "$MapOriginY",
+    "--robot-prim-path", "$RobotPath",
+    "--log-level", "$BuildLogLevel"
+  )
+  if (-not [string]::IsNullOrWhiteSpace($ObstacleSpecPath)) {
+    $buildArgs += @("--obstacles-json", "$ObstacleSpecPath")
+  }
+  if ($BuildHeadless) {
+    $buildArgs += "--headless"
+  }
+
+  Write-Host "[start_agent_runtime_no_physics_occupancy] building no-physics stage + occupancy map..."
+  & $PythonExe @buildArgs
+  $buildExit = $LASTEXITCODE
+  if ($buildExit -ne 0) {
+    throw "Stage build failed with exit code $buildExit"
+  }
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $buildScript = Join-Path $root "apps/isaacsim_runner/agent_runtime/build_no_physics_occupancy_stage.py"
 $controllerScript = Join-Path $root "apps/isaacsim_runner/agent_runtime/run_no_physics_occupancy_controller.py"
@@ -113,46 +161,70 @@ Write-Host "[start_agent_runtime_no_physics_occupancy] stage=$StageUsdPath"
 Write-Host "[start_agent_runtime_no_physics_occupancy] map_yaml=$mapYamlPath"
 Write-Host "[start_agent_runtime_no_physics_occupancy] namespace=/$($Namespace.Trim('/'))"
 
-if (-not $SkipStageBuild) {
-  $buildArgs = @(
-    "$buildScript",
-    "--g1-usd", "$G1UsdPath",
-    "--stage-out", "$StageUsdPath",
-    "--map-dir", "$MapDir",
-    "--map-name", "$MapName",
-    "--resolution", "$Resolution",
-    "--map-width-m", "$MapWidthM",
-    "--map-height-m", "$MapHeightM",
-    "--origin-x", "$OriginX",
-    "--origin-y", "$OriginY",
-    "--robot-prim-path", "$RobotPrimPath",
-    "--log-level", "$LogLevel"
-  )
-  if (-not [string]::IsNullOrWhiteSpace($ObstaclesJson)) {
-    if (-not [System.IO.Path]::IsPathRooted($ObstaclesJson)) {
-      $ObstaclesJson = Join-Path $root $ObstaclesJson
-    }
-    $buildArgs += @("--obstacles-json", "$ObstaclesJson")
+if (-not [string]::IsNullOrWhiteSpace($ObstaclesJson)) {
+  if (-not [System.IO.Path]::IsPathRooted($ObstaclesJson)) {
+    $ObstaclesJson = Join-Path $root $ObstaclesJson
   }
-  if ($Headless) {
-    $buildArgs += "--headless"
+  if (-not (Test-Path $ObstaclesJson)) {
+    throw "Obstacles JSON not found: $ObstaclesJson"
   }
+}
 
-  Write-Host "[start_agent_runtime_no_physics_occupancy] building no-physics stage + occupancy map..."
-  & $IsaacPythonExe @buildArgs
-  $buildExit = $LASTEXITCODE
-  if ($buildExit -ne 0) {
-    throw "Stage build failed with exit code $buildExit"
-  }
+$artifactsMissing = (-not (Test-Path $StageUsdPath)) -or (-not (Test-Path $mapYamlPath))
+$shouldBuild = (-not $SkipStageBuild)
+
+if ($SkipStageBuild -and $artifactsMissing) {
+  Write-Warning "[start_agent_runtime_no_physics_occupancy] -SkipStageBuild was set but required artifacts are missing. Rebuilding automatically."
+  $shouldBuild = $true
+}
+
+if ($shouldBuild) {
+  Invoke-StageBuild `
+    -PythonExe $IsaacPythonExe `
+    -BuildScriptPath $buildScript `
+    -G1Usd $G1UsdPath `
+    -StageUsd $StageUsdPath `
+    -MapOutDir $MapDir `
+    -MapOutName $MapName `
+    -MapResolution $Resolution `
+    -WidthM $MapWidthM `
+    -HeightM $MapHeightM `
+    -MapOriginX $OriginX `
+    -MapOriginY $OriginY `
+    -RobotPath $RobotPrimPath `
+    -ObstacleSpecPath $ObstaclesJson `
+    -BuildHeadless:$Headless `
+    -BuildLogLevel $LogLevel
 } else {
-  Write-Host "[start_agent_runtime_no_physics_occupancy] skipping stage build (-SkipStageBuild)."
+  Write-Host "[start_agent_runtime_no_physics_occupancy] skipping stage build (-SkipStageBuild). Reusing existing artifacts."
 }
 
 if (-not (Test-Path $StageUsdPath)) {
   throw "Stage USD missing: $StageUsdPath"
 }
 if (-not (Test-Path $mapYamlPath)) {
-  throw "Occupancy map YAML missing: $mapYamlPath"
+  $yamlCandidates = @()
+  try {
+    $yamlCandidates = Get-ChildItem -Path $MapDir -Filter "*.yaml" -File -ErrorAction Stop
+  } catch {
+    $yamlCandidates = @()
+  }
+
+  if ($yamlCandidates.Count -eq 1) {
+    $mapYamlPath = $yamlCandidates[0].FullName
+    Write-Warning "[start_agent_runtime_no_physics_occupancy] requested map yaml missing. Using discovered map: $mapYamlPath"
+  } else {
+    $dirListing = "(empty)"
+    try {
+      $names = Get-ChildItem -Path $MapDir -File -ErrorAction Stop | ForEach-Object { $_.Name }
+      if ($names.Count -gt 0) {
+        $dirListing = ($names -join ", ")
+      }
+    } catch {
+      $dirListing = "(cannot list map dir)"
+    }
+    throw "Occupancy map YAML missing: $mapYamlPath ; map_dir=$MapDir ; files=$dirListing"
+  }
 }
 
 $runArgs = @(
@@ -186,4 +258,3 @@ $runExit = $LASTEXITCODE
 if ($runExit -ne 0) {
   throw "Occupancy controller exited with code $runExit"
 }
-
