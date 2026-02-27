@@ -17,7 +17,9 @@ from apps.isaacsim_runner.runner_bridges import (
 from apps.isaacsim_runner.runner_config import DEFAULT_G1_START_Z, _prepare_internal_ros2_environment
 from apps.isaacsim_runner.runner_control import _apply_g1_pd_gains, _log_robot_dof_snapshot
 from apps.isaacsim_runner.runner_stage import (
-    _add_flat_grid_environment,
+    StageLayoutConfig,
+    _apply_stage_layout,
+    _parse_stage_reference_specs,
     _ensure_robot_dynamic_flags,
     _ensure_world_environment,
     _find_camera_prim_path,
@@ -40,6 +42,49 @@ def _create_telemetry_logger(jsonl_logger_cls) -> Optional[object]:
     except Exception as exc:
         logging.warning("Failed to initialize runtime telemetry logger: %s", exc)
         return None
+
+
+def _build_stage_layout_config(args: argparse.Namespace) -> StageLayoutConfig:
+    environment_prim = str(getattr(args, "stage_environment_prim", "/World/Environment"))
+    if not environment_prim.startswith("/"):
+        environment_prim = f"/{environment_prim}"
+
+    object_root_default = f"{environment_prim.rstrip('/')}/Objects"
+    object_root_prim = str(getattr(args, "stage_object_root_prim", object_root_default))
+    if not object_root_prim.startswith("/"):
+        object_root_prim = f"/{object_root_prim}"
+
+    environment_refs = _parse_stage_reference_specs(
+        specs=getattr(args, "environment_ref", []) or [],
+        default_parent_prim=environment_prim,
+        default_prefix="EnvRef",
+        kind="environment",
+    )
+    object_refs = _parse_stage_reference_specs(
+        specs=getattr(args, "object_ref", []) or [],
+        default_parent_prim=object_root_prim,
+        default_prefix="ObjRef",
+        kind="object",
+    )
+
+    flat_grid_prim = getattr(args, "flat_grid_prim", None)
+    flat_grid_prim = str(flat_grid_prim).strip() if flat_grid_prim is not None else ""
+    if not flat_grid_prim:
+        flat_grid_prim = None
+
+    return StageLayoutConfig(
+        world_prim_path=str(getattr(args, "stage_world_prim", "/World")),
+        environment_prim_path=environment_prim,
+        robots_prim_path=str(getattr(args, "stage_robots_prim", "/World/Robots")),
+        physics_scene_prim_path=str(getattr(args, "stage_physics_scene_prim", "/World/PhysicsScene")),
+        key_light_prim_path=str(getattr(args, "stage_key_light_prim", f"{environment_prim.rstrip('/')}/KeyLight")),
+        key_light_intensity=float(getattr(args, "stage_key_light_intensity", 500.0)),
+        key_light_angle=float(getattr(args, "stage_key_light_angle", 0.53)),
+        enable_flat_grid=not bool(getattr(args, "disable_flat_grid", False)),
+        flat_grid_prim_path=flat_grid_prim,
+        environment_refs=environment_refs,
+        object_refs=object_refs,
+    )
 
 
 def _run_native_isaac(
@@ -103,17 +148,18 @@ def _run_native_isaac(
         for _ in range(90):
             simulation_app.update()
 
+        stage_layout = _build_stage_layout_config(args)
         stage_obj = context.get_stage()
-        _ensure_world_environment(stage_obj)
+        _ensure_world_environment(stage_obj, stage_layout)
         for _ in range(15):
             simulation_app.update()
         stage_obj = context.get_stage()
 
-        if _add_flat_grid_environment(stage_obj):
+        if _apply_stage_layout(stage_obj, stage_layout):
             for _ in range(60):
                 simulation_app.update()
             stage_obj = context.get_stage()
-        _ensure_world_environment(stage_obj)
+        _ensure_world_environment(stage_obj, stage_layout)
         for _ in range(15):
             simulation_app.update()
         stage_obj = context.get_stage()
@@ -147,6 +193,15 @@ def _run_native_isaac(
                     "articulation_root_path": str(robot_prim_path or ""),
                     "motion_root_prim_path": str(motion_root_prim or ""),
                     "requested_rate_hz": float(args.rate_hz),
+                    "flat_grid_enabled": bool(stage_layout.enable_flat_grid),
+                    "environment_refs": [
+                        {"usd_path": ref.usd_path, "prim_path": ref.prim_path}
+                        for ref in stage_layout.environment_refs
+                    ],
+                    "object_refs": [
+                        {"usd_path": ref.usd_path, "prim_path": ref.prim_path}
+                        for ref in stage_layout.object_refs
+                    ],
                 }
             )
         if robot_prim_path:

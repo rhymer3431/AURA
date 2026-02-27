@@ -185,7 +185,7 @@ class MockRos2Publisher:
         CompressedImage = self._imports["CompressedImage"]
 
         rclpy.init(args=None)
-        self.node = Node("isaacsim_runner_mock_pub")
+        self.node = Node("isaac_runner_mock_pub")
         ns = f"/{self.namespace}" if self.namespace else ""
 
         self._color_pub = self.node.create_publisher(Image, f"{ns}/camera/color/image_raw", 10)

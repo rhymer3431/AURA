@@ -2,7 +2,7 @@
 
 ## 1) Process layout
 
-- **A. Isaac Sim Runner** (`apps/isaacsim_runner/run_headless.py`)
+- **A. Isaac Sim Runner** (`apps/isaacsim_runner/isaac_runner.py`)
   - Loads `g1/g1_d455.usd` as-is (no transform edits in code).
   - Headless-first execution.
   - Publishes RGB/Depth + TF/joint_states/clock in mock ROS2 mode when `rclpy` is available.

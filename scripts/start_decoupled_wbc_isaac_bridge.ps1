@@ -185,7 +185,7 @@ Write-Host "[start_decoupled_wbc_isaac_bridge] internal_topics: state=$InternalS
 $procs = @()
 try {
   $isaacArgs = @(
-    "$root/apps/isaacsim_runner/run_headless.py",
+    "$root/apps/isaacsim_runner/isaac_runner.py",
     "--usd", "$UsdPath",
     "--namespace", "$Namespace",
     "--publish-imu",

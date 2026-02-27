@@ -17,7 +17,7 @@ def _default_usd_path() -> Path:
 def _configure_logging(level: str) -> None:
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
-        format="%(asctime)s [%(levelname)s] [isaacsim_runner] %(message)s",
+        format="%(asctime)s [%(levelname)s] [isaac_runner] %(message)s",
     )
 
 

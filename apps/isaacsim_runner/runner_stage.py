@@ -2,23 +2,190 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Dict, Optional
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Optional, Sequence
 
 from apps.isaacsim_runner.runner_config import DEFAULT_G1_GROUND_CLEARANCE_Z
 
 
-def _add_flat_grid_environment(stage_obj) -> bool:
-    flat_grid_targets = ("/World/Environment/FlatGrid", "/World/FlatGrid", "/FlatGrid")
+@dataclass(frozen=True)
+class StageReferenceSpec:
+    usd_path: str
+    prim_path: str
+    kind: str = "reference"
+
+
+@dataclass
+class StageLayoutConfig:
+    world_prim_path: str = "/World"
+    environment_prim_path: str = "/World/Environment"
+    robots_prim_path: str = "/World/Robots"
+    physics_scene_prim_path: str = "/World/PhysicsScene"
+    key_light_prim_path: str = "/World/Environment/KeyLight"
+    key_light_intensity: float = 500.0
+    key_light_angle: float = 0.53
+    enable_flat_grid: bool = True
+    flat_grid_prim_path: Optional[str] = None
+    environment_refs: list[StageReferenceSpec] = field(default_factory=list)
+    object_refs: list[StageReferenceSpec] = field(default_factory=list)
+
+
+def _sanitize_stage_token(token: str) -> str:
+    sanitized = re.sub(r"[^A-Za-z0-9_]+", "_", str(token)).strip("_")
+    return sanitized or "Ref"
+
+
+def _normalize_prim_path(path: str, fallback: str) -> str:
+    value = str(path or "").strip()
+    if not value:
+        value = str(fallback or "").strip() or "/World"
+    if not value.startswith("/"):
+        value = f"/{value}"
+    return value
+
+
+def _split_reference_spec(spec: str) -> tuple[str, str]:
+    # Format: "USD_PATH@/Prim/Path". If suffix after '@' does not look like a prim path,
+    # keep the whole string as USD path (e.g. URIs containing user@host).
+    if "@" not in spec:
+        return spec, ""
+    usd_candidate, prim_candidate = spec.rsplit("@", 1)
+    if prim_candidate.strip().startswith("/"):
+        return usd_candidate, prim_candidate
+    return spec, ""
+
+
+def _parse_stage_reference_specs(
+    specs: Optional[Sequence[str]],
+    default_parent_prim: str,
+    default_prefix: str,
+    kind: str,
+) -> list[StageReferenceSpec]:
+    parent_prim = _normalize_prim_path(default_parent_prim, "/World")
+    out: list[StageReferenceSpec] = []
+    for idx, raw in enumerate(specs or [], start=1):
+        spec = str(raw or "").strip()
+        if not spec:
+            continue
+        usd_part, prim_part = _split_reference_spec(spec)
+        usd_path = str(usd_part).strip()
+        if not usd_path:
+            logging.warning("Skipping empty %s reference spec: %r", kind, raw)
+            continue
+
+        if str(prim_part).strip():
+            prim_path = _normalize_prim_path(str(prim_part).strip(), f"{parent_prim}/{default_prefix}_{idx:02d}")
+        else:
+            stem = _sanitize_stage_token(Path(usd_path).stem or f"{default_prefix}_{idx:02d}")
+            prim_path = f"{parent_prim.rstrip('/')}/{default_prefix}_{idx:02d}_{stem}"
+
+        out.append(StageReferenceSpec(usd_path=usd_path, prim_path=prim_path, kind=kind))
+    return out
+
+
+def _ensure_parent_xforms(stage_obj, prim_path: str) -> None:
+    try:
+        from pxr import UsdGeom  # type: ignore
+    except Exception:
+        return
+
+    tokens = [tok for tok in _normalize_prim_path(prim_path, "/World").split("/") if tok]
+    current = ""
+    for tok in tokens[:-1]:
+        current += f"/{tok}"
+        if not stage_obj.GetPrimAtPath(current).IsValid():
+            UsdGeom.Xform.Define(stage_obj, current)
+            logging.info("Created Xform prim: %s", current)
+
+
+def _move_prim_if_needed(stage_obj, path_from: str, path_to: str) -> bool:
+    src = stage_obj.GetPrimAtPath(path_from)
+    if not src.IsValid():
+        return False
+
+    norm_to = _normalize_prim_path(path_to, path_from)
+    if path_from == norm_to:
+        return False
+    if stage_obj.GetPrimAtPath(norm_to).IsValid():
+        return False
+
+    _ensure_parent_xforms(stage_obj, norm_to)
+
+    try:
+        from pxr import Usd  # type: ignore
+
+        namespace_editor = Usd.NamespaceEditor(stage_obj)
+        namespace_editor.MovePrimAtPath(path_from, norm_to)
+        if namespace_editor.ApplyEdits():
+            logging.info("Moved prim: %s -> %s", path_from, norm_to)
+            return True
+    except Exception as exc:
+        logging.debug("Usd.NamespaceEditor move failed (%s -> %s): %s", path_from, norm_to, exc)
+
+    try:
+        import omni.kit.commands  # type: ignore
+
+        omni.kit.commands.execute(
+            "MovePrim",
+            path_from=path_from,
+            path_to=norm_to,
+            keep_world_transform=True,
+        )
+        logging.info("Moved prim with MovePrim command: %s -> %s", path_from, norm_to)
+        return True
+    except Exception as exc:
+        logging.warning("Failed to move prim (%s -> %s): %s", path_from, norm_to, exc)
+        return False
+
+
+def _add_reference_to_stage_prim(stage_obj, usd_path: str, prim_path: str, label: str) -> bool:
+    try:
+        from isaacsim.core.utils.stage import add_reference_to_stage  # type: ignore
+    except Exception as exc:
+        logging.warning("Could not import stage utilities to add %s reference: %s", label, exc)
+        return False
+
+    target = _normalize_prim_path(prim_path, "/World")
+    if stage_obj.GetPrimAtPath(target).IsValid():
+        logging.info("%s reference target already exists at %s; skipping", label.capitalize(), target)
+        return False
+
+    _ensure_parent_xforms(stage_obj, target)
+
+    try:
+        add_reference_to_stage(usd_path, target)
+        logging.info("Added %s reference: usd=%s, prim=%s", label, usd_path, target)
+        return True
+    except Exception as exc:
+        logging.warning("Failed to add %s reference: usd=%s prim=%s err=%s", label, usd_path, target, exc)
+        return False
+
+
+def _add_flat_grid_environment(stage_obj, target_prim_path: Optional[str] = None) -> bool:
+    targets: list[str] = []
+    if target_prim_path:
+        targets.append(_normalize_prim_path(target_prim_path, "/World/Environment/FlatGrid"))
+    targets.extend(["/World/Environment/FlatGrid", "/World/FlatGrid", "/FlatGrid"])
+
+    seen: set[str] = set()
+    flat_grid_targets = []
+    for target in targets:
+        if target in seen:
+            continue
+        seen.add(target)
+        flat_grid_targets.append(target)
+
     for target in flat_grid_targets:
         if stage_obj.GetPrimAtPath(target).IsValid():
             logging.info("Flat grid already present at %s", target)
             return False
 
     try:
-        from isaacsim.core.utils.stage import add_reference_to_stage  # type: ignore
         from isaacsim.storage.native import get_assets_root_path  # type: ignore
     except Exception as exc:
-        logging.warning("Could not import stage utilities for flat grid setup: %s", exc)
+        logging.warning("Could not import Isaac Sim assets helper for flat grid setup: %s", exc)
         return False
 
     assets_root_path = get_assets_root_path()
@@ -27,94 +194,121 @@ def _add_flat_grid_environment(stage_obj) -> bool:
         return False
 
     flat_grid_usd = assets_root_path + "/Isaac/Environments/Grid/default_environment.usd"
-    if stage_obj.GetPrimAtPath("/World/Environment").IsValid():
+    if target_prim_path:
+        target_prim = _normalize_prim_path(target_prim_path, "/World/Environment/FlatGrid")
+    elif stage_obj.GetPrimAtPath("/World/Environment").IsValid():
         target_prim = "/World/Environment/FlatGrid"
     elif stage_obj.GetPrimAtPath("/World").IsValid():
         target_prim = "/World/FlatGrid"
     else:
         target_prim = "/FlatGrid"
-    try:
-        add_reference_to_stage(flat_grid_usd, target_prim)
-        logging.info("Added flat grid environment: usd=%s, prim=%s", flat_grid_usd, target_prim)
-        return True
-    except Exception as exc:
-        logging.warning("Failed to add flat grid environment: %s", exc)
-        return False
+
+    return _add_reference_to_stage_prim(stage_obj, flat_grid_usd, target_prim, label="flat grid")
 
 
-def _ensure_world_environment(stage_obj) -> None:
+def _ensure_stage_hierarchy(stage_obj, world_path: str, environment_path: str, robots_path: str) -> None:
     try:
-        from pxr import Usd, UsdGeom, UsdLux, UsdPhysics  # type: ignore
-    except Exception as exc:
-        logging.warning("Could not import pxr modules for world setup: %s", exc)
+        from pxr import UsdGeom  # type: ignore
+    except Exception:
         return
 
-    def _ensure_xform(path: str) -> None:
+    for path in (
+        _normalize_prim_path(world_path, "/World"),
+        _normalize_prim_path(environment_path, "/World/Environment"),
+        _normalize_prim_path(robots_path, "/World/Robots"),
+    ):
         if not stage_obj.GetPrimAtPath(path).IsValid():
             UsdGeom.Xform.Define(stage_obj, path)
             logging.info("Created Xform prim: %s", path)
 
-    _ensure_xform("/World")
-    _ensure_xform("/World/Environment")
-    _ensure_xform("/World/Robots")
 
-    world_prim = stage_obj.GetPrimAtPath("/World")
+def _ensure_stage_default_prim(stage_obj, world_path: str) -> None:
+    world_prim_path = _normalize_prim_path(world_path, "/World")
+    world_prim = stage_obj.GetPrimAtPath(world_prim_path)
     if world_prim.IsValid() and stage_obj.GetDefaultPrim() != world_prim:
         stage_obj.SetDefaultPrim(world_prim)
-        logging.info("Set default prim: /World")
+        logging.info("Set default prim: %s", world_prim_path)
 
-    physics_scene_path = "/World/PhysicsScene"
-    if not stage_obj.GetPrimAtPath(physics_scene_path).IsValid():
-        scene = UsdPhysics.Scene.Define(stage_obj, physics_scene_path)
+
+def _ensure_stage_physics_scene(stage_obj, physics_scene_path: str) -> None:
+    try:
+        from pxr import UsdPhysics  # type: ignore
+    except Exception:
+        return
+
+    scene_path = _normalize_prim_path(physics_scene_path, "/World/PhysicsScene")
+    if not stage_obj.GetPrimAtPath(scene_path).IsValid():
+        _ensure_parent_xforms(stage_obj, scene_path)
+        scene = UsdPhysics.Scene.Define(stage_obj, scene_path)
         scene.CreateGravityDirectionAttr().Set((0.0, 0.0, -1.0))
         scene.CreateGravityMagnitudeAttr().Set(9.81)
-        logging.info("Created default physics scene: %s", physics_scene_path)
+        logging.info("Created default physics scene: %s", scene_path)
 
-    light_path = "/World/Environment/KeyLight"
-    if not stage_obj.GetPrimAtPath(light_path).IsValid():
-        light = UsdLux.DistantLight.Define(stage_obj, light_path)
-        light.CreateIntensityAttr(500.0)
-        light.CreateAngleAttr(0.53)
-        logging.info("Created default distant light: %s", light_path)
 
-    def _move_prim(path_from: str, path_to: str) -> bool:
-        src = stage_obj.GetPrimAtPath(path_from)
-        if not src.IsValid():
-            return False
-        if stage_obj.GetPrimAtPath(path_to).IsValid():
-            return True
+def _ensure_stage_key_light(stage_obj, light_path: str, intensity: float, angle: float) -> None:
+    try:
+        from pxr import UsdLux  # type: ignore
+    except Exception:
+        return
 
-        try:
-            namespace_editor = Usd.NamespaceEditor(stage_obj)
-            namespace_editor.MovePrimAtPath(path_from, path_to)
-            if namespace_editor.ApplyEdits():
-                logging.info("Moved prim: %s -> %s", path_from, path_to)
-                return True
-        except Exception as exc:
-            logging.debug("Usd.NamespaceEditor move failed (%s -> %s): %s", path_from, path_to, exc)
+    light_prim_path = _normalize_prim_path(light_path, "/World/Environment/KeyLight")
+    if not stage_obj.GetPrimAtPath(light_prim_path).IsValid():
+        _ensure_parent_xforms(stage_obj, light_prim_path)
+        light = UsdLux.DistantLight.Define(stage_obj, light_prim_path)
+        light.CreateIntensityAttr(float(intensity))
+        light.CreateAngleAttr(float(angle))
+        logging.info("Created default distant light: %s", light_prim_path)
 
-        try:
-            import omni.kit.commands  # type: ignore
 
-            omni.kit.commands.execute(
-                "MovePrim",
-                path_from=path_from,
-                path_to=path_to,
-                keep_world_transform=True,
-            )
-            logging.info("Moved prim with MovePrim command: %s -> %s", path_from, path_to)
-            return True
-        except Exception as exc:
-            logging.warning("Failed to move prim (%s -> %s): %s", path_from, path_to, exc)
-            return False
+def _ensure_world_environment(stage_obj, layout: Optional[StageLayoutConfig] = None) -> None:
+    try:
+        from pxr import Usd  # type: ignore
+    except Exception as exc:
+        logging.warning("Could not import pxr modules for world setup: %s", exc)
+        return
 
-    _move_prim("/FlatGrid", "/World/Environment/FlatGrid")
-    _move_prim("/World/FlatGrid", "/World/Environment/FlatGrid")
+    cfg = layout or StageLayoutConfig()
+
+    _ensure_stage_hierarchy(stage_obj, cfg.world_prim_path, cfg.environment_prim_path, cfg.robots_prim_path)
+    _ensure_stage_default_prim(stage_obj, cfg.world_prim_path)
+    _ensure_stage_physics_scene(stage_obj, cfg.physics_scene_prim_path)
+    _ensure_stage_key_light(stage_obj, cfg.key_light_prim_path, cfg.key_light_intensity, cfg.key_light_angle)
+
+    flat_grid_target = cfg.flat_grid_prim_path or f"{_normalize_prim_path(cfg.environment_prim_path, '/World/Environment').rstrip('/')}/FlatGrid"
+    _move_prim_if_needed(stage_obj, "/FlatGrid", flat_grid_target)
+    _move_prim_if_needed(stage_obj, "/World/FlatGrid", flat_grid_target)
 
     # Keep robot roots at their original authored paths.
     # Moving articulated roots with NamespaceEditor/MovePrim can leave stale
     # relationship targets on composed assets (especially bridge USDs), which
     # breaks physics stability.
+
+
+def _apply_stage_references(stage_obj, refs: Sequence[StageReferenceSpec]) -> bool:
+    changed = False
+    for ref in refs:
+        changed = _add_reference_to_stage_prim(stage_obj, ref.usd_path, ref.prim_path, ref.kind) or changed
+    return changed
+
+
+def _apply_stage_layout(stage_obj, layout: StageLayoutConfig) -> bool:
+    _ensure_world_environment(stage_obj, layout)
+
+    changed = False
+    if layout.enable_flat_grid:
+        changed = _add_flat_grid_environment(stage_obj, target_prim_path=layout.flat_grid_prim_path) or changed
+
+    changed = _apply_stage_references(stage_obj, layout.environment_refs) or changed
+    changed = _apply_stage_references(stage_obj, layout.object_refs) or changed
+
+    if changed:
+        logging.info(
+            "Applied stage layout: flat_grid=%s env_refs=%d object_refs=%d",
+            bool(layout.enable_flat_grid),
+            len(layout.environment_refs),
+            len(layout.object_refs),
+        )
+    return changed
 
 
 def _quat_to_rpy(w: float, x: float, y: float, z: float) -> tuple[float, float, float]:

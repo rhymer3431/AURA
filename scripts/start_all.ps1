@@ -237,7 +237,7 @@ try {
   Start-Sleep -Seconds 2
 
   $isaacArgs = @(
-    "$root/apps/isaacsim_runner/run_headless.py",
+    "$root/apps/isaacsim_runner/isaac_runner.py",
     "--usd", "$root/g1/g1_d455.usd",
     "--namespace", "g1",
     "--log-level", "INFO"

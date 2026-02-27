@@ -41,7 +41,7 @@ function Resolve-Executable {
 }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$runnerScript = Join-Path $root "apps/isaacsim_runner/run_headless.py"
+$runnerScript = Join-Path $root "apps/isaacsim_runner/isaac_runner.py"
 if (-not (Test-Path $runnerScript)) {
   throw "Isaac runner script not found: $runnerScript"
 }

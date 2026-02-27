@@ -29,7 +29,7 @@ cd C:\Users\mango\project\isaac-aura
 ```
 
 이 명령은 다음을 순서대로 띄웁니다.
-- `apps/isaacsim_runner/run_headless.py` (ROS2 bridge 토픽 포함)
+- `apps/isaacsim_runner/isaac_runner.py` (ROS2 bridge 토픽 포함)
 - `run_isaac_ros2_adapter.py`
 - `run_g1_control_loop.py --simulator isaacsim`
 

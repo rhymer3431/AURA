@@ -29,7 +29,7 @@ FILE_DIFF_SUMMARY = [
     "apps/agent_runtime/modules/g1_action_adapter.py",
     "apps/agent_runtime/modules/manipulation_groot_trt.py",
     "apps/sonic_policy_server/server.py",
-    "apps/isaacsim_runner/run_headless.py",
+    "apps/isaacsim_runner/isaac_runner.py",
     "tests/pipeline/pipeline_test_utils.py",
     "tests/pipeline/test_standing_pipeline.py",
     "tests/pipeline/test_walk_ramp_pipeline.py",

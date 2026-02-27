@@ -5,7 +5,7 @@ from pathlib import Path
 
 from isaacsim import SimulationApp
 
-from apps.isaacsim_runner.run_headless import _resolve_robot_placement_prim, _find_robot_prim_path
+from apps.isaacsim_runner.isaac_runner import _resolve_robot_placement_prim, _find_robot_prim_path
 
 USD_PATHS = [
     Path(r"C:/Users/mango/project/isaac-aura/g1/g1_d455.usd"),
