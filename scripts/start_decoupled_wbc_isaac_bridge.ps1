@@ -19,7 +19,8 @@ param(
   [switch]$IsaacGui = $false,
   [switch]$MockIsaac = $false,
   [switch]$SkipPatchSync = $false,
-  [switch]$SkipControlLoop = $false
+  [switch]$SkipControlLoop = $false,
+  [switch]$UseIsaacModuleEntrypoint = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -181,16 +182,29 @@ Write-Host "[start_decoupled_wbc_isaac_bridge] usd=$UsdPath"
 Write-Host "[start_decoupled_wbc_isaac_bridge] namespace=/$($Namespace.Trim('/'))"
 Write-Host "[start_decoupled_wbc_isaac_bridge] topics: joint_states=$jointStatesTopic imu=$imuTopic tf=/tf clock=/clock cmd=$isaacCommandTopic"
 Write-Host "[start_decoupled_wbc_isaac_bridge] internal_topics: state=$InternalStateTopic command=$InternalCommandTopic"
+$isaacEntrypoint = "script"
+if ($UseIsaacModuleEntrypoint) { $isaacEntrypoint = "module" }
+Write-Host "[start_decoupled_wbc_isaac_bridge] isaac_entrypoint=$isaacEntrypoint"
 
 $procs = @()
 try {
-  $isaacArgs = @(
-    "$root/apps/isaacsim_runner/isaac_runner.py",
-    "--usd", "$UsdPath",
-    "--namespace", "$Namespace",
-    "--publish-imu",
-    "--log-level", "INFO"
-  )
+  if ($UseIsaacModuleEntrypoint) {
+    $isaacArgs = @(
+      "-m", "apps.isaacsim_runner",
+      "--usd", "$UsdPath",
+      "--namespace", "$Namespace",
+      "--publish-imu",
+      "--log-level", "INFO"
+    )
+  } else {
+    $isaacArgs = @(
+      "$root/apps/isaacsim_runner/isaac_runner.py",
+      "--usd", "$UsdPath",
+      "--namespace", "$Namespace",
+      "--publish-imu",
+      "--log-level", "INFO"
+    )
+  }
   if ($IsaacGui) { $isaacArgs += "--gui" }
   if ($MockIsaac) { $isaacArgs += "--mock" }
 

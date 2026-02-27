@@ -29,7 +29,8 @@ param(
   [string]$TensorRtRoot = "",
   [switch]$KeyboardPlannerAutoApprove = $false,
   [switch]$KeyboardPlannerUseWsl = $true,
-  [string]$WslDistro = ""
+  [string]$WslDistro = "",
+  [switch]$UseIsaacModuleEntrypoint = $true
 )
 
 $ErrorActionPreference = "Stop"
@@ -252,40 +253,41 @@ $bridgeArgs = @(
   "-NoProfile",
   "-ExecutionPolicy", "Bypass",
   "-File", "$bridgeScript",
-  "-DecoupledPythonExe", "$DecoupledPythonExe",
-  "-DecoupledWbcRoot", "$DecoupledWbcRoot",
-  "-Namespace", "$Namespace",
-  "-RosDomainId", "$RosDomainId",
-  "-RmwImplementation", "$RmwImplementation",
-  "-InternalStateTopic", "$InternalStateTopic",
-  "-InternalCommandTopic", "$InternalCommandTopic",
-  "-StatePublishHz", "$StatePublishHz",
-  "-ControlFrequency", "$ControlFrequency"
+  "-DecoupledPythonExe=$DecoupledPythonExe",
+  "-DecoupledWbcRoot=$DecoupledWbcRoot",
+  "-Namespace=$Namespace",
+  "-RosDomainId=$RosDomainId",
+  "-RmwImplementation=$RmwImplementation",
+  "-InternalStateTopic=$InternalStateTopic",
+  "-InternalCommandTopic=$InternalCommandTopic",
+  "-StatePublishHz=$StatePublishHz",
+  "-ControlFrequency=$ControlFrequency"
 )
 if (-not [string]::IsNullOrWhiteSpace($IsaacSimRoot)) {
-  $bridgeArgs += @("-IsaacSimRoot", "$IsaacSimRoot")
+  $bridgeArgs += "-IsaacSimRoot=$IsaacSimRoot"
 }
 if (-not [string]::IsNullOrWhiteSpace($IsaacPythonExe)) {
-  $bridgeArgs += @("-IsaacPythonExe", "$IsaacPythonExe")
+  $bridgeArgs += "-IsaacPythonExe=$IsaacPythonExe"
 }
 if (-not [string]::IsNullOrWhiteSpace($UsdPath)) {
-  $bridgeArgs += @("-UsdPath", "$UsdPath")
+  $bridgeArgs += "-UsdPath=$UsdPath"
 }
 if ($IsaacGui) { $bridgeArgs += "-IsaacGui" }
 if ($MockIsaac) { $bridgeArgs += "-MockIsaac" }
 if ($SkipPatchSync) { $bridgeArgs += "-SkipPatchSync" }
 if ($SkipControlLoop) { $bridgeArgs += "-SkipControlLoop" }
+if ($UseIsaacModuleEntrypoint) { $bridgeArgs += "-UseIsaacModuleEntrypoint" }
 if ($StartTeleop) {
   $bridgeArgs += "-StartTeleop"
-  $bridgeArgs += @("-TeleopFrequency", "$TeleopFrequency")
+  $bridgeArgs += "-TeleopFrequency=$TeleopFrequency"
 }
 if ($StartSonicServer) {
   $bridgeArgs += "-StartSonicServer"
   if (-not [string]::IsNullOrWhiteSpace($SonicPythonExe)) {
-    $bridgeArgs += @("-SonicPythonExe", "$SonicPythonExe")
+    $bridgeArgs += "-SonicPythonExe=$SonicPythonExe"
   }
   if (-not [string]::IsNullOrWhiteSpace($SonicModelDir)) {
-    $bridgeArgs += @("-SonicModelDir", "$SonicModelDir")
+    $bridgeArgs += "-SonicModelDir=$SonicModelDir"
   }
 }
 
