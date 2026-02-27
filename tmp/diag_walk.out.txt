@@ -1,2 +1,0 @@
-RESULT: COMPLETED ramp to vx=0.500
-max_abs_action: 0.7712

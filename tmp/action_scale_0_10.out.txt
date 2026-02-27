@@ -1,8 +1,0 @@
-=== multiplier=0.10 ===
-standing:
-Sending 250 zero-velocity commands (5.00s at 50.0Hz)...
-RESULT: STABLE
-max_abs_action: 0.6556
-walk:
-RESULT: COMPLETED ramp to vx=0.500
-max_abs_action: 0.7712

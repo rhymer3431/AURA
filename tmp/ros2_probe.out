@@ -1,3 +1,0 @@
-[ERROR] [1771996167.508970900] [rcl]: Error getting RMW implementation identifier / RMW implementation not installed (expected identifier of 'rmw_fastrtps_cpp '), with error message 'failed to load shared library 'rmw_fastrtps_cpp .dll' due to LoadLibrary error: 126, at C:\dev\win\humble311\src\ros2\rcutils\src\shared_library.c:159, at C:\dev\win\humble311\src\ros2\rmw_implementation\rmw_implementation\src\functions.cpp:67', exiting with 1., at C:\dev\win\humble311\src\ros2\rcl\rcl\src\rcl\rmw_implementation_identifier_check.c:145
-
-There was an error running python.

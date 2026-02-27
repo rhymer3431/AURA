@@ -13,10 +13,12 @@ venv/
 logs/
 *.log
 
+# Temporary working data
+tmp/
+
 # Large model/binary artifacts
 models/
 *.onnx
 *.safetensors
 *.trt
 *.mp4
-
