@@ -15,7 +15,7 @@
   - Async orchestrator for perception, SLAM confidence, scene memory, planner client, executor, Nav2 adapter, manipulation adapter, VRAM guard.
   - Mock-first but interface-compatible with real TensorRT engines and ROS2/Nav2.
 
-- **C. Planner Server** (`services/planner_server/server.py`)
+- **C. Planner Server** (`apps/services/planner_server/server.py`)
   - Local `/plan` API endpoint.
   - Returns JSON-only plan schema.
   - Mock planner enabled by default; Nanbeige INT4 hookup marked as TODO.
@@ -24,7 +24,10 @@
 
 - **Perception (YOLOE TRT wrapper)**
   - `modules/perception_yoloe_trt.py`
+  - TensorRT engine load + CUDA buffers + NMS postprocess.
+  - optional ROS2 camera subscriber (`/{namespace}/camera/color/image_raw` or compressed).
   - queue length 1~2 with frame drop.
+  - lightweight per-label target tracker (EMA-smoothed center).
   - warmup at startup.
 
 - **SLAM monitor**
@@ -52,10 +55,16 @@
 
 - **Task executor**
   - `modules/task_executor.py`
-  - skills: `locate`, `navigate`, `pick`, `return`, `inspect`, `fetch`
+  - skills: `locate`, `navigate`, `pick`, `return`, `inspect`, `fetch`, `look_at`
   - retry policy and failure reasons.
   - subscribes to SLAM mode event to pause/resume current task.
   - runs exploration behavior while paused.
+
+- **Look-at controller**
+  - `modules/look_at_controller.py`
+  - persistent target tracking state: `idle`, `tracking`, `target_lost`, `stopped`
+  - P-controller on image error `(cx, cy) -> yaw/pitch`
+  - deadband, rate-limit, smoothing, target-lost timeout handling
 
 - **Navigation adapter**
   - `modules/nav2_client.py`

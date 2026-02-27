@@ -1,7 +1,7 @@
 {
   "source": {
-    "gear_sonic_reference": "tmp/GR00T-WholeBodyControl/gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp",
-    "isaac_sim_probe": "tmp/inspect_g1_joints_data.json",
+    "gear_sonic_reference": "apps/decoupled_wbc_workspace/gear_sonic_deploy/src/g1/g1_deploy_onnx_ref/include/policy_parameters.hpp",
+    "isaac_sim_probe": "",
     "output_order": "isaaclab_body_29dof"
   },
   "joints": [

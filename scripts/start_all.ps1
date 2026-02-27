@@ -60,10 +60,15 @@ $actionBackend = ""
 $sonicEnabledInConfig = $true
 $cfgSonicHost = ""
 $cfgSonicPort = 0
+$locomotionBackend = "sonic_server"
 if (Test-Path $cfgPath) {
   try {
     $cfgObj = Get-Content $cfgPath -Raw | ConvertFrom-Json
     $actionBackend = [string]$cfgObj.manipulation.action_adapter.backend
+    $cfgLocoBackend = [string]$cfgObj.manipulation.locomotion_backend
+    if (-not [string]::IsNullOrWhiteSpace($cfgLocoBackend)) {
+      $locomotionBackend = $cfgLocoBackend.Trim().ToLowerInvariant()
+    }
     if ($null -ne $cfgObj.manipulation.sonic_server) {
       $sonicEnabledInConfig = [bool]$cfgObj.manipulation.sonic_server.enabled
       $cfgSonicHost = [string]$cfgObj.manipulation.sonic_server.host
@@ -148,6 +153,7 @@ if ($actionBackend -eq "ros2_topic") {
 
 Write-Host "[start_all] planner_python=$plannerPythonExe"
 Write-Host "[start_all] agent_python=$agentRunnerExe"
+Write-Host "[start_all] locomotion_backend=$locomotionBackend"
 
 $procs = @()
 try {
@@ -168,10 +174,11 @@ try {
     Start-Sleep -Seconds 3
   }
 
-  if ($StartSonicServer -and $sonicEnabledInConfig) {
+  $forceLegacySonic = -not [string]::IsNullOrWhiteSpace($SonicServerCommand)
+  if ($StartSonicServer -and $sonicEnabledInConfig -and ($locomotionBackend -ne "direct_policy" -or $forceLegacySonic)) {
     if ([string]::IsNullOrWhiteSpace($SonicServerCommand)) {
       $resolvedSonicModelDir = if ([string]::IsNullOrWhiteSpace($SonicModelDir)) {
-        Join-Path $root "gear_sonic_deploy"
+        Join-Path $root "apps/gear_sonic_deploy"
       } elseif ([System.IO.Path]::IsPathRooted($SonicModelDir)) {
         $SonicModelDir
       } else {
@@ -218,9 +225,11 @@ try {
     Start-Sleep -Seconds 2
   } elseif ($StartSonicServer -and -not $sonicEnabledInConfig) {
     Write-Host "[start_all] sonic_server.enabled=false in config; skipping SONIC server startup."
+  } elseif ($StartSonicServer -and $locomotionBackend -eq "direct_policy") {
+    Write-Host "[start_all] locomotion_backend=direct_policy; skipping legacy SONIC server startup. (set -SonicServerCommand to force legacy start)"
   }
 
-  $plannerArgs = @("-m", "services.planner_server.server", "--host", "127.0.0.1", "--port", "8088")
+  $plannerArgs = @("-m", "apps.services.planner_server.server", "--host", "127.0.0.1", "--port", "8088")
   if ($MockPlanner) { $plannerArgs += "--mock" }
   $planner = Start-Process -FilePath $plannerPythonExe -ArgumentList $plannerArgs -WorkingDirectory $root -PassThru -NoNewWindow
   $procs += $planner

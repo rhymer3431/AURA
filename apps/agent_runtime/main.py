@@ -47,14 +47,17 @@ async def _async_input(prompt: str) -> str:
     return await asyncio.to_thread(input, prompt)
 
 
-def _build_world_state(memory: SceneMemory, slam: SLAMMonitor) -> Dict[str, Any]:
+def _build_world_state(memory: SceneMemory, slam: SLAMMonitor, executor: TaskExecutor | None = None) -> Dict[str, Any]:
     pose = slam.latest_pose
-    return {
+    world_state = {
         "robot_pose": pose_to_dict(pose),
         "c_loc": slam.c_loc,
         "slam_mode": slam.mode,
         "memory": memory.summary(max_objects=8),
     }
+    if executor is not None:
+        world_state["look_at"] = executor.get_look_at_status()
+    return world_state
 
 
 def _extract_targets(plan: Plan) -> List[str]:
@@ -79,13 +82,21 @@ async def run(args: argparse.Namespace) -> None:
     exploration = ExplorationBehavior(cfg.get("exploration", {}))
     manip = GrootManipulator(cfg.get("manipulation", {}))
     planner = PlannerClient(cfg.get("planner", {}))
-    executor = TaskExecutor(memory, nav, manip, exploration, slam)
-    slam.register_mode_callback(executor.on_slam_mode_changed)
 
     async def on_detections(dets: List[Detection2D3D]) -> None:
         memory.update_from_detection(dets, slam.latest_pose)
 
     perception = YOLOEPerception(cfg.get("perception", {}), on_detections=on_detections)
+    executor = TaskExecutor(
+        memory,
+        nav,
+        manip,
+        exploration,
+        slam,
+        perception=perception,
+        look_at_cfg=cfg.get("look_at", {}),
+    )
+    slam.register_mode_callback(executor.on_slam_mode_changed)
     vram_guard = VRAMGuard(cfg.get("vram_guard", {}))
 
     async def on_vram(level: int, free_mb: int, used_mb: int) -> None:
@@ -124,7 +135,7 @@ async def run(args: argparse.Namespace) -> None:
         command = command.strip()
         if not command:
             return
-        world_state = _build_world_state(memory, slam)
+        world_state = _build_world_state(memory, slam, executor)
         plan = await planner.create_plan(command, world_state)
         memory.set_task_focus(_extract_targets(plan))
         logging.info("Plan notes: %s", plan.notes)
@@ -147,6 +158,7 @@ async def run(args: argparse.Namespace) -> None:
                 break
             await process_command(user_command)
     finally:
+        await executor.stop()
         await perception.stop()
         await slam.stop()
         await vram_guard.stop()

@@ -57,7 +57,7 @@ if ([string]::IsNullOrWhiteSpace($PythonExe)) {
 }
 
 if ([string]::IsNullOrWhiteSpace($ModelDir)) {
-  $ModelDir = Join-Path $root "gear_sonic_deploy"
+  $ModelDir = Join-Path $root "apps/gear_sonic_deploy"
 } elseif (-not [System.IO.Path]::IsPathRooted($ModelDir)) {
   $ModelDir = Join-Path $root $ModelDir
 }

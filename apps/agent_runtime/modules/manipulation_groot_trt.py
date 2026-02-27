@@ -16,6 +16,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .direct_locomotion_policy import DirectLocomotionPolicyRuntime
 from .g1_action_adapter import G1ActionAdapter
 from .hybrid_action_adapter import merge as merge_actions
 
@@ -295,6 +296,29 @@ class GrootManipulator:
         self.policy_request_retries = max(0, int(policy_cfg.get("request_retries", 2)))
         self.policy_retry_backoff_s = float(policy_cfg.get("retry_backoff_s", 1.0))
 
+        locomotion_backend = str(cfg.get("locomotion_backend", "direct_policy")).strip().lower()
+        if locomotion_backend in {"sonic", "sonic_server", "legacy"}:
+            locomotion_backend = "sonic_server"
+        elif locomotion_backend in {"direct", "direct_policy", "onnx", "policy", "pt"}:
+            locomotion_backend = "direct_policy"
+        else:
+            logging.warning("Unknown locomotion_backend '%s'. Falling back to direct_policy.", locomotion_backend)
+            locomotion_backend = "direct_policy"
+        self.locomotion_backend_requested = locomotion_backend
+        self.locomotion_backend_active = "none"
+        self.locomotion_enabled = False
+        self._locomotion_abort_token = "LOCOMOTION_ABORT"
+
+        direct_policy_cfg = dict(cfg.get("direct_policy", {}))
+        self.direct_policy_enabled = bool(direct_policy_cfg.get("enabled", True))
+        self.direct_policy_fallback_to_legacy_sonic = bool(
+            direct_policy_cfg.get("fallback_to_legacy_sonic", True)
+        )
+        self._direct_policy_control_dt_explicit = "control_dt_s" in direct_policy_cfg
+        # Keep a single source of truth for control dt between manipulator and policy runtime.
+        direct_policy_cfg.setdefault("control_dt_s", float(cfg.get("control_dt_s", 0.05)))
+        self.direct_policy_cfg = direct_policy_cfg
+
         sonic_cfg = dict(cfg.get("sonic_server", {}))
         self.sonic_enabled = bool(sonic_cfg.get("enabled", True))
         self.sonic_host = str(sonic_cfg.get("host", "127.0.0.1"))
@@ -303,6 +327,8 @@ class GrootManipulator:
         self.sonic_style = str(sonic_cfg.get("default_style", "normal"))
         self.sonic_publish_navigate_command = bool(sonic_cfg.get("publish_navigate_command", False))
         self.sonic_control_dt_s = float(sonic_cfg.get("control_dt_s", min(self.control_dt_s, 0.02)))
+        if not self._direct_policy_control_dt_explicit:
+            self.direct_policy_cfg["control_dt_s"] = float(self.sonic_control_dt_s)
         self.sonic_joint_rate_limit_rad_s = float(sonic_cfg.get("joint_rate_limit_rad_s", 3.0))
         self.sonic_joint_blend_alpha = float(sonic_cfg.get("joint_blend_alpha", 0.6))
         self.sonic_velocity = {
@@ -311,6 +337,24 @@ class GrootManipulator:
             "yaw_rate": float(sonic_cfg.get("default_yaw_rate", 0.0)),
             "style": self.sonic_style,
         }
+        look_at_cfg = dict(cfg.get("look_at", {}))
+        self.look_at_yaw_joint = str(look_at_cfg.get("yaw_joint", "waist_yaw_joint")).strip()
+        self.look_at_pitch_joint = str(look_at_cfg.get("pitch_joint", "waist_pitch_joint")).strip()
+        yaw_limits = look_at_cfg.get("yaw_limits_deg", [-35.0, 35.0])
+        pitch_limits = look_at_cfg.get("pitch_limits_deg", [-20.0, 20.0])
+        self.look_at_yaw_min_rad, self.look_at_yaw_max_rad = self._parse_2float_limits_deg(
+            yaw_limits,
+            default_min=-35.0,
+            default_max=35.0,
+        )
+        self.look_at_pitch_min_rad, self.look_at_pitch_max_rad = self._parse_2float_limits_deg(
+            pitch_limits,
+            default_min=-20.0,
+            default_max=20.0,
+        )
+        self.look_at_roll_rad = float(look_at_cfg.get("roll_rad", 0.0))
+        self._look_at_yaw_rad = 0.0
+        self._look_at_pitch_rad = 0.0
         default_joint_map = Path(__file__).resolve().parent / "g1_joint_map.json"
         self.sonic_joint_map_path = Path(str(sonic_cfg.get("joint_map_path", default_joint_map))).resolve()
         self.sonic_joint_names_29 = self._load_sonic_joint_names_29(self.sonic_joint_map_path)
@@ -346,6 +390,7 @@ class GrootManipulator:
 
         self._policy_client: Optional[_Gr00TPolicyServerClient] = None
         self._sonic_client: Optional[_SonicPolicyServerClient] = None
+        self._direct_policy_runtime: Optional[DirectLocomotionPolicyRuntime] = None
         self._policy_process: Optional[subprocess.Popen] = None
         self._mock_runtime = self.backend == "mock"
         self._action_adapter = G1ActionAdapter(dict(cfg.get("action_adapter", {})))
@@ -390,9 +435,50 @@ class GrootManipulator:
             self._mock_runtime = True
             logging.info("GR00T mock mode enabled.")
 
-        if self.sonic_enabled:
+        self.locomotion_enabled = False
+        self.locomotion_backend_active = "none"
+        direct_runtime_meta: Dict[str, Any] = {}
+
+        if self.locomotion_backend_requested == "direct_policy" and self.direct_policy_enabled:
+            try:
+                self._init_direct_policy_runtime()
+                assert self._direct_policy_runtime is not None
+                self.locomotion_enabled = True
+                self.locomotion_backend_active = "direct_policy"
+                direct_runtime_meta = {
+                    "direct_policy_path": str(self._direct_policy_runtime.policy_path),
+                    "direct_policy_backend": str(self._direct_policy_runtime.backend),
+                    "direct_policy_obs_dim": int(self._direct_policy_runtime.obs_dim),
+                    "direct_policy_action_dim": int(self._direct_policy_runtime.raw_action_dim),
+                }
+                logging.info(
+                    "Direct locomotion backend ready: path=%s backend=%s obs_dim=%s action_dim=%s",
+                    direct_runtime_meta["direct_policy_path"],
+                    direct_runtime_meta["direct_policy_backend"],
+                    direct_runtime_meta["direct_policy_obs_dim"],
+                    direct_runtime_meta["direct_policy_action_dim"],
+                )
+            except Exception as exc:
+                logging.warning("Direct locomotion backend unavailable: %s", exc)
+                if self.sonic_enabled and self.direct_policy_fallback_to_legacy_sonic:
+                    try:
+                        self._init_sonic_client()
+                        self.locomotion_enabled = True
+                        self.locomotion_backend_active = "sonic_server"
+                        logging.warning(
+                            "Falling back to legacy SONIC backend: host=%s port=%s style=%s",
+                            self.sonic_host,
+                            self.sonic_port,
+                            self.sonic_velocity["style"],
+                        )
+                    except Exception as sonic_exc:
+                        self.sonic_enabled = False
+                        logging.warning("SONIC backend unavailable after direct-policy fallback: %s", sonic_exc)
+        elif self.sonic_enabled:
             try:
                 self._init_sonic_client()
+                self.locomotion_enabled = True
+                self.locomotion_backend_active = "sonic_server"
                 logging.info(
                     "SONIC backend ready: host=%s port=%s style=%s",
                     self.sonic_host,
@@ -401,7 +487,7 @@ class GrootManipulator:
                 )
             except Exception as exc:
                 self.sonic_enabled = False
-                logging.warning("SONIC backend unavailable. Falling back to legacy locomotion: %s", exc)
+                logging.warning("SONIC backend unavailable. Falling back to navigate-only locomotion: %s", exc)
         self._telemetry_log(
             {
                 "event": "warmup_config",
@@ -409,10 +495,14 @@ class GrootManipulator:
                 "joint_map_sha256": self.sonic_joint_map_sha256,
                 "applied_dof_count": len(self.sonic_joint_names_29),
                 "applied_body29_dof_names": list(self.sonic_joint_names_29),
+                "locomotion_backend_requested": self.locomotion_backend_requested,
+                "locomotion_backend_active": self.locomotion_backend_active,
+                "locomotion_enabled": bool(self.locomotion_enabled),
                 "sonic_enabled": bool(self.sonic_enabled),
                 "sonic_host": self.sonic_host,
                 "sonic_port": self.sonic_port,
                 "sonic_control_dt_s": self.sonic_control_dt_s,
+                **direct_runtime_meta,
             }
         )
 
@@ -435,6 +525,51 @@ class GrootManipulator:
             yaw_rate = float(getattr(command, "yaw_rate", self.sonic_velocity["yaw_rate"]))
             style = str(getattr(command, "style", self.sonic_velocity["style"]))
         self.sonic_velocity = {"vx": vx, "vy": vy, "yaw_rate": yaw_rate, "style": style}
+
+    @staticmethod
+    def _parse_2float_limits_deg(raw: Any, default_min: float, default_max: float) -> Tuple[float, float]:
+        lo = float(default_min)
+        hi = float(default_max)
+        if isinstance(raw, (list, tuple)) and len(raw) >= 2:
+            try:
+                lo = float(raw[0])
+                hi = float(raw[1])
+            except Exception:
+                lo = float(default_min)
+                hi = float(default_max)
+        if lo > hi:
+            lo, hi = hi, lo
+        return math.radians(lo), math.radians(hi)
+
+    def get_camera_aim(self) -> Tuple[float, float]:
+        feedback = self._action_adapter.get_last_joint_feedback()
+        if feedback is None:
+            return float(self._look_at_yaw_rad), float(self._look_at_pitch_rad)
+
+        names = [str(v) for v in feedback.get("name", [])]
+        pos = [float(v) for v in feedback.get("position", [])]
+        if not names or not pos:
+            return float(self._look_at_yaw_rad), float(self._look_at_pitch_rad)
+
+        name_to_idx = {name: idx for idx, name in enumerate(names)}
+        yaw_idx = name_to_idx.get(self.look_at_yaw_joint)
+        pitch_idx = name_to_idx.get(self.look_at_pitch_joint)
+        if yaw_idx is not None and yaw_idx < len(pos):
+            self._look_at_yaw_rad = float(pos[yaw_idx])
+        if pitch_idx is not None and pitch_idx < len(pos):
+            self._look_at_pitch_rad = float(pos[pitch_idx])
+        return float(self._look_at_yaw_rad), float(self._look_at_pitch_rad)
+
+    def command_camera_aim(self, yaw_rad: float, pitch_rad: float, source: str = "look_at") -> Tuple[float, float]:
+        yaw = float(max(self.look_at_yaw_min_rad, min(self.look_at_yaw_max_rad, float(yaw_rad))))
+        pitch = float(max(self.look_at_pitch_min_rad, min(self.look_at_pitch_max_rad, float(pitch_rad))))
+        self._look_at_yaw_rad = yaw
+        self._look_at_pitch_rad = pitch
+        self._action_adapter.apply_action(
+            {"waist": [float(yaw), float(self.look_at_roll_rad), float(pitch)]},
+            source=source,
+        )
+        return yaw, pitch
 
     @staticmethod
     def _load_sonic_joint_names_29(map_path: Path) -> List[str]:
@@ -462,12 +597,21 @@ class GrootManipulator:
         return Path(self._telemetry.run_dir)
 
     def get_runtime_metadata(self) -> Dict[str, Any]:
-        return {
+        meta = {
             "joint_map_path": str(self.sonic_joint_map_path),
             "joint_map_sha256": self.sonic_joint_map_sha256,
             "sonic_joint_names_29": list(self.sonic_joint_names_29),
             "sonic_control_dt_s": float(self.sonic_control_dt_s),
+            "locomotion_backend_requested": str(self.locomotion_backend_requested),
+            "locomotion_backend_active": str(self.locomotion_backend_active),
+            "locomotion_enabled": bool(self.locomotion_enabled),
         }
+        if self._direct_policy_runtime is not None:
+            meta["direct_policy_path"] = str(self._direct_policy_runtime.policy_path)
+            meta["direct_policy_backend"] = str(self._direct_policy_runtime.backend)
+            meta["direct_policy_obs_dim"] = int(self._direct_policy_runtime.obs_dim)
+            meta["direct_policy_action_dim"] = int(self._direct_policy_runtime.raw_action_dim)
+        return meta
 
     def _telemetry_log(self, record: Dict[str, Any]) -> None:
         if self._telemetry is None:
@@ -631,8 +775,8 @@ class GrootManipulator:
         pause_event: Optional[asyncio.Event] = None,
         source: str = "manual_locomotion",
     ) -> bool:
-        """Publishes SONIC-driven whole-body commands for locomotion."""
-        dt = max(0.01, float(self.sonic_control_dt_s if self.sonic_enabled else self.control_dt_s))
+        """Publishes policy-driven whole-body commands for locomotion."""
+        dt = max(0.01, float(self.sonic_control_dt_s if self.locomotion_enabled else self.control_dt_s))
         total_s = max(dt, float(duration_s))
         steps = max(1, int(total_s / dt))
         self.set_sonic_velocity(
@@ -648,9 +792,9 @@ class GrootManipulator:
                 try:
                     latest_sonic = pending_sonic.result()
                 except Exception as exc:
-                    if "SONIC_ABORT" in str(exc):
+                    if "SONIC_ABORT" in str(exc) or self._locomotion_abort_token in str(exc):
                         raise
-                    logging.warning("SONIC locomotion request failed. Reusing previous target: %s", exc)
+                    logging.warning("Locomotion policy request failed. Reusing previous target: %s", exc)
                 finally:
                     pending_sonic = None
         next_tick = time.perf_counter()
@@ -671,19 +815,19 @@ class GrootManipulator:
                 await pause_event.wait()
 
             t_apply = None
-            if self.sonic_enabled:
+            if self.locomotion_enabled:
                 if pending_sonic is None:
-                    pending_sonic = asyncio.create_task(asyncio.to_thread(self._request_sonic))
+                    pending_sonic = asyncio.create_task(asyncio.to_thread(self._request_locomotion_target))
 
                 if pending_sonic.done():
                     try:
                         latest_sonic = pending_sonic.result()
                     except Exception as exc:
-                        if "SONIC_ABORT" in str(exc):
+                        if "SONIC_ABORT" in str(exc) or self._locomotion_abort_token in str(exc):
                             raise
-                        logging.warning("SONIC locomotion request failed. Reusing previous target: %s", exc)
+                        logging.warning("Locomotion policy request failed. Reusing previous target: %s", exc)
                     finally:
-                        pending_sonic = asyncio.create_task(asyncio.to_thread(self._request_sonic))
+                        pending_sonic = asyncio.create_task(asyncio.to_thread(self._request_locomotion_target))
 
                 if latest_sonic is not None:
                     merged = merge_actions(
@@ -762,7 +906,7 @@ class GrootManipulator:
         self._locomotion_pending_sonic_task = pending_sonic
         self._locomotion_latest_sonic = latest_sonic
 
-        if self.sonic_publish_navigate_command or not self.sonic_enabled:
+        if self.sonic_publish_navigate_command or not self.locomotion_enabled:
             self._action_adapter.apply_action(
                 {"navigate_command": [0.0, 0.0, 0.0]},
                 source=f"{source}:stop",
@@ -802,7 +946,7 @@ class GrootManipulator:
                     except Exception:
                         pass
             except asyncio.TimeoutError:
-                logging.warning("Timeout waiting for pending SONIC request during stop; cancelling it.")
+                logging.warning("Timeout waiting for pending locomotion request during stop; cancelling it.")
                 pending.cancel()
             except Exception as exc:
                 logging.debug("Pending SONIC task cleanup failed during stop: %s", exc)
@@ -815,6 +959,9 @@ class GrootManipulator:
         if self._sonic_client is not None:
             self._sonic_client.close()
             self._sonic_client = None
+        if self._direct_policy_runtime is not None:
+            self._direct_policy_runtime.close()
+            self._direct_policy_runtime = None
         if self._policy_process is not None and self.manage_server_process:
             try:
                 self._policy_process.terminate()
@@ -908,16 +1055,16 @@ class GrootManipulator:
                     self.embodiment_tag,
                 )
                 sonic_future = None
-                if self.sonic_enabled:
-                    sonic_future = loop.run_in_executor(self._executor, self._request_sonic)
+                if self.locomotion_enabled:
+                    sonic_future = loop.run_in_executor(self._executor, self._request_locomotion_target)
                 response = await groot_future
                 if sonic_future is not None:
                     try:
                         seed_sonic_action = await sonic_future
                     except Exception as sonic_exc:
-                        if "SONIC_ABORT" in str(sonic_exc):
+                        if "SONIC_ABORT" in str(sonic_exc) or self._locomotion_abort_token in str(sonic_exc):
                             raise
-                        logging.debug("Initial SONIC prefetch failed: %s", sonic_exc)
+                        logging.debug("Initial locomotion prefetch failed: %s", sonic_exc)
                 break
             except Exception as exc:
                 last_exc = exc
@@ -973,16 +1120,16 @@ class GrootManipulator:
                 await pause_event.wait()
 
             sonic_action = None
-            if self.sonic_enabled:
+            if self.locomotion_enabled:
                 if idx == 0 and seed_sonic_action is not None:
                     sonic_action = seed_sonic_action
                 else:
                     try:
-                        sonic_action = await asyncio.to_thread(self._request_sonic)
+                        sonic_action = await asyncio.to_thread(self._request_locomotion_target)
                     except Exception as sonic_exc:
-                        if "SONIC_ABORT" in str(sonic_exc):
+                        if "SONIC_ABORT" in str(sonic_exc) or self._locomotion_abort_token in str(sonic_exc):
                             raise
-                        logging.debug("SONIC request failed during manipulation step: %s", sonic_exc)
+                        logging.debug("Locomotion request failed during manipulation step: %s", sonic_exc)
 
             if sonic_action is None:
                 sonic_action = self._joint_estimate
@@ -1001,7 +1148,10 @@ class GrootManipulator:
                     float(self.sonic_velocity["vy"]),
                     float(self.sonic_velocity["yaw_rate"]),
                 ]
-            self._action_adapter.apply_action(payload, source=f"gr00t+sonic:{self.embodiment_tag}")
+            self._action_adapter.apply_action(
+                payload,
+                source=f"gr00t+{self.locomotion_backend_active}:{self.embodiment_tag}",
+            )
             await asyncio.sleep(self.control_dt_s)
 
         return True
@@ -1053,6 +1203,14 @@ class GrootManipulator:
         )
         self._sonic_client.connect()
 
+    def _init_direct_policy_runtime(self) -> None:
+        self._direct_policy_runtime = DirectLocomotionPolicyRuntime(self.direct_policy_cfg)
+
+    def _request_locomotion_target(self) -> List[float]:
+        if self.locomotion_backend_active == "direct_policy":
+            return self._request_direct_policy()
+        return self._request_sonic()
+
     def _cache_joint_state(self, joint_cmd: List[float]) -> None:
         now = time.time()
         dt = max(1e-4, now - self._last_joint_update_ts)
@@ -1070,6 +1228,178 @@ class GrootManipulator:
         if latest is not None and len(latest) == len(self._joint_estimate):
             self._cache_joint_state([float(v) for v in latest])
         return list(self._joint_estimate), list(self._joint_velocity_estimate)
+
+    def _request_direct_policy(self) -> List[float]:
+        if self._direct_policy_runtime is None:
+            self._init_direct_policy_runtime()
+        assert self._direct_policy_runtime is not None
+
+        step_idx = int(self._sonic_step_idx)
+        self._sonic_step_idx += 1
+        vx = float(self.sonic_velocity["vx"])
+        vy = float(self.sonic_velocity["vy"])
+        yaw_rate = float(self.sonic_velocity["yaw_rate"])
+        style = str(self.sonic_velocity["style"])
+
+        joint_pos, joint_vel, feedback_meta = self._build_sonic_request_from_live_feedback()
+        if len(joint_pos) < 29:
+            joint_pos.extend([0.0] * (29 - len(joint_pos)))
+        if len(joint_vel) < 29:
+            joint_vel.extend([0.0] * (29 - len(joint_vel)))
+        joint_pos = [float(v) for v in joint_pos[:29]]
+        joint_vel = [float(v) for v in joint_vel[:29]]
+        req_is_all_zero_pos = self._is_all_zero(joint_pos, eps=1e-8)
+        req_is_all_zero_vel = self._is_all_zero(joint_vel, eps=1e-8)
+        req_max_abs_pos = self._max_abs(joint_pos)
+        req_max_abs_vel = self._max_abs(joint_vel)
+
+        if self._is_locomotion_command_active() and req_is_all_zero_pos:
+            msg = (
+                f"{self._locomotion_abort_token}: locomotion command requested while req_joint_pos_29 is all zeros. "
+                "Check live Isaac feedback mapping and joint-state stream."
+            )
+            self._telemetry_log(
+                {
+                    "event": "direct_policy_request_rejected",
+                    "step_idx": step_idx,
+                    "vx": vx,
+                    "vy": vy,
+                    "yaw_rate": yaw_rate,
+                    "style": style,
+                    "req_is_all_zero_pos": True,
+                    "req_is_all_zero_vel": req_is_all_zero_vel,
+                    "req_max_abs_pos": req_max_abs_pos,
+                    "req_max_abs_vel": req_max_abs_vel,
+                    "feedback_source": feedback_meta.get("feedback_source"),
+                    "error": msg,
+                }
+            )
+            raise RuntimeError(msg)
+
+        base_pose = self._action_adapter.get_last_base_pose() or {}
+        out = self._direct_policy_runtime.infer(
+            vx=vx,
+            vy=vy,
+            yaw_rate=yaw_rate,
+            joint_pos_29=joint_pos,
+            joint_vel_29=joint_vel,
+            base_pose=base_pose,
+        )
+        target_joint_pos_29 = [float(v) for v in list(out.get("joint_actions_29", []))[:29]]
+        if len(target_joint_pos_29) < 29:
+            raise RuntimeError("Direct locomotion policy did not return 29 joint targets.")
+        raw_action_29 = [float(v) for v in list(out.get("raw_actions_29", []))[:29]]
+        raw_action_dim = int(out.get("raw_action_dim", len(raw_action_29)))
+        obs_dim = int(out.get("obs_dim", 0))
+        obs_used_dim = int(out.get("obs_used_dim", 0))
+        infer_latency_ms = float(out.get("infer_latency_ms", 0.0))
+
+        raw_max_abs_action = self._max_abs(raw_action_29) if raw_action_29 else None
+        target_max_abs = self._max_abs(target_joint_pos_29)
+        resp_max_abs_action = float(raw_max_abs_action if raw_max_abs_action is not None else target_max_abs)
+
+        stabilized = self._stabilize_sonic_targets(target_joint_pos_29, self.sonic_control_dt_s)
+        delta_before = self._max_abs(
+            [target_joint_pos_29[i] - self._joint_estimate[i] for i in range(len(self._joint_estimate))]
+        )
+        delta_after = self._max_abs([stabilized[i] - self._joint_estimate[i] for i in range(len(self._joint_estimate))])
+        tracking_err = [stabilized[i] - joint_pos[i] for i in range(min(len(stabilized), len(joint_pos)))]
+        tracking_stats = compute_stats(tracking_err)
+        tracking_rms = tracking_stats.get("rms")
+        base_roll = float(base_pose.get("roll", 0.0))
+        base_pitch = float(base_pose.get("pitch", 0.0))
+        base_yaw = float(base_pose.get("yaw", 0.0))
+        base_height = float(base_pose.get("z", 0.0))
+        fall_flag = bool(
+            (abs(base_roll) > 0.9)
+            or (abs(base_pitch) > 0.9)
+            or (base_height > 0.0 and base_height < 0.22)
+        )
+        slip_flag = bool(self._is_locomotion_command_active() and req_max_abs_vel < 1e-3 and req_max_abs_pos > 1e-4)
+
+        log_full = (step_idx % self._telemetry_full_dump_every) == 0
+        record: Dict[str, Any] = {
+            "event": "direct_policy_exchange",
+            "step_idx": step_idx,
+            "vx": vx,
+            "vy": vy,
+            "yaw_rate": yaw_rate,
+            "style": style,
+            "req_is_all_zero_pos": req_is_all_zero_pos,
+            "req_is_all_zero_vel": req_is_all_zero_vel,
+            "req_max_abs_pos": req_max_abs_pos,
+            "req_max_abs_vel": req_max_abs_vel,
+            "resp_max_abs_action": resp_max_abs_action,
+            "raw_max_abs_action": raw_max_abs_action,
+            "target_max_abs": target_max_abs,
+            "delta_max_abs_before_clip": delta_before,
+            "delta_max_abs_after_clip": delta_after,
+            "tracking_err_max_abs": self._max_abs(tracking_err),
+            "tracking_err_rms": float(tracking_rms) if tracking_rms is not None else None,
+            "base_roll": base_roll,
+            "base_pitch": base_pitch,
+            "base_yaw": base_yaw,
+            "base_height": base_height,
+            "fall_flag": fall_flag,
+            "slip_flag": slip_flag,
+            "server_latency_ms": infer_latency_ms,
+            "policy_infer_latency_ms": infer_latency_ms,
+            "policy_obs_dim": obs_dim,
+            "policy_obs_used_dim": obs_used_dim,
+            "policy_raw_action_dim": raw_action_dim,
+            "applied_dof_count": len(self.sonic_joint_names_29),
+            "applied_target_len": len(stabilized),
+            "feedback_source": feedback_meta.get("feedback_source"),
+            "feedback_missing": bool(feedback_meta.get("feedback_missing", False)),
+        }
+        if log_full or not self._logged_body29_names:
+            record["req_joint_pos_29"] = list(joint_pos)
+            record["req_joint_vel_29"] = list(joint_vel)
+            record["target_joint_pos_29"] = list(target_joint_pos_29)
+            if raw_action_29:
+                record["raw_action_29"] = list(raw_action_29)
+            record["tracking_err_29"] = list(tracking_err)
+        if not self._logged_body29_names:
+            record["applied_body29_dof_names"] = list(self.sonic_joint_names_29)
+            self._logged_body29_names = True
+        self._telemetry_log(record)
+
+        self._last_sonic_call_meta = {
+            "step_idx": step_idx,
+            "server_latency_ms": infer_latency_ms,
+            "resp_max_abs_action": resp_max_abs_action,
+            "raw_max_abs_action": raw_max_abs_action,
+            "target_max_abs": target_max_abs,
+            "delta_max_abs_before_clip": delta_before,
+            "delta_max_abs_after_clip": delta_after,
+            "policy_obs_dim": obs_dim,
+            "policy_obs_used_dim": obs_used_dim,
+            "policy_raw_action_dim": raw_action_dim,
+        }
+        if target_max_abs > 2.5:
+            ref_perf = now_perf()
+            dump_path = self._dump_recent_abort_window("direct_policy_abort", ref_perf)
+            msg = (
+                f"{self._locomotion_abort_token}: target_max_abs {target_max_abs:.3f} rad exceeded 2.5 rad safety gate."
+            )
+            if dump_path is not None:
+                msg = f"{msg} Recent telemetry dump: {dump_path}"
+            self._telemetry_log(
+                {
+                    "event": "direct_policy_abort",
+                    "step_idx": step_idx,
+                    "resp_max_abs_action": resp_max_abs_action,
+                    "raw_max_abs_action": raw_max_abs_action,
+                    "target_max_abs": target_max_abs,
+                    "server_latency_ms": infer_latency_ms,
+                    "actions_at_abort": list(target_joint_pos_29),
+                    "raw_action_at_abort": list(raw_action_29) if raw_action_29 else None,
+                    "error": msg,
+                    "abort_dump": str(dump_path) if dump_path is not None else None,
+                }
+            )
+            raise RuntimeError(msg)
+        return stabilized
 
     def _request_sonic(self) -> List[float]:
         if self._sonic_client is None:

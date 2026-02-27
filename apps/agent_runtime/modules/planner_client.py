@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
@@ -11,10 +12,13 @@ from typing import Dict
 from .contracts import Plan, plan_from_json
 
 try:
-    from services.planner_server.schema import generate_stub_plan, validate_plan_payload
+    from apps.services.planner_server.schema import generate_stub_plan, validate_plan_payload
 except Exception:  # pragma: no cover - optional import path
-    generate_stub_plan = None
-    validate_plan_payload = None
+    try:
+        from services.planner_server.schema import generate_stub_plan, validate_plan_payload
+    except Exception:  # pragma: no cover - optional import path
+        generate_stub_plan = None
+        validate_plan_payload = None
 
 
 class PlannerClient:
@@ -83,6 +87,23 @@ class PlannerClient:
             payload = generate_stub_plan(user_command, world_state)
             return plan_from_json(payload)
 
+        text = user_command.strip().lower()
+        if any(token in text for token in ["look_at", "look at", "track", "gaze"]):
+            stop_look = any(token in text for token in ["stop look", "stop tracking", "look_at stop"])
+            target = "apple"
+            m = re.search(r"object\s*=\s*['\"]?([a-z0-9_\-]+)", text)
+            if m:
+                target = m.group(1)
+            else:
+                m = re.search(r"look[_\s]*at\s+([a-z0-9_\-]+)", text)
+                if m:
+                    target = m.group(1)
+            payload = {
+                "plan": [{"skill": "look_at", "args": {"object": "" if stop_look else target}}],
+                "notes": "local fallback look_at plan",
+            }
+            return plan_from_json(payload)
+
         object_name = "apple"
         payload = {
             "plan": [
@@ -95,4 +116,3 @@ class PlannerClient:
             "notes": "local fallback plan",
         }
         return plan_from_json(payload)
-

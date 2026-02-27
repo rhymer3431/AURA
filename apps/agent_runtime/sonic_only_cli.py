@@ -173,7 +173,7 @@ async def run(args: argparse.Namespace) -> None:
     _configure_logging(log_level)
 
     manip_cfg = dict(cfg.get("manipulation", {}))
-    # Force SONIC-only mode (never route to GR00T action path).
+    # Force locomotion-only mode (never route to GR00T action path).
     manip_cfg["backend"] = "mock"
     manip_cfg["mock_mode"] = True
     manip_cfg["fallback_to_mock"] = True
@@ -181,8 +181,8 @@ async def run(args: argparse.Namespace) -> None:
     manip = GrootManipulator(manip_cfg)
     try:
         await manip.warmup()
-        if not manip.sonic_enabled:
-            raise RuntimeError("SONIC backend is not enabled/available in config.")
+        if not bool(getattr(manip, "locomotion_enabled", False)):
+            raise RuntimeError("No locomotion backend is enabled (direct_policy/SONIC).")
         adapter = getattr(manip, "_action_adapter", None)
         adapter_backend = getattr(adapter, "backend", "")
         if adapter_backend != "ros2_topic":
@@ -191,7 +191,8 @@ async def run(args: argparse.Namespace) -> None:
                 "(manipulation.action_adapter.backend must be 'ros2_topic')."
             )
 
-        logging.info("SONIC-only CLI started. Type 'exit' to quit.")
+        backend_active = getattr(manip, "locomotion_backend_active", "unknown")
+        logging.info("Locomotion-only CLI started. backend=%s Type 'exit' to quit.", backend_active)
         logging.info("Examples: walk forward, run, turn left, go right, sneak, keyboard")
 
         async def _run_text_command(text: str) -> None:

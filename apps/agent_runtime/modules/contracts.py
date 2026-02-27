@@ -26,9 +26,17 @@ class Detection2D3D:
     class_name: str
     score: float
     bbox_xywh: Optional[Tuple[float, float, float, float]] = None
+    bbox_xyxy: Optional[Tuple[float, float, float, float]] = None
+    bbox_cxcy: Optional[Tuple[float, float]] = None
+    image_size: Optional[Tuple[int, int]] = None
+    frame_id: str = ""
     mask: Optional[Any] = None
     position_in_map: Optional[Pose2D] = None
     timestamp: float = field(default_factory=lambda: time.time())
+
+    @property
+    def label(self) -> str:
+        return self.class_name
 
 
 @dataclass
@@ -105,4 +113,3 @@ def plan_from_json(payload: Dict[str, Any]) -> Plan:
             )
         )
     return Plan(skills=skills, notes=str(payload.get("notes", "")))
-

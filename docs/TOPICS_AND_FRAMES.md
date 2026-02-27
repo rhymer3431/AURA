@@ -29,11 +29,14 @@
 ## Agent internal contracts
 
 - `Detection2D3D`
-  - `{class_name, score, bbox/mask, position_in_map(optional), timestamp}`
+  - `{class_name, score, bbox_xywh, bbox_xyxy, bbox_cxcy, frame_id, image_size, position_in_map(optional), timestamp}`
 - `ObjectMemoryEntry`
   - `{object_id, class_name, map_pose, last_seen, confidence, importance}`
 - `Plan`
   - `list[SkillCall{name, args, success_criteria, retry_policy}]`
+  - includes `look_at` skill:
+    - required `args.object` (empty string means stop)
+    - optional `args.max_rate_hz`, `deadband_px`, `timeout_sec`, `smoothing`, `fallback_behavior`
 
 ## G1 action adapter topics (optional ROS2 output)
 
