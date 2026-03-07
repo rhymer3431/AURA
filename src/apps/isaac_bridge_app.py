@@ -165,7 +165,11 @@ def main(argv: list[str] | None = None) -> int:
         return run_live_bridge(args)
     if str(args.frame_source).lower() == "live":
         print(f"[ISAAC_BRIDGE] live bridge unavailable: {live_reason}")
+        print("[ISAAC_BRIDGE] use scripts/powershell/run_live_smoke_preflight.ps1 or run_live_smoke.ps1 for phase diagnostics.")
         return 1
+    if live_reason != "":
+        print(f"[ISAAC_BRIDGE] live bootstrap unavailable, falling back to synthetic path: {live_reason}")
+        print("[ISAAC_BRIDGE] use scripts/powershell/run_live_smoke_preflight.ps1 to diagnose the live bootstrap path.")
     return run_lightweight_bridge(args, force_synthetic=True, initial_notice=live_reason)
 
 

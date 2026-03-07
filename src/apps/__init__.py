@@ -12,6 +12,7 @@ _EXPORTS = {
     "parse_navdp_args": ("apps.legacy_http.navdp_server_app", "parse_args"),
     "isaac_bridge_main": ("apps.isaac_bridge_app", "main"),
     "isaac_bridge_editor_attach": ("apps.isaac_bridge_editor_app", "attach_current_stage"),
+    "live_smoke_main": ("apps.live_smoke_app", "main"),
     "local_stack_main": ("apps.local_stack_app", "main"),
     "memory_agent_main": ("apps.memory_agent_app", "main"),
 }

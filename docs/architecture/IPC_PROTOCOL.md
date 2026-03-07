@@ -89,6 +89,33 @@
   8. Bridge drains `ActionCommand`, executes `NAV_TO_POSE` / `NAV_TO_PLACE` / `LOCAL_SEARCH` / `LOOK_AT` / `STOP` locally, and publishes `ActionStatus` on telemetry
   9. `RuntimeNotice` and `CapabilityReport` remain on the control plane so late-connecting agents can still observe startup diagnostics
 
+## Live Smoke and IPC Parity
+- `apps.live_smoke_app` is not the normal multi-process runtime, but it reuses the same `FrameHeader`/`IsaacObservationBatch` shape through `apps.runtime_common.frame_sample_to_batch()`.
+- Smoke diagnostics are intentionally separate from the bridge runtime so that bootstrap failure can be observed without waiting for the full locomotion loop.
+- The smoke runner distinguishes:
+  - frame ingress succeeded but no detections
+  - detections produced
+  - memory update reached
+- This keeps live/synthetic parity at the batch interface even when the smoke process itself runs locally.
+
+## Live Smoke Diagnostics Artifacts
+- Phase tracker JSON:
+  - current phase
+  - per-phase status
+  - timeout budget
+  - failure phase
+  - launch mode and recommendations
+- Additional artifacts:
+  - CLI args
+  - enabled extensions
+  - D455 asset resolution report
+  - D455 mount report
+  - stage prim tree
+  - sensor init report
+  - first-frame report
+  - smoke metrics
+- On Windows, `run_live_smoke.ps1` monitors the diagnostics artifact and enforces per-phase timeouts instead of one opaque global timeout.
+
 ## Multi-Agent Notes
 - Multiple memory agents can connect to the same bridge over the control plane.
 - The bridge broadcasts retained control-plane messages to each registered agent.
@@ -96,6 +123,6 @@
 - Command routing from multiple agents back to the bridge is still shared-topic broadcast/merge, not targeted per agent identity.
 
 ## Current Limits
-- Current topology is single bridge plus single memory agent. Multi-agent fan-out is not wired yet.
 - In shared-memory mode, both processes must agree on shm name, slot size, and capacity.
 - Telemetry from the memory agent still reuses the control plane when needed; the primary telemetry direction remains bridge -> agent.
+- Multi-agent fan-out exists for retained control replay, but command arbitration is still shared-topic merge rather than targeted per-agent routing.

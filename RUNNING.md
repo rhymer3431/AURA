@@ -45,6 +45,61 @@ Process 2:
 - If ZMQ or shared memory is unavailable, use the in-process loopback mode.
 - In live mode the bridge process owns `SimulationApp` directly and runs the low-level `PlanningSession + TrajectoryTracker` executor locally.
 
+## Live Smoke Preflight
+```powershell
+.\scripts\powershell\run_live_smoke_preflight.ps1
+.\scripts\powershell\run_live_smoke_preflight.ps1 -ClearCache -Warmup
+```
+- Uses Isaac's bundled `python.bat`, not system Python.
+- Verifies:
+  - Isaac root and `python.bat`
+  - optional `clear_caches.bat` / `warmup.bat`
+  - Python-side live smoke diagnostics path
+  - D455 asset target resolution for `/Isaac/Sensors/Intel/RealSense/rsd455.usd`
+
+## Live Smoke
+```powershell
+.\scripts\powershell\run_live_smoke.ps1 --headless
+.\scripts\powershell\run_live_smoke.ps1 --headless --app-bootstrap-timeout-sec 120 --first-frame-timeout-sec 30
+```
+- This is the preferred command for diagnosing live bootstrap issues.
+- It writes:
+  - diagnostics JSON under `tmp/process_logs/live_smoke/`
+  - prim tree, extension list, D455 mount report, sensor init report, and first-frame report under the same artifact root
+  - stdout/stderr logs under `logs/`
+- The launcher watches the diagnostics file and kills the process when the current phase exceeds its own timeout budget.
+- Phase order:
+  - `process_start`
+  - `isaac_python_env_resolved`
+  - `simulation_app_created`
+  - `required_extensions_ready`
+  - `stage_ready`
+  - `assets_root_resolved`
+  - `d455_asset_resolved`
+  - `d455_prim_spawned`
+  - `d455_depth_sensor_initialized`
+  - `render_products_ready`
+  - `first_rgb_frame_ready`
+  - `first_depth_frame_ready`
+  - `first_pose_ready`
+  - `observation_batch_processed`
+  - `memory_updated`
+  - `smoke_pass`
+
+## Live Smoke Attach / Extension
+```powershell
+.\scripts\powershell\run_live_smoke_attach.ps1
+.\scripts\powershell\run_live_smoke_attach.ps1 -ExtensionMode
+```
+- Use this when standalone headless bootstrap is the unstable part.
+- `full_app_attach`
+  - expects a running Isaac Sim Full App / Kit stage
+  - reuses that stage instead of creating `SimulationApp`
+- `extension_mode`
+  - same assumption as attach
+  - intended for hot-reload / in-editor debugging
+- If no active stage exists, the diagnostics artifact will fail early and recommend a better launch mode.
+
 ## Frame Source Modes
 ```powershell
 .\scripts\powershell\run_isaac_bridge.ps1 --frame-source auto
@@ -61,6 +116,24 @@ Process 2:
   - startup exits non-zero when Isaac bootstrap or live capture is unavailable
 - `synthetic`
   - deterministic smoke-test path
+
+## D455 Smoke Expectations
+- Asset path:
+  - `/Isaac/Sensors/Intel/RealSense/rsd455.usd`
+- Default mounted prim:
+  - `/World/realsense_d455`
+- Successful live smoke means:
+  - Isaac app bootstrap succeeded
+  - D455 asset resolved
+  - D455 prim mounted
+  - sensor initialized
+  - at least one RGB/depth frame arrived
+  - pose or sim time metadata arrived
+  - one observation batch reached the local perception/memory ingress path
+- Diagnostics separate:
+  - `frame received but no detections`
+  - `detections produced`
+  - `memory updated`
 
 ## Editor Attach
 ```python
@@ -112,5 +185,6 @@ session.close()
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.
 - Control-plane fan-out is broadcast-based; targeted per-agent routing is still not implemented.
 - `apps.memory_agent_app` has a persistent serve mode, but it is still single-process and not supervised by an external service manager.
-- Actual live smoke still depends on a working local Isaac Sim installation and valid camera prims in the current stage.
+- Attach/extension live smoke still requires code to execute inside a running Isaac/Kit process with an active stage.
+- Standalone headless live smoke can still fail before `SimulationApp` returns; when that happens, use the diagnostics JSON, wrapper summary, and logs to identify the last running phase.
 - System2/VLM is optional and not required for the fast path.

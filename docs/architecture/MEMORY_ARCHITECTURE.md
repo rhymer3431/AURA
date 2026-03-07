@@ -33,6 +33,21 @@
 5. `TemporalMemoryStore` records speaker bindings, re-id candidates, follow loss, and object history for recovery and critic use.
 6. `TaskOrchestrator` queries `MemoryQueryEngine` and `WorkingMemory` when a remembered-object task arrives.
 
+## Live Smoke Ingress Checks
+- Dedicated live smoke diagnostics do not try to prove full task quality.
+- They instrument the minimum memory-facing path:
+  1. D455 asset resolution and mount
+  2. live RGB/depth frame ingress
+  3. `IsaacObservationBatch` reconstruction parity with the normal bridge path
+  4. `Supervisor.process_frame(...)`
+  5. `MemoryService.observe_objects(...)`
+  6. optional `MemoryService.update_from_observation(...)` when at least one observation exists
+- This makes it explicit whether a failure is:
+  - bootstrap-only
+  - sensor-only
+  - perception produced no detections
+  - memory update path never ran
+
 ## Behavior Scenarios
 - Attend caller
   - `speaker_event` enters temporal memory.
@@ -75,3 +90,4 @@
 - TensorRT runtime execution still depends on a matching engine/runtime/CUDA environment; serialization mismatch continues to fall back by design.
 - Re-ID is lightweight heuristic scoring, not a full learned re-id backend.
 - Semantic consolidation is template/rule based; no LLM narrative summarization is in the fast path.
+- Live smoke can now prove frame ingress separately from memory update, but a no-detection scene can still leave `memory_updated` incomplete even when sensor ingress is healthy.

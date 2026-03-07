@@ -94,6 +94,32 @@ class D455SensorAdapter:
     def runtime_camera_mode(self) -> bool:
         return bool(self._runtime_camera_mode)
 
+    def diagnostics_snapshot(self) -> dict[str, Any]:
+        depth_sensor_paths = []
+        render_product_paths = []
+        child_prim_paths = []
+        camera_prim_paths = [path for path in (self.rgb_prim_path, self.depth_prim_path) if isinstance(path, str) and path != ""]
+        if self._stage is not None:
+            for path in camera_prim_paths:
+                base_path = path.rsplit("/", maxsplit=1)[0]
+                child_prim_paths.extend(self._child_paths_under(base_path))
+            depth_sensor_paths = [
+                path for path in child_prim_paths if any(token in path.lower() for token in ("depth", "sensor", "realsense"))
+            ]
+        render_product_paths.extend(self._render_product_paths(self._rgb_camera))
+        render_product_paths.extend(self._render_product_paths(self._depth_camera))
+        return {
+            "camera_prim_path": str(self.rgb_prim_path or ""),
+            "depth_camera_prim_path": str(self.depth_prim_path or ""),
+            "runtime_mount": bool(self._runtime_camera_mode),
+            "fallback_reason": str(self._fallback_reason or ""),
+            "capture_report": dict(self.last_capture_meta),
+            "camera_prim_paths": camera_prim_paths,
+            "depth_sensor_paths": sorted(set(depth_sensor_paths)),
+            "render_product_paths": sorted(set(render_product_paths)),
+            "child_prim_paths": sorted(set(child_prim_paths)),
+        }
+
     def _finalize_capture_meta(
         self,
         rgb: np.ndarray | None,
@@ -697,6 +723,50 @@ class D455SensorAdapter:
             except Exception:  # noqa: BLE001
                 continue
         return self._default_intrinsic(width, height)
+
+    @staticmethod
+    def _render_product_paths(camera) -> list[str]:  # noqa: ANN001
+        if camera is None:
+            return []
+        results: list[str] = []
+        for attr_name in ("render_product_path", "_render_product_path"):
+            value = getattr(camera, attr_name, "")
+            if isinstance(value, str) and value != "":
+                results.append(value)
+        for method_name in ("get_render_product_path", "get_render_product_paths"):
+            method = getattr(camera, method_name, None)
+            if method is None:
+                continue
+            try:
+                value = method()
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(value, str) and value != "":
+                results.append(value)
+            elif isinstance(value, (list, tuple)):
+                results.extend(str(item) for item in value if isinstance(item, str) and item != "")
+        return results
+
+    def _child_paths_under(self, prim_path: str) -> list[str]:
+        if self._stage is None:
+            return []
+        prefix = str(prim_path).rstrip("/")
+        results: list[str] = []
+        try:
+            iterator = self._stage.Traverse()
+        except Exception:  # noqa: BLE001
+            return results
+        for prim in iterator:
+            try:
+                if not prim.IsValid():
+                    continue
+                path = str(prim.GetPath())
+            except Exception:  # noqa: BLE001
+                continue
+            if path == prefix or not path.startswith(f"{prefix}/"):
+                continue
+            results.append(path)
+        return results
 
 
 __all__ = ["D455SensorAdapter", "D455SensorAdapterConfig"]

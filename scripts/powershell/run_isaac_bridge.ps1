@@ -12,8 +12,22 @@ $DefaultIsaacPython = "C:\isaac-sim\python.bat"
 $IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
 $PythonExe = if ($env:PYTHON_EXE) { $env:PYTHON_EXE } else { "python" }
 $EntryModule = "apps.isaac_bridge_app"
+$LiveRequested = $false
+
+for ($i = 0; $i -lt $args.Count; $i++) {
+    if ($args[$i] -eq "--frame-source" -and ($i + 1) -lt $args.Count -and $args[$i + 1] -eq "live") {
+        $LiveRequested = $true
+        break
+    }
+}
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
+    if ($LiveRequested) {
+        Write-Host "[Isaac Bridge] Isaac python launcher not found: `"$IsaacPython`""
+        Write-Host "[Isaac Bridge] live bridge requires Isaac standalone Python."
+        Write-Host "[Isaac Bridge] Run .\scripts\powershell\run_live_smoke_preflight.ps1 first to validate the install."
+        exit 1
+    }
     Write-Host "[Isaac Bridge] Isaac python launcher not found: `"$IsaacPython`""
     Write-Host "[Isaac Bridge] Falling back to `"$PythonExe`" for synthetic or auto-fallback runs."
     $IsaacPython = $PythonExe
