@@ -1,0 +1,80 @@
+{
+  "run_g1_pointgoal.ps1": {
+    "env_vars": [
+      "G1_POINTGOAL_DUAL_SERVER_URL",
+      "G1_POINTGOAL_FORCE_RUNTIME_CAMERA",
+      "G1_POINTGOAL_GOAL_X",
+      "G1_POINTGOAL_GOAL_Y",
+      "G1_POINTGOAL_INSTRUCTION",
+      "G1_POINTGOAL_PLANNER_MODE",
+      "G1_POINTGOAL_POLICY",
+      "G1_POINTGOAL_ROBOT_USD",
+      "G1_POINTGOAL_SCENE_USD",
+      "G1_POINTGOAL_SERVER_URL",
+      "ISAAC_SIM_PYTHON",
+      "PYTHONPATH"
+    ],
+    "line_count": 158
+  },
+  "run_g1_pointgoal_kujiale_0004.ps1": {
+    "env_vars": [
+      "G1_POINTGOAL_DUAL_SERVER_URL",
+      "G1_POINTGOAL_FORCE_RUNTIME_CAMERA",
+      "G1_POINTGOAL_GOAL_X",
+      "G1_POINTGOAL_GOAL_Y",
+      "G1_POINTGOAL_HEADLESS",
+      "G1_POINTGOAL_INSTRUCTION",
+      "G1_POINTGOAL_PLANNER_MODE",
+      "G1_POINTGOAL_SCENE_USD",
+      "G1_POINTGOAL_SERVER_URL",
+      "ISAAC_SIM_PYTHON"
+    ],
+    "line_count": 113
+  },
+  "run_navdp_server.ps1": {
+    "env_vars": [
+      "NAVDP_CHECKPOINT",
+      "NAVDP_CONDA_EXE",
+      "NAVDP_PORT",
+      "PYTHONPATH"
+    ],
+    "line_count": 69
+  },
+  "run_vlm_dual_server.ps1": {
+    "env_vars": [
+      "DUAL_CONDA_EXE",
+      "DUAL_NAVDP_URL",
+      "DUAL_S2_BACKOFF_MAX_SEC",
+      "DUAL_S2_MODE",
+      "DUAL_SERVER_HOST",
+      "DUAL_SERVER_PORT",
+      "DUAL_STARTUP_TIMEOUT_SEC",
+      "DUAL_VLM_TIMEOUT_SEC",
+      "DUAL_VLM_URL",
+      "PYTHONPATH"
+    ],
+    "line_count": 155
+  },
+  "run_internvla_system2.ps1": {
+    "env_vars": [
+      "INTERNVLA_CTX_SIZE",
+      "INTERNVLA_GPU_LAYERS",
+      "INTERNVLA_HF_MMPROJ_FILE",
+      "INTERNVLA_HF_REPO",
+      "INTERNVLA_HOST",
+      "INTERNVLA_MMPROJ_PATH",
+      "INTERNVLA_MODEL_PATH",
+      "INTERNVLA_PORT",
+      "LLAMA_SERVER_EXE",
+      "PATH"
+    ],
+    "line_count": 214
+  },
+  "run_sim_g1_interior_onnx_windows.bat": {
+    "env_vars": [
+      "G1_POINTGOAL_SCENE_USD",
+      "ISAAC_SIM_PYTHON"
+    ],
+    "line_count": 72
+  }
+}

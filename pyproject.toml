@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "isaac-aura"
+version = "0.0.0"
+description = "Function-oriented Isaac Aura runtime and service packages."
+requires-python = ">=3.10"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = [
+    "adapters",
+    "adapters.*",
+    "apps",
+    "apps.*",
+    "common",
+    "common.*",
+    "control",
+    "control.*",
+    "inference",
+    "inference.*",
+    "locomotion",
+    "locomotion.*",
+    "runtime",
+    "runtime.*",
+    "services",
+    "services.*",
+    "vendor",
+    "vendor.*",
+]
+
+[tool.setuptools.package-data]
+locomotion = ["g1/*.usd"]
+vendor = ["depth_anything/DEPTH_ANYTHING_LICENSE"]

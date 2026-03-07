@@ -1,0 +1,530 @@
+[
+  {
+    "option_strings": [
+      "--headless"
+    ],
+    "dest": "headless",
+    "default": false,
+    "required": false,
+    "nargs": 0,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--policy"
+    ],
+    "dest": "policy",
+    "default": null,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--robot_usd",
+      "--robot-usd",
+      "--usd-path"
+    ],
+    "dest": "robot_usd",
+    "default": null,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--scene_usd",
+      "--scene-usd"
+    ],
+    "dest": "scene_usd",
+    "default": null,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--env_url",
+      "--env-url"
+    ],
+    "dest": "env_url",
+    "default": "/Isaac/Environments/Simple_Warehouse/warehouse.usd",
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--scene_prim_path",
+      "--scene-prim-path"
+    ],
+    "dest": "scene_prim_path",
+    "default": "/World/Environment",
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--scene_translate",
+      "--scene-translate"
+    ],
+    "dest": "scene_translate",
+    "default": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "required": false,
+    "nargs": 3,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--robot_prim_path",
+      "--robot-prim-path"
+    ],
+    "dest": "robot_prim_path",
+    "default": "/World/G1",
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--robot_position",
+      "--robot-position"
+    ],
+    "dest": "robot_position",
+    "default": [
+      0.0,
+      0.0,
+      0.8
+    ],
+    "required": false,
+    "nargs": 3,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--cmd_vel_timeout",
+      "--cmd-vel-timeout"
+    ],
+    "dest": "cmd_vel_timeout",
+    "default": 0.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--onnx_device",
+      "--onnx-device"
+    ],
+    "dest": "onnx_device",
+    "default": "auto",
+    "required": false,
+    "nargs": null,
+    "choices": [
+      "auto",
+      "cuda",
+      "cpu"
+    ]
+  },
+  {
+    "option_strings": [
+      "--physics_dt",
+      "--physics-dt"
+    ],
+    "dest": "physics_dt",
+    "default": 0.005,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--decimation"
+    ],
+    "dest": "decimation",
+    "default": 4,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--rendering_dt",
+      "--rendering-dt"
+    ],
+    "dest": "rendering_dt",
+    "default": 0.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--max_steps",
+      "--max-steps"
+    ],
+    "dest": "max_steps",
+    "default": 0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--server-url"
+    ],
+    "dest": "server_url",
+    "default": "http://127.0.0.1:8888",
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--planner-mode"
+    ],
+    "dest": "planner_mode",
+    "default": "pointgoal",
+    "required": false,
+    "nargs": null,
+    "choices": [
+      "pointgoal",
+      "dual"
+    ]
+  },
+  {
+    "option_strings": [
+      "--dual-server-url"
+    ],
+    "dest": "dual_server_url",
+    "default": "http://127.0.0.1:8890",
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--instruction"
+    ],
+    "dest": "instruction",
+    "default": "Navigate safely to the target and stop when complete.",
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--goal-x"
+    ],
+    "dest": "goal_x",
+    "default": null,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--goal-y"
+    ],
+    "dest": "goal_y",
+    "default": null,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--goal-tolerance-m"
+    ],
+    "dest": "goal_tolerance_m",
+    "default": 0.4,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--plan-interval-frames"
+    ],
+    "dest": "plan_interval_frames",
+    "default": 3,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--dual-request-gap-frames"
+    ],
+    "dest": "dual_request_gap_frames",
+    "default": 3,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--safety-timeout-sec"
+    ],
+    "dest": "safety_timeout_sec",
+    "default": 20.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--s1-period-sec"
+    ],
+    "dest": "s1_period_sec",
+    "default": 0.2,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--s2-period-sec"
+    ],
+    "dest": "s2_period_sec",
+    "default": 1.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--goal-ttl-sec"
+    ],
+    "dest": "goal_ttl_sec",
+    "default": 3.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--traj-ttl-sec"
+    ],
+    "dest": "traj_ttl_sec",
+    "default": 1.5,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--traj-max-stale-sec"
+    ],
+    "dest": "traj_max_stale_sec",
+    "default": 4.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--strict-d455"
+    ],
+    "dest": "strict_d455",
+    "default": false,
+    "required": false,
+    "nargs": 0,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--force-runtime-camera"
+    ],
+    "dest": "force_runtime_camera",
+    "default": false,
+    "required": false,
+    "nargs": 0,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--use-trajectory-z"
+    ],
+    "dest": "use_trajectory_z",
+    "default": false,
+    "required": false,
+    "nargs": 0,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--image-width"
+    ],
+    "dest": "image_width",
+    "default": 640,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--image-height"
+    ],
+    "dest": "image_height",
+    "default": 640,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--depth-max-m"
+    ],
+    "dest": "depth_max_m",
+    "default": 5.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--timeout-sec"
+    ],
+    "dest": "timeout_sec",
+    "default": 5.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--reset-timeout-sec"
+    ],
+    "dest": "reset_timeout_sec",
+    "default": 15.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--retry"
+    ],
+    "dest": "retry",
+    "default": 1,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--stop-threshold"
+    ],
+    "dest": "stop_threshold",
+    "default": -3.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--startup-updates"
+    ],
+    "dest": "startup_updates",
+    "default": 20,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--log-interval"
+    ],
+    "dest": "log_interval",
+    "default": 30,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--cmd-max-vx"
+    ],
+    "dest": "cmd_max_vx",
+    "default": 0.5,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--cmd-max-vy"
+    ],
+    "dest": "cmd_max_vy",
+    "default": 0.3,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--cmd-max-wz"
+    ],
+    "dest": "cmd_max_wz",
+    "default": 0.8,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--lookahead-distance-m"
+    ],
+    "dest": "lookahead_distance_m",
+    "default": 0.6,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--heading-slowdown-rad"
+    ],
+    "dest": "heading_slowdown_rad",
+    "default": 0.6,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--traj-stale-timeout-sec"
+    ],
+    "dest": "traj_stale_timeout_sec",
+    "default": 1.5,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--cmd-accel-limit"
+    ],
+    "dest": "cmd_accel_limit",
+    "default": 1.0,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  },
+  {
+    "option_strings": [
+      "--cmd-yaw-accel-limit"
+    ],
+    "dest": "cmd_yaw_accel_limit",
+    "default": 1.5,
+    "required": false,
+    "nargs": null,
+    "choices": null
+  }
+]

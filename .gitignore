@@ -1,0 +1,16 @@
+.pytest_cache/
+__pycache__/
+*.py[cod]
+
+logs/
+tmp/
+
+artifacts/models/
+
+llama.cpp/*.dll
+llama.cpp/*.exe
+llama.cpp/build/
+
+.venv/
+venv/
+env/

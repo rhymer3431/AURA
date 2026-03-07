@@ -1,0 +1,25 @@
+# NavDP G1 PointGoal
+
+## Entry Surfaces
+- Canonical launcher: `.\scripts\powershell\run_g1_pointgoal.ps1`
+- Compatibility launcher: `.\run_g1_pointgoal.ps1`
+- Compatibility Python entrypoint: `python -m navdp.g1_bridge`
+- Compatibility ONNX play shim: `play_g1_keyboard_onnx.py`
+
+## Runtime Flow
+- Compatibility flow: `navdp.g1_bridge facade -> runtime.g1_bridge -> locomotion.runtime -> runtime.planning -> control/adapters`
+- Canonical robot asset path: `src/locomotion/g1/g1_d455.usd`
+- Compatibility fallback robot asset path: `g1_play/g1/g1_d455.usd`
+
+## Common Commands
+```powershell
+.\run_navdp_server.ps1 --port 8888 --checkpoint .\artifacts\models\navdp-weights.ckpt
+.\run_vlm_dual_server.ps1 --port 8890 --navdp-url http://127.0.0.1:8888 --vlm-url http://127.0.0.1:8080 --s2-mode auto
+.\run_g1_pointgoal.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0 --server-url http://127.0.0.1:8888
+.\run_g1_pointgoal.ps1 --planner-mode dual --dual-server-url http://127.0.0.1:8890 --server-url http://127.0.0.1:8888 --instruction "Go to the destination safely and stop when reached."
+```
+
+## Notes
+- The bridge runtime is now canonical under `src/runtime`.
+- Locomotion code and G1 assets are canonical under `src/locomotion`.
+- Planner, adapter, and tracking logic live directly under the functional packages in `src/`.
