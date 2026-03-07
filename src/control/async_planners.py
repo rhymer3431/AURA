@@ -40,6 +40,27 @@ def _summarize_dual_response_error(
     return "dual_step returned no active trajectory (" + ", ".join(details) + ")"
 
 
+def _is_transient_dual_wait(
+    *,
+    goal_version: int,
+    traj_version: int,
+    debug: dict[str, Any] | None,
+) -> bool:
+    if not isinstance(debug, dict):
+        debug = {}
+    called_s2 = bool(debug.get("called_s2", False))
+    called_s1 = bool(debug.get("called_s1", False))
+    s2_inflight = bool(debug.get("s2_inflight", False))
+    s1_inflight = bool(debug.get("s1_inflight", False))
+    force_s2_pending = bool(debug.get("force_s2_pending", False))
+
+    if int(goal_version) < 0:
+        return bool(called_s2 or s2_inflight or force_s2_pending)
+    if int(traj_version) < 0:
+        return bool(called_s1 or s1_inflight or called_s2 or s2_inflight)
+    return False
+
+
 @dataclass
 class PlannerInput:
     frame_id: int
@@ -455,14 +476,25 @@ class AsyncDualPlanner:
                 if trajectory_world.ndim != 2 or trajectory_world.shape[1] < 2:
                     raise ValueError(f"dual_step returned invalid trajectory shape: {trajectory_world.shape}")
                 if not bool(response.stop) and trajectory_world.shape[0] == 0:
-                    raise RuntimeError(
-                        _summarize_dual_response_error(
-                            goal_version=int(response.goal_version),
-                            traj_version=int(response.traj_version),
-                            stale_sec=float(response.stale_sec),
-                            debug=dict(response.debug) if isinstance(response.debug, dict) else None,
-                        )
+                    wait_message = _summarize_dual_response_error(
+                        goal_version=int(response.goal_version),
+                        traj_version=int(response.traj_version),
+                        stale_sec=float(response.stale_sec),
+                        debug=dict(response.debug) if isinstance(response.debug, dict) else None,
                     )
+                    if _is_transient_dual_wait(
+                        goal_version=int(response.goal_version),
+                        traj_version=int(response.traj_version),
+                        debug=dict(response.debug) if isinstance(response.debug, dict) else None,
+                    ):
+                        latency_ms = (time.perf_counter() - start_time) * 1000.0
+                        with self._lock:
+                            if generation != self._generation:
+                                continue
+                            self._last_error = wait_message
+                            self._last_latency_ms = float(latency_ms)
+                        continue
+                    raise RuntimeError(wait_message)
                 latency_ms = (time.perf_counter() - start_time) * 1000.0
                 with self._lock:
                     if generation != self._generation:
