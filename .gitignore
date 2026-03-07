@@ -14,3 +14,4 @@ llama.cpp/build/
 .venv/
 venv/
 env/
+agents.md
