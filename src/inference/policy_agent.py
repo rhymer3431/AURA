@@ -1,7 +1,7 @@
-import cv2
 import numpy as np
 import torch
 
+from common.cv2_compat import cv2
 from .policy_network import NavDP_Policy
 
 class NavDP_Agent:

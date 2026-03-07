@@ -4,10 +4,10 @@ import json
 import time
 from typing import Any
 
-import cv2
 import numpy as np
 from PIL import Image
 
+from common.cv2_compat import cv2
 from inference.policy_agent import NavDP_Agent
 
 

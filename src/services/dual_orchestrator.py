@@ -9,10 +9,10 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-import cv2
 import numpy as np
 import requests
 
+from common.cv2_compat import cv2
 from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world
 
 S2_JSON_SCHEMA: dict[str, Any] = {

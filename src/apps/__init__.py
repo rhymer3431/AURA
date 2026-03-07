@@ -4,12 +4,15 @@ from importlib import import_module
 
 
 _EXPORTS = {
-    "create_dual_server_app": ("apps.dual_server_app", "create_app"),
-    "create_navdp_server_app": ("apps.navdp_server_app", "create_app"),
-    "dual_server_main": ("apps.dual_server_app", "main"),
-    "navdp_server_main": ("apps.navdp_server_app", "main"),
-    "parse_dual_args": ("apps.dual_server_app", "parse_args"),
-    "parse_navdp_args": ("apps.navdp_server_app", "parse_args"),
+    "create_dual_server_app": ("apps.legacy_http.dual_server_app", "create_app"),
+    "create_navdp_server_app": ("apps.legacy_http.navdp_server_app", "create_app"),
+    "dual_server_main": ("apps.legacy_http.dual_server_app", "main"),
+    "navdp_server_main": ("apps.legacy_http.navdp_server_app", "main"),
+    "parse_dual_args": ("apps.legacy_http.dual_server_app", "parse_args"),
+    "parse_navdp_args": ("apps.legacy_http.navdp_server_app", "parse_args"),
+    "isaac_bridge_main": ("apps.isaac_bridge_app", "main"),
+    "local_stack_main": ("apps.local_stack_app", "main"),
+    "memory_agent_main": ("apps.memory_agent_app", "main"),
 }
 
 __all__ = list(_EXPORTS)
