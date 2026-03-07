@@ -14,6 +14,7 @@ class NavDPCommandSource:
         self.args = args
         self.quit_requested = False
         self.exit_code = 0
+        self.shutdown_reason = ""
 
         self._controller = None
         self._planner = PlannerSession(args)
@@ -33,6 +34,7 @@ class NavDPCommandSource:
         self._last_applied_plan_version = -1
         self._pending_exit_code: int | None = None
         self._pending_exit_frames = 0
+        self._pending_exit_reason = ""
 
     def initialize(self, simulation_app, stage, controller) -> None:
         self._controller = controller
@@ -85,14 +87,28 @@ class NavDPCommandSource:
         self._command = tracker_result.command
 
         if reached_goal:
-            self._arm_exit(0)
+            if self._planner.mode == "pointgoal":
+                self._arm_exit(0, f"goal reached at step={frame_idx} dist={goal_distance_m:.3f}m")
+            else:
+                self._arm_exit(
+                    0,
+                    f"dual stop signaled at step={frame_idx} goal_v={update.goal_version} traj_v={update.traj_version}",
+                )
         elif safety_timeout:
-            self._arm_exit(1)
+            self._arm_exit(
+                1,
+                f"safety timeout at step={frame_idx} no_response_sec={no_response_sec:.2f} "
+                f"limit={float(self.args.safety_timeout_sec):.2f}",
+            )
 
         if self._pending_exit_code is not None:
             if self._pending_exit_frames <= 0:
+                prefix = "[G1_POINTGOAL]" if self._planner.mode == "pointgoal" else "[G1_DUAL]"
+                reason = self._pending_exit_reason if self._pending_exit_reason != "" else "quit requested"
+                print(f"{prefix} shutdown reason: {reason}")
                 self.quit_requested = True
                 self.exit_code = int(self._pending_exit_code)
+                self.shutdown_reason = reason
             else:
                 self._pending_exit_frames -= 1
 
@@ -105,9 +121,10 @@ class NavDPCommandSource:
     def shutdown(self) -> None:
         self._planner.shutdown()
 
-    def _arm_exit(self, exit_code: int) -> None:
+    def _arm_exit(self, exit_code: int, reason: str) -> None:
         if self._pending_exit_code is None:
             self._pending_exit_code = int(exit_code)
+            self._pending_exit_reason = str(reason)
             self._pending_exit_frames = 1
 
     def _log_step(self, frame_idx: int, update: TrajectoryUpdate, command: np.ndarray, goal_distance_m: float) -> None:

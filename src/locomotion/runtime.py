@@ -90,6 +90,8 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
     if command_source is None:
         command_source = ConsoleCmdVelController(timeout=args.cmd_vel_timeout)
 
+    shutdown_reason = ""
+
     try:
         world = World(stage_units_in_meters=1.0, physics_dt=args.physics_dt, rendering_dt=rendering_dt)
         spawn_environment(env_reference, args.scene_prim_path, tuple(args.scene_translate))
@@ -120,7 +122,16 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
             if world.is_stopped():
                 state["reset_needed"] = True
             if args.max_steps > 0 and state["step"] >= args.max_steps:
+                shutdown_reason = f"max_steps reached: step={state['step']} limit={args.max_steps}"
                 break
+        if shutdown_reason == "":
+            if getattr(command_source, "quit_requested", False):
+                shutdown_reason = str(getattr(command_source, "shutdown_reason", "")).strip() or "command source requested exit"
+            elif not simulation_app.is_running():
+                shutdown_reason = "simulation app is no longer running"
+            else:
+                shutdown_reason = "runtime loop exited"
+        print(f"[INFO] Shutdown reason: {shutdown_reason}")
     finally:
         command_source.shutdown()
 
