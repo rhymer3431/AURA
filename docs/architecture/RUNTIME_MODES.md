@@ -9,6 +9,9 @@
   - detector -> memory -> orchestrator -> command flow in one process
 - Default transport:
   - `InprocBus`
+- Default frame source:
+  - `--frame-source auto`
+  - tries live Isaac input first, then falls back to synthetic frames with a runtime notice
 
 ## 2. Memory Agent
 - Entry: `scripts/powershell/run_memory_agent.ps1`
@@ -18,7 +21,7 @@
   - can loop back locally or poll a real bridge process
 - Modes:
   - `--bus inproc --loopback`
-  - `--bus zmq --bind`
+  - `--bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561`
 
 ## 3. Isaac Bridge
 - Entry: `scripts/powershell/run_isaac_bridge.ps1`
@@ -27,10 +30,10 @@
   - publishes `TaskRequest` and `FrameHeader`
   - drains `ActionCommand`
   - can run loopback without Isaac Sim for smoke checks
-  - remains the handoff point for future live Isaac frame publishing
+  - is the live Isaac frame publishing handoff point
 - Modes:
   - `--bus inproc --loopback`
-  - `--bus zmq --connect`
+  - `--bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561`
 
 ## 4. Low-Level G1 Executor
 - Entry: `scripts/powershell/run_g1_pointgoal.ps1`
@@ -50,7 +53,28 @@
 2. TensorRT backend if runtime and engine are compatible
 3. Color segmentation fallback otherwise
 
+## Frame Source Modes
+- `auto`
+  - default
+  - live-first policy with synthetic fallback and `RuntimeNotice`
+- `live`
+  - live Isaac only
+  - startup fails if the live source is unavailable
+- `synthetic`
+  - deterministic development/smoke-test path
+
+## TensorRT Capability Reporting
+- `TensorRtYoloeDetector` now emits a structured capability report.
+- The report records:
+  - engine presence
+  - TensorRT import status
+  - engine deserialize status
+  - serialization mismatch detection
+  - binding metadata availability
+  - selected backend and selection reason
+- In the current environment, a serialization mismatch still falls back to the color-seg backend.
+
 ## Current Limits
-- TensorRT YOLOE decode path is still pending.
 - Two-process mode is presently a single bridge plus single memory-agent topology.
+- Live Isaac capture outside an initialized Isaac runtime still falls back to synthetic in `auto` mode.
 - System2/VLM remains optional and is not in the fast path.

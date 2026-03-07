@@ -29,7 +29,15 @@ def test_detector_results_flow_into_spatial_memory_association() -> None:
         camera_pose_xyz=(0.0, 0.0, 1.2),
         camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
         camera_intrinsic=intrinsic,
-        metadata={"target_class_hint": "apple", "color_hint": "red", "room_id": "kitchen"},
+        metadata={
+            "target_class_hint": "apple",
+            "color_hint": "red",
+            "room_id": "kitchen",
+            "robot_pose_xyz": [0.0, 0.0, 0.0],
+            "robot_yaw_rad": 0.0,
+            "frame_source": "synthetic",
+            "capture_report": {"rgb_source": "synthetic"},
+        },
     )
     results = memory_service.observe_objects(frame.observations)
 
@@ -38,3 +46,5 @@ def test_detector_results_flow_into_spatial_memory_association() -> None:
     assert results[0].object_node.class_name == "apple"
     assert results[0].place_node.room_id == "kitchen"
     assert results[0].object_node.last_place_id == results[0].place_node.place_id
+    assert "bearing_yaw_rad" in frame.observations[0].metadata
+    assert frame.observations[0].metadata["frame_source"] == "synthetic"

@@ -115,12 +115,18 @@ class NavDPCommandSource:
                     height=int(observation.rgb.shape[0]),
                     camera_pose_xyz=tuple(float(v) for v in observation.cam_pos[:3]),
                     camera_quat_wxyz=tuple(float(v) for v in observation.cam_quat[:4]),
+                    robot_pose_xyz=robot_pose,
+                    robot_yaw_rad=float(robot_yaw),
+                    sim_time_s=float(time.time()),
                     metadata=dict(observation.sensor_meta),
                 ),
                 robot_pose_xyz=robot_pose,
+                robot_yaw_rad=float(robot_yaw),
+                sim_time_s=float(time.time()),
                 rgb_image=observation.rgb,
                 depth_image_m=observation.depth,
                 camera_intrinsic=observation.intrinsic,
+                capture_report=dict(observation.sensor_meta),
             )
             self._supervisor.process_frame(batch, publish=False)
 

@@ -6,7 +6,7 @@ from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacBridg
 from inference.detectors.factory import DetectorFactoryConfig
 from ipc.base import MessageBus
 from ipc.inproc_bus import InprocBus
-from ipc.messages import ActionCommand, ActionStatus, TaskRequest
+from ipc.messages import ActionCommand, ActionStatus, CapabilityReport, HealthPing, RuntimeNotice, TaskRequest
 from ipc.shm_ring import SharedMemoryRing
 from perception.pipeline import PerceptionPipeline
 from services.memory_service import MemoryService
@@ -73,16 +73,26 @@ class Supervisor:
             camera_pose_xyz=batch.frame_header.camera_pose_xyz,
             camera_quat_wxyz=batch.frame_header.camera_quat_wxyz,
             camera_intrinsic=intrinsic,
-            metadata=dict(batch.frame_header.metadata),
+            metadata={
+                **dict(batch.frame_header.metadata),
+                "robot_pose_xyz": list(batch.robot_pose_xyz),
+                "robot_yaw_rad": float(batch.robot_yaw_rad),
+                "sim_time_s": float(batch.sim_time_s),
+                "frame_source": str(batch.frame_header.source),
+                "capture_report": dict(batch.capture_report),
+            },
         )
         enriched = IsaacObservationBatch(
             frame_header=batch.frame_header,
             robot_pose_xyz=batch.robot_pose_xyz,
+            robot_yaw_rad=batch.robot_yaw_rad,
+            sim_time_s=batch.sim_time_s,
             rgb_image=batch.rgb_image,
             depth_image_m=batch.depth_image_m,
             camera_intrinsic=intrinsic,
             observations=frame_result.observations,
             speaker_events=[*batch.speaker_events, *frame_result.speaker_events],
+            capture_report=dict(batch.capture_report),
         )
         self.ingest(enriched, publish=publish)
         return enriched
@@ -94,8 +104,9 @@ class Supervisor:
         robot_pose: tuple[float, float, float],
         action_status: ActionStatus | None = None,
         publish: bool = True,
+        publish_status: bool = False,
     ) -> ActionCommand | None:
-        if action_status is not None and publish:
+        if action_status is not None and publish and publish_status:
             self.bridge.publish_status(action_status)
         command = self.orchestrator.step(now=now, robot_pose=robot_pose, action_status=action_status)
         if command is not None and publish:
@@ -123,7 +134,38 @@ class Supervisor:
     def snapshot(self) -> dict[str, object]:
         snapshot = self.orchestrator.snapshot()
         snapshot["detector_backend"] = self.perception_pipeline.detector.info.backend_name
+        snapshot["detector_selected_reason"] = self.perception_pipeline.detector.info.selected_reason
+        snapshot["detector_runtime_report"] = (
+            None
+            if self.perception_pipeline.detector.runtime_report is None
+            else self.perception_pipeline.detector.runtime_report.as_dict()
+        )
         return snapshot
+
+    def publish_runtime_diagnostics(self) -> None:
+        detector_report = self.perception_pipeline.detector.runtime_report
+        if detector_report is not None:
+            self.bridge.publish_capability(
+                CapabilityReport(
+                    component="detector",
+                    status="ready" if detector_report.ready_for_inference else "fallback",
+                    backend_name=self.perception_pipeline.detector.info.backend_name,
+                    details=detector_report.as_dict(),
+                    warnings=list(detector_report.warnings),
+                    errors=list(detector_report.errors),
+                )
+            )
+        self.bridge.publish_health(
+            HealthPing(
+                component="memory_agent" if not isinstance(self.bus, InprocBus) else "local_stack",
+                details={"snapshot": self.snapshot()},
+            )
+        )
+
+    def publish_notice(self, level: str, notice: str, *, details: dict[str, object] | None = None) -> None:
+        self.bridge.publish_notice(
+            RuntimeNotice(component="supervisor", level=level, notice=notice, details=dict(details or {}))
+        )
 
     @staticmethod
     def _default_intrinsic(width: int, height: int):

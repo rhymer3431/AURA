@@ -18,6 +18,7 @@ from memory import (
     WorkingMemory,
 )
 from perception.speaker_events import SpeakerEvent
+from services.semantic_consolidation import SemanticConsolidationService
 
 
 class MemoryService:
@@ -29,6 +30,7 @@ class MemoryService:
         self.working_memory = WorkingMemory()
         self.query_engine = MemoryQueryEngine(self.spatial_store, self.semantic_store, self.working_memory)
         self.consolidator = MemoryConsolidator(self.episodic_store, self.semantic_store)
+        self.semantic_consolidation = SemanticConsolidationService(self.semantic_store)
         self.persistence = SQLiteMemoryPersistence(Path(db_path)) if db_path is not None else None
         if self.persistence is not None:
             self.persistence.initialize()
@@ -43,6 +45,9 @@ class MemoryService:
             results.append(result)
         return results
 
+    def update_from_observation(self, observation) -> object:  # noqa: ANN001
+        return self.observe_objects([observation])[0]
+
     def record_speaker_event(self, event: SpeakerEvent) -> None:
         self.temporal_store.record_event(
             "speaker_event",
@@ -50,6 +55,57 @@ class MemoryService:
             track_id=event.speaker_id,
             payload={"yaw_rad": float(event.direction_yaw_rad), "confidence": float(event.confidence), **event.metadata},
         )
+
+    def record_speaker_binding(self, *, person_id: str, track_id: str, timestamp: float, pose=None) -> None:  # noqa: ANN001
+        self.temporal_store.record_event(
+            "speaker_binding",
+            timestamp=float(timestamp),
+            track_id=str(track_id),
+            person_id=str(person_id),
+            pose=pose,
+        )
+        if self._active_episode_id == "":
+            return
+        record = self.episodic_store.get(self._active_episode_id)
+        if record is not None:
+            record.speaker_person_id = str(person_id)
+
+    def record_follow_target(self, *, person_id: str, track_id: str) -> None:
+        if self._active_episode_id == "":
+            return
+        record = self.episodic_store.get(self._active_episode_id)
+        if record is not None:
+            record.follow_target_id = str(person_id or track_id)
+
+    def record_candidate_attempt(
+        self,
+        *,
+        object_id: str = "",
+        place_id: str = "",
+        semantic_rule_keys: list[str] | None = None,
+    ) -> None:
+        if self._active_episode_id == "":
+            return
+        record = self.episodic_store.get(self._active_episode_id)
+        if record is None:
+            return
+        if object_id != "" and object_id not in record.candidate_object_ids:
+            record.candidate_object_ids.append(object_id)
+        if place_id != "" and place_id not in record.candidate_place_ids:
+            record.candidate_place_ids.append(place_id)
+        for rule_key in semantic_rule_keys or []:
+            if rule_key != "" and rule_key not in record.semantic_rules_applied:
+                record.semantic_rules_applied.append(rule_key)
+
+    def record_recovery_action(self, action: str) -> None:
+        if self._active_episode_id == "":
+            return
+        record = self.episodic_store.get(self._active_episode_id)
+        if record is None:
+            return
+        normalized = str(action).strip()
+        if normalized != "":
+            record.recovery_actions.append(normalized)
 
     def start_episode(self, *, command_text: str, intent: str, target_json: dict[str, object]) -> str:
         episode_id = f"episode_{uuid.uuid4().hex[:12]}"
@@ -79,9 +135,12 @@ class MemoryService:
             return
         record.success = bool(success)
         record.failure_reason = str(failure_reason)
-        record.recovery_actions = list(recovery_actions or [])
-        record.summary_text = str(summary_text)
+        if recovery_actions:
+            record.recovery_actions.extend(str(action) for action in recovery_actions if str(action).strip() != "")
+        if summary_text != "":
+            record.summary_text = str(summary_text)
         record.ended_at = time.time()
+        self.semantic_consolidation.summarize_episode(record)
         self.consolidator.consolidate_episode(record.episode_id)
         self._active_episode_id = ""
 
@@ -94,7 +153,7 @@ class MemoryService:
         room_id: str = "",
         current_pose: tuple[float, float, float] | None = None,
     ):
-        return self.query_engine.recall_object(
+        result = self.query_engine.recall_object(
             RecallQuery(
                 query_text=str(query_text),
                 target_class=str(target_class),
@@ -103,6 +162,12 @@ class MemoryService:
             ),
             current_pose=current_pose,
         )
+        self.record_candidate_attempt(
+            object_id=result.selected_object.object_id if result.selected_object is not None else "",
+            place_id=result.selected_place.place_id if result.selected_place is not None else "",
+            semantic_rule_keys=[rule.rule_key for rule in result.semantic_rules],
+        )
+        return result
 
     def reacquire_follow_target(self, track_id: str, *, now: float, max_age_sec: float = 6.0):
         return self.temporal_store.reacquire_track(track_id, now=now, max_age_sec=max_age_sec)

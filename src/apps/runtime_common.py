@@ -5,13 +5,14 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from adapters.sensors.frame_source import AutoFrameSource, FrameSample, SyntheticFrameSource, build_synthetic_frame_sample
+from adapters.sensors.isaac_live_source import IsaacLiveFrameSource, IsaacLiveSourceConfig
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from ipc.base import MessageBus
 from ipc.inproc_bus import InprocBus
 from ipc.messages import FrameHeader
 from ipc.shm_ring import SharedMemoryRing
 from ipc.zmq_bus import ZmqBus
-from perception.speaker_events import SpeakerEvent
 
 
 @dataclass(frozen=True)
@@ -28,25 +29,119 @@ class RuntimeIo:
 def build_runtime_io(
     *,
     bus_kind: str,
-    endpoint: str,
-    bind: bool,
+    endpoint: str = "",
+    bind: bool = False,
     shm_name: str,
     shm_slot_size: int,
     shm_capacity: int,
     create_shm: bool,
+    role: str = "",
+    control_endpoint: str = "",
+    telemetry_endpoint: str = "",
 ) -> RuntimeIo:
     kind = str(bus_kind).strip().lower()
     if kind == "inproc":
         return RuntimeIo(bus=InprocBus(), shm_ring=None)
     if kind != "zmq":
         raise ValueError(f"Unsupported bus kind: {bus_kind}")
+    resolved_control = control_endpoint or endpoint
+    if resolved_control == "":
+        resolved_control = "tcp://127.0.0.1:5560"
+    resolved_telemetry = telemetry_endpoint or derive_telemetry_endpoint(resolved_control)
+    resolved_role = str(role).strip().lower() or ("bridge" if bool(bind) else "agent")
     shm_ring = SharedMemoryRing(
         name=str(shm_name),
         slot_size=int(shm_slot_size),
         capacity=int(shm_capacity),
         create=bool(create_shm),
     )
-    return RuntimeIo(bus=ZmqBus(str(endpoint), bind=bool(bind)), shm_ring=shm_ring)
+    return RuntimeIo(
+        bus=ZmqBus(
+            control_endpoint=str(resolved_control),
+            telemetry_endpoint=str(resolved_telemetry),
+            role=resolved_role,
+        ),
+        shm_ring=shm_ring,
+    )
+
+
+def derive_telemetry_endpoint(control_endpoint: str) -> str:
+    endpoint = str(control_endpoint).strip()
+    prefix, sep, port_str = endpoint.rpartition(":")
+    if sep != "" and port_str.isdigit():
+        return f"{prefix}:{int(port_str) + 1}"
+    return f"{endpoint}.telemetry"
+
+
+def build_frame_source(
+    *,
+    mode: str,
+    scene: str,
+    source_name: str,
+    room_id: str = "",
+    strict_live: bool = False,
+    simulation_app=None,
+    stage=None,
+    env_provider=None,
+    robot_pose_provider=None,
+    robot_yaw_provider=None,
+    sensor_factory=None,
+    width: int = 96,
+    height: int = 96,
+):
+    live_source = IsaacLiveFrameSource(
+        simulation_app=simulation_app,
+        stage=stage,
+        env_provider=env_provider,
+        robot_pose_provider=robot_pose_provider,
+        robot_yaw_provider=robot_yaw_provider,
+        sensor_factory=sensor_factory,
+        config=IsaacLiveSourceConfig(
+            source_name=f"{source_name}_live",
+            strict_live=bool(strict_live),
+            image_width=max(int(width), 96),
+            image_height=max(int(height), 96),
+        ),
+    )
+    fallback_source = SyntheticFrameSource(
+        scene=scene,
+        source_name=f"{source_name}_synthetic",
+        room_id=room_id,
+        width=width,
+        height=height,
+    )
+    requested_mode = str(mode).strip().lower() or "auto"
+    if requested_mode == "live":
+        return live_source
+    if requested_mode == "synthetic":
+        return fallback_source
+    return AutoFrameSource(live_source, fallback_source, strict_live=False)
+
+
+def frame_sample_to_batch(sample: FrameSample) -> IsaacObservationBatch:
+    return IsaacObservationBatch(
+        frame_header=FrameHeader(
+            frame_id=int(sample.frame_id),
+            timestamp_ns=time.time_ns(),
+            source=str(sample.source_name),
+            width=int(sample.rgb.shape[1]),
+            height=int(sample.rgb.shape[0]),
+            camera_pose_xyz=tuple(float(v) for v in sample.camera_pose_xyz[:3]),
+            camera_quat_wxyz=tuple(float(v) for v in sample.camera_quat_wxyz[:4]),
+            robot_pose_xyz=tuple(float(v) for v in sample.robot_pose_xyz[:3]),
+            robot_yaw_rad=float(sample.robot_yaw_rad),
+            sim_time_s=float(sample.sim_time_s),
+            metadata=dict(sample.metadata),
+        ),
+        robot_pose_xyz=tuple(float(v) for v in sample.robot_pose_xyz[:3]),
+        robot_yaw_rad=float(sample.robot_yaw_rad),
+        sim_time_s=float(sample.sim_time_s),
+        rgb_image=np.asarray(sample.rgb, dtype=np.uint8),
+        depth_image_m=np.asarray(sample.depth, dtype=np.float32),
+        camera_intrinsic=np.asarray(sample.camera_intrinsic, dtype=np.float32),
+        speaker_events=list(sample.speaker_events),
+        capture_report=dict(sample.metadata.get("capture_report", {})) if isinstance(sample.metadata.get("capture_report"), dict) else {},
+    )
 
 
 def build_demo_batch(
@@ -58,61 +153,15 @@ def build_demo_batch(
     source: str,
     room_id: str = "",
 ) -> IsaacObservationBatch:
-    scene_name = str(scene).strip().lower()
-    rgb = np.zeros((int(height), int(width), 3), dtype=np.uint8)
-    depth = np.full((int(height), int(width)), 1.5, dtype=np.float32)
-    metadata: dict[str, object] = {"room_id": room_id}
-    speaker_events: list[SpeakerEvent] = []
-
-    if scene_name in {"apple", "cube"}:
-        rgb[24:72, 28:68, 0] = 255
-        metadata["target_class_hint"] = "apple" if scene_name == "apple" else "cube"
-        metadata["color_hint"] = "red"
-    elif scene_name == "person":
-        rgb[18:78, 34:62, 2] = 255
-        metadata["target_class_hint"] = "person"
-        metadata["color_hint"] = "blue"
-    else:
-        rgb[24:72, 28:68, 1] = 255
-        metadata["target_class_hint"] = scene_name or "object"
-        metadata["color_hint"] = "green"
-
-    if scene_name == "person":
-        speaker_events.append(
-            SpeakerEvent(
-                timestamp=time.time(),
-                direction_yaw_rad=0.45,
-                speaker_id="person_0001",
-                confidence=0.95,
-                metadata={"source": "demo"},
-            )
-        )
-
-    intrinsic = np.asarray(
-        [
-            [float(width), 0.0, float(width) * 0.5],
-            [0.0, float(height), float(height) * 0.5],
-            [0.0, 0.0, 1.0],
-        ],
-        dtype=np.float32,
+    sample = build_synthetic_frame_sample(
+        frame_id=int(frame_id),
+        scene=scene,
+        source_name=source,
+        room_id=room_id,
+        width=width,
+        height=height,
     )
-    return IsaacObservationBatch(
-        frame_header=FrameHeader(
-            frame_id=int(frame_id),
-            timestamp_ns=time.time_ns(),
-            source=str(source),
-            width=int(width),
-            height=int(height),
-            camera_pose_xyz=(0.0, 0.0, 1.2),
-            camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
-            metadata=metadata,
-        ),
-        robot_pose_xyz=(0.0, 0.0, 0.0),
-        rgb_image=rgb,
-        depth_image_m=depth,
-        camera_intrinsic=intrinsic,
-        speaker_events=speaker_events,
-    )
+    return frame_sample_to_batch(sample)
 
 
 def infer_demo_scene(command_text: str, *, fallback: str = "apple") -> str:

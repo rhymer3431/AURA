@@ -16,6 +16,7 @@ class TemporalMemoryStore:
         *,
         timestamp: float,
         track_id: str = "",
+        person_id: str = "",
         object_id: str = "",
         pose: tuple[float, float, float] | list[float] | None = None,
         payload: dict[str, object] | None = None,
@@ -24,6 +25,7 @@ class TemporalMemoryStore:
             event_type=str(event_type),
             timestamp=float(timestamp),
             track_id=str(track_id),
+            person_id=str(person_id),
             object_id=str(object_id),
             pose=None if pose is None else pose3(pose),
             payload=dict(payload or {}),
@@ -36,6 +38,7 @@ class TemporalMemoryStore:
             "object_observation",
             timestamp=float(observation.timestamp),
             track_id=observation.track_id,
+            person_id=str(observation.metadata.get("person_id", "")),
             object_id=object_id,
             pose=observation.pose,
             payload={"class_name": observation.class_name, "confidence": float(observation.confidence)},
@@ -46,6 +49,7 @@ class TemporalMemoryStore:
         *,
         event_type: str = "",
         track_id: str = "",
+        person_id: str = "",
         max_age_sec: float | None = None,
         now: float | None = None,
         limit: int | None = None,
@@ -61,6 +65,8 @@ class TemporalMemoryStore:
                 continue
             if track_id != "" and event.track_id != track_id:
                 continue
+            if person_id != "" and event.person_id != person_id:
+                continue
             if cutoff is not None and event.timestamp < cutoff:
                 continue
             filtered.append(event)
@@ -68,12 +74,15 @@ class TemporalMemoryStore:
                 break
         return list(filtered)
 
-    def last_event(self, *, event_type: str = "", track_id: str = "") -> TemporalEvent | None:
-        events = self.recent_events(event_type=event_type, track_id=track_id, limit=1)
+    def last_event(self, *, event_type: str = "", track_id: str = "", person_id: str = "") -> TemporalEvent | None:
+        events = self.recent_events(event_type=event_type, track_id=track_id, person_id=person_id, limit=1)
         return events[0] if events else None
 
     def reacquire_track(self, track_id: str, *, now: float, max_age_sec: float = 6.0) -> list[TemporalEvent]:
         return self.recent_events(track_id=track_id, max_age_sec=max_age_sec, now=now, limit=5)
+
+    def reacquire_person(self, person_id: str, *, now: float, max_age_sec: float = 6.0) -> list[TemporalEvent]:
+        return self.recent_events(person_id=person_id, max_age_sec=max_age_sec, now=now, limit=5)
 
     def __iter__(self) -> Iterable[TemporalEvent]:
         return iter(self._events)

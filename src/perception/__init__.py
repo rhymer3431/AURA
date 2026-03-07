@@ -4,6 +4,7 @@ from .observation_fuser import ObservationFuser
 from .pipeline import PerceptionFrameResult, PerceptionPipeline
 from .person_tracker import PersonTrack, PersonTracker
 from .reid import ReIdMatch, ReIdResolver
+from .reid_store import ReIdIdentity, ReIdStore
 from .speaker_events import SpeakerEvent
 
 __all__ = [
@@ -17,6 +18,8 @@ __all__ = [
     "PersonTracker",
     "ProjectedDetection",
     "ReIdMatch",
+    "ReIdIdentity",
     "ReIdResolver",
+    "ReIdStore",
     "SpeakerEvent",
 ]

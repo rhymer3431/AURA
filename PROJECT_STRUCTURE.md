@@ -25,6 +25,10 @@
 │   ├── adapters/
 │   │   ├── legacy_http/
 │   │   └── sensors/
+│   │       ├── d455_sensor.py
+│   │       ├── frame_source.py
+│   │       ├── isaac_bridge_adapter.py
+│   │       └── isaac_live_source.py
 │   ├── apps/
 │   │   ├── legacy_http/
 │   │   ├── isaac_bridge_app.py
@@ -35,16 +39,34 @@
 │   ├── control/
 │   ├── inference/
 │   │   ├── detectors/
+│   │   │   ├── capabilities.py
+│   │   │   └── postprocess/
 │   │   ├── navdp/
 │   │   ├── trackers/
 │   │   └── vlm/
 │   ├── ipc/
+│   │   ├── messages.py
+│   │   ├── transport_health.py
+│   │   └── zmq_bus.py
 │   ├── locomotion/
 │   │   └── g1/
 │   ├── memory/
+│   │   ├── consolidation.py
+│   │   ├── models.py
+│   │   ├── semantic_store.py
+│   │   └── working_memory.py
 │   ├── perception/
+│   │   ├── person_tracker.py
+│   │   ├── pipeline.py
+│   │   └── reid_store.py
 │   ├── runtime/
 │   ├── services/
+│   │   ├── attention_service.py
+│   │   ├── follow_service.py
+│   │   ├── memory_service.py
+│   │   ├── object_search_service.py
+│   │   ├── semantic_consolidation.py
+│   │   └── task_orchestrator.py
 │   └── vendor/
 ├── state/
 │   ├── ipc/
@@ -66,15 +88,17 @@
 - `src/runtime/supervisor.py`
   - consumes tasks, observations, and statuses; emits `ActionCommand`
 - `src/apps/runtime_common.py`
-  - shared bus/shm/demo-frame helpers for local stack and two-process apps
+  - shared bus/shm/frame-source helpers for local stack and two-process apps
 - `src/inference/detectors`
-  - detector backend abstraction, TensorRT engine discovery, and fallback detector
+  - detector backend abstraction, TensorRT capability reporting, YOLOE post-processing, and fallback detector
 - `src/perception`
-  - detector/tracker/depth projection to `ObsObject`
+  - detector/tracker/depth projection to `ObsObject`, plus stable person re-id
 - `src/memory`
   - structured memory stores, query engine, consolidation, persistence
 - `src/services`
-  - task orchestration, follow, attention, object recall, memory facade
+  - task orchestration, follow, attention, object recall, semantic consolidation, memory facade
+- `src/ipc`
+  - message schemas, ZMQ control/telemetry transport, transport health tracking
 - `src/adapters/legacy_http` and `src/apps/legacy_http`
   - compatibility-only HTTP path
 
@@ -89,8 +113,9 @@
 
 ## Detector Path
 - Engine discovery starts from `artifacts/models/yoloe-26s-seg-pf.engine`.
-- If TensorRT load or decode is unavailable, fallback detector remains active.
+- `DetectorRuntimeReport` explains whether TensorRT import, deserialize, binding, and runtime execution are usable.
+- If TensorRT load or runtime execution is unavailable, fallback detector remains active.
 
 ## Current Limits
-- TensorRT YOLOE post-processing is still pending.
+- TensorRT execution still depends on a matching engine/runtime/CUDA environment.
 - Legacy HTTP wrappers remain in the tree for compatibility only.

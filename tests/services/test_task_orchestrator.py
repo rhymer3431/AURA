@@ -45,6 +45,7 @@ def test_task_orchestrator_attend_and_follow_state_transitions() -> None:
     assert follow_command is not None
     assert follow_command.action_type == "FOLLOW_TARGET"
     assert follow_command.target_track_id == "person_k"
+    assert follow_command.target_person_id != ""
 
     recovery_command = orchestrator.step(
         now=2.2,
@@ -55,6 +56,7 @@ def test_task_orchestrator_attend_and_follow_state_transitions() -> None:
     assert orchestrator.state == BehaviorState.RECOVER_LOST_TARGET
     assert recovery_command is not None
     assert recovery_command.action_type == "NAV_TO_POSE"
+    assert recovery_command.metadata["recovery"] in {"recent_exact_person_match", "spatial_reid_candidate", "last_visible_pose"}
 
 
 def test_task_orchestrator_memory_recall_transitions_to_local_search() -> None:

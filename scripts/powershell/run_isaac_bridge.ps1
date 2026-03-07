@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 
+# Example:
+#   .\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source auto
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
 $SrcDir = Join-Path $RepoDir "src"

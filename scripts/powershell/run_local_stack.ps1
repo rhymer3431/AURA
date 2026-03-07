@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 
+# Example:
+#   .\scripts\powershell\run_local_stack.ps1 --command "따라와" --scene person --frame-source auto
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
 $SrcDir = Join-Path $RepoDir "src"

@@ -23,6 +23,9 @@ class FrameHeader:
     depth_encoding: str = "32FC1"
     camera_pose_xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
     camera_quat_wxyz: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
+    robot_pose_xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    robot_yaw_rad: float = 0.0
+    sim_time_s: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
     message_id: str = field(default_factory=lambda: _message_id("frame"))
 
@@ -43,6 +46,7 @@ class ActionCommand:
     target_object_id: str = ""
     target_place_id: str = ""
     target_track_id: str = ""
+    target_person_id: str = ""
     target_pose_xyz: tuple[float, float, float] | None = None
     look_at_yaw_rad: float | None = None
     stop_radius_m: float = 0.8
@@ -71,7 +75,38 @@ class TaskRequest:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-MessagePayload = FrameHeader | ActionCommand | ActionStatus | TaskRequest
+@dataclass(frozen=True)
+class CapabilityReport:
+    component: str
+    status: Literal["ready", "fallback", "degraded", "unavailable"]
+    backend_name: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    timestamp_ns: int = field(default_factory=time.time_ns)
+    message_id: str = field(default_factory=lambda: _message_id("cap"))
+
+
+@dataclass(frozen=True)
+class RuntimeNotice:
+    component: str
+    level: Literal["info", "warning", "error"] = "info"
+    notice: str = ""
+    details: dict[str, Any] = field(default_factory=dict)
+    timestamp_ns: int = field(default_factory=time.time_ns)
+    message_id: str = field(default_factory=lambda: _message_id("notice"))
+
+
+@dataclass(frozen=True)
+class HealthPing:
+    component: str
+    status: str = "alive"
+    timestamp_ns: int = field(default_factory=time.time_ns)
+    details: dict[str, Any] = field(default_factory=dict)
+    message_id: str = field(default_factory=lambda: _message_id("health"))
+
+
+MessagePayload = FrameHeader | ActionCommand | ActionStatus | TaskRequest | CapabilityReport | RuntimeNotice | HealthPing
 
 
 MESSAGE_TYPES: dict[str, type[MessagePayload]] = {
@@ -79,6 +114,9 @@ MESSAGE_TYPES: dict[str, type[MessagePayload]] = {
     "ActionCommand": ActionCommand,
     "ActionStatus": ActionStatus,
     "TaskRequest": TaskRequest,
+    "CapabilityReport": CapabilityReport,
+    "RuntimeNotice": RuntimeNotice,
+    "HealthPing": HealthPing,
 }
 
 
@@ -100,6 +138,7 @@ def message_from_dict(payload: dict[str, Any]) -> MessagePayload:
     if cls is FrameHeader:
         kwargs["camera_pose_xyz"] = tuple(kwargs.get("camera_pose_xyz", (0.0, 0.0, 0.0)))
         kwargs["camera_quat_wxyz"] = tuple(kwargs.get("camera_quat_wxyz", (1.0, 0.0, 0.0, 0.0)))
+        kwargs["robot_pose_xyz"] = tuple(kwargs.get("robot_pose_xyz", (0.0, 0.0, 0.0)))
     elif cls is ActionCommand and kwargs.get("target_pose_xyz") is not None:
         kwargs["target_pose_xyz"] = tuple(kwargs["target_pose_xyz"])
     elif cls is ActionStatus and kwargs.get("robot_pose_xyz") is not None:

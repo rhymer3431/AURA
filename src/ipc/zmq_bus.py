@@ -5,37 +5,82 @@ from collections import defaultdict, deque
 from .base import BusRecord, MessageBus
 from .codec import decode_envelope, encode_envelope
 from .messages import MessagePayload
+from .transport_health import TransportHealthTracker
 
 
 class ZmqBus(MessageBus):
-    def __init__(self, endpoint: str, *, bind: bool) -> None:
+    CONTROL_TOPICS = {"isaac.task", "isaac.command", "isaac.notice", "isaac.capability"}
+    TELEMETRY_TOPICS = {"isaac.observation", "isaac.status", "isaac.health"}
+
+    def __init__(
+        self,
+        endpoint: str | None = None,
+        *,
+        bind: bool | None = None,
+        control_endpoint: str = "",
+        telemetry_endpoint: str = "",
+        role: str = "",
+        control_timeout_ms: int = 250,
+        telemetry_timeout_ms: int = 250,
+    ) -> None:
         try:
             import zmq
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError("pyzmq is required for ZmqBus.") from exc
 
+        resolved_control = control_endpoint or str(endpoint or "")
+        if resolved_control == "":
+            resolved_control = "tcp://127.0.0.1:5560"
+        resolved_telemetry = telemetry_endpoint or self._derive_telemetry_endpoint(resolved_control)
+        resolved_role = str(role).strip().lower()
+        if resolved_role == "":
+            resolved_role = "bridge" if bool(bind) else "agent"
+        if resolved_role not in {"bridge", "agent"}:
+            raise ValueError(f"Unsupported ZMQ role: {role!r}")
+
         self._zmq = zmq
         self._context = zmq.Context.instance()
-        self._socket = self._context.socket(zmq.PAIR)
-        if bind:
-            self._socket.bind(str(endpoint))
-        else:
-            self._socket.connect(str(endpoint))
+        self._role = resolved_role
+        self._control_endpoint = resolved_control
+        self._telemetry_endpoint = resolved_telemetry
         self._buffer: dict[str, deque[BusRecord]] = defaultdict(deque)
+        self._pending_control: deque[tuple[bytes, bytes]] = deque()
+        self._known_peers: list[bytes] = []
+        self._health = TransportHealthTracker()
+        self._control_socket = self._build_control_socket(timeout_ms=int(control_timeout_ms))
+        self._telemetry_socket = self._build_telemetry_socket(timeout_ms=int(telemetry_timeout_ms))
+        self._poller = zmq.Poller()
+        self._poller.register(self._control_socket, zmq.POLLIN)
+        if self._telemetry_socket is not None:
+            self._poller.register(self._telemetry_socket, zmq.POLLIN)
+
+    @property
+    def health(self) -> TransportHealthTracker:
+        return self._health
 
     def publish(self, topic: str, message: MessagePayload) -> None:
-        self._socket.send_multipart(list(encode_envelope(topic, message)))
+        raw_topic, raw_payload = encode_envelope(topic, message)
+        plane = self._route_plane(topic)
+        if plane == "telemetry" and self._role == "bridge":
+            self._telemetry_socket.send_multipart([raw_topic, raw_payload])
+            self._health.telemetry.on_send()
+            return
+        if plane == "control" and self._role == "bridge":
+            self._flush_incoming()
+            if not self._known_peers:
+                self._pending_control.append((raw_topic, raw_payload))
+                self._health.control.on_queue(len(self._pending_control))
+                return
+            for peer in list(self._known_peers):
+                self._control_socket.send_multipart([peer, raw_topic, raw_payload])
+                self._health.control.on_send()
+            return
+        self._control_socket.send_multipart([raw_topic, raw_payload])
+        self._health.control.on_send()
 
     def poll(self, topic: str, *, max_items: int | None = None) -> list[BusRecord]:
+        self._flush_incoming()
         requested_topic = str(topic)
-        while True:
-            try:
-                raw_topic, raw_payload = self._socket.recv_multipart(flags=self._zmq.NOBLOCK)
-            except self._zmq.Again:
-                break
-            parsed_topic, parsed_message = decode_envelope(raw_topic, raw_payload)
-            self._buffer[parsed_topic].append(BusRecord(topic=parsed_topic, message=parsed_message))
-
         queue = self._buffer[requested_topic]
         if max_items is None or max_items < 0:
             limit = len(queue)
@@ -44,4 +89,102 @@ class ZmqBus(MessageBus):
         return [queue.popleft() for _ in range(limit)]
 
     def close(self) -> None:
-        self._socket.close(linger=0)
+        if self._telemetry_socket is not None:
+            self._telemetry_socket.close(linger=0)
+        self._control_socket.close(linger=0)
+
+    def _build_control_socket(self, *, timeout_ms: int):
+        socket_type = self._zmq.ROUTER if self._role == "bridge" else self._zmq.DEALER
+        socket = self._context.socket(socket_type)
+        socket.setsockopt(self._zmq.LINGER, 0)
+        socket.setsockopt(self._zmq.RCVTIMEO, int(timeout_ms))
+        socket.setsockopt(self._zmq.SNDTIMEO, int(timeout_ms))
+        if self._role == "bridge":
+            socket.bind(self._control_endpoint)
+        else:
+            socket.connect(self._control_endpoint)
+        return socket
+
+    def _build_telemetry_socket(self, *, timeout_ms: int):
+        if self._role == "bridge":
+            socket = self._context.socket(self._zmq.PUB)
+            socket.setsockopt(self._zmq.LINGER, 0)
+            socket.setsockopt(self._zmq.SNDTIMEO, int(timeout_ms))
+            socket.bind(self._telemetry_endpoint)
+            return socket
+        socket = self._context.socket(self._zmq.SUB)
+        socket.setsockopt(self._zmq.LINGER, 0)
+        socket.setsockopt(self._zmq.RCVTIMEO, int(timeout_ms))
+        socket.setsockopt(self._zmq.SUBSCRIBE, b"")
+        socket.connect(self._telemetry_endpoint)
+        return socket
+
+    def _flush_incoming(self) -> None:
+        while True:
+            events = dict(self._poller.poll(timeout=0))
+            if not events:
+                break
+            if self._control_socket in events:
+                self._drain_control_socket()
+            if self._telemetry_socket is not None and self._telemetry_socket in events:
+                self._drain_telemetry_socket()
+            self._flush_pending_control()
+
+    def _drain_control_socket(self) -> None:
+        while True:
+            try:
+                parts = self._control_socket.recv_multipart(flags=self._zmq.NOBLOCK)
+            except self._zmq.Again:
+                break
+            if self._role == "bridge":
+                if len(parts) < 3:
+                    self._health.control.on_drop(error="invalid ROUTER multipart payload")
+                    continue
+                peer, raw_topic, raw_payload = parts[0], parts[-2], parts[-1]
+                if peer not in self._known_peers:
+                    self._known_peers.append(peer)
+                    self._health.control.on_retry()
+                topic, message = decode_envelope(raw_topic, raw_payload)
+            else:
+                if len(parts) < 2:
+                    self._health.control.on_drop(error="invalid DEALER multipart payload")
+                    continue
+                topic, message = decode_envelope(parts[-2], parts[-1])
+            self._buffer[topic].append(BusRecord(topic=topic, message=message))
+            self._health.control.on_recv()
+
+    def _drain_telemetry_socket(self) -> None:
+        assert self._telemetry_socket is not None
+        while True:
+            try:
+                raw_topic, raw_payload = self._telemetry_socket.recv_multipart(flags=self._zmq.NOBLOCK)
+            except self._zmq.Again:
+                break
+            topic, message = decode_envelope(raw_topic, raw_payload)
+            self._buffer[topic].append(BusRecord(topic=topic, message=message))
+            self._health.telemetry.on_recv()
+
+    def _flush_pending_control(self) -> None:
+        if self._role != "bridge" or not self._known_peers:
+            return
+        while self._pending_control:
+            raw_topic, raw_payload = self._pending_control.popleft()
+            for peer in list(self._known_peers):
+                self._control_socket.send_multipart([peer, raw_topic, raw_payload])
+                self._health.control.on_send()
+        self._health.control.on_queue(0)
+
+    @classmethod
+    def _route_plane(cls, topic: str) -> str:
+        normalized = str(topic)
+        if normalized in cls.TELEMETRY_TOPICS:
+            return "telemetry"
+        return "control"
+
+    @staticmethod
+    def _derive_telemetry_endpoint(control_endpoint: str) -> str:
+        endpoint = str(control_endpoint).strip()
+        prefix, sep, port_str = endpoint.rpartition(":")
+        if sep != "" and port_str.isdigit():
+            return f"{prefix}:{int(port_str) + 1}"
+        return f"{endpoint}.telemetry"

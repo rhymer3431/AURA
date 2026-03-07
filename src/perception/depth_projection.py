@@ -59,9 +59,16 @@ class DepthProjector:
             room_id=str(metadata.get("room_id", "")),
             movable=bool(metadata.get("movable", detection.class_name.lower() not in {"table", "chair", "wall"})),
             state=str(metadata.get("state", "visible")),
-            embedding_id=str(metadata.get("embedding_id", "")),
+            embedding_id=str(detection.metadata.get("embedding_id", metadata.get("embedding_id", ""))),
             snapshots=list(metadata.get("snapshots", [])),
-            metadata={**detection.metadata, **metadata, "depth_m": float(depth_value)},
+            metadata={
+                **detection.metadata,
+                **metadata,
+                "depth_m": float(depth_value),
+                "bbox_xyxy": list(detection.bbox_xyxy),
+                "centroid_xy": [float(centroid[0]), float(centroid[1])],
+                "appearance_signature": detection.metadata.get("appearance_signature", metadata.get("appearance_signature", "")),
+            },
         )
 
     @staticmethod

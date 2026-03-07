@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import TaskRequest
+from ipc.messages import ActionCommand, CapabilityReport, FrameHeader, TaskRequest
 from ipc.shm_ring import SharedMemoryRing
 from ipc.zmq_bus import ZmqBus
 
@@ -39,20 +39,80 @@ def test_shared_memory_ring_roundtrip() -> None:
 def test_zmq_bus_roundtrip() -> None:
     pytest.importorskip("zmq")
     port = _free_tcp_port()
-    endpoint = f"tcp://127.0.0.1:{port}"
-    server = ZmqBus(endpoint, bind=True)
-    client = ZmqBus(endpoint, bind=False)
+    control_endpoint = f"tcp://127.0.0.1:{port}"
+    telemetry_endpoint = f"tcp://127.0.0.1:{port + 1}"
+    server = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="bridge")
+    client = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="agent")
     try:
-        client.publish("isaac.task", TaskRequest(command_text="follow"))
+        client.publish("isaac.capability", CapabilityReport(component="memory_agent", status="ready"))
         deadline = time.time() + 2.0
         records = []
         while time.time() < deadline:
-            records = server.poll("isaac.task", max_items=4)
+            records = server.poll("isaac.capability", max_items=4)
             if records:
                 break
             time.sleep(0.01)
         assert len(records) == 1
-        assert records[0].message.command_text == "follow"
+        assert records[0].message.component == "memory_agent"
+
+        server.publish("isaac.task", TaskRequest(command_text="follow"))
+        deadline = time.time() + 2.0
+        task_records = []
+        while time.time() < deadline:
+            task_records = client.poll("isaac.task", max_items=4)
+            if task_records:
+                break
+            time.sleep(0.01)
+        assert len(task_records) == 1
+        assert task_records[0].message.command_text == "follow"
+
+        server.publish("isaac.observation", FrameHeader(frame_id=1, timestamp_ns=1, source="bridge"))
+        deadline = time.time() + 2.0
+        observation_records = []
+        while time.time() < deadline:
+            observation_records = client.poll("isaac.observation", max_items=4)
+            if observation_records:
+                break
+            time.sleep(0.01)
+        assert len(observation_records) == 1
+
+        client.publish("isaac.command", ActionCommand(action_type="STOP"))
+        deadline = time.time() + 2.0
+        command_records = []
+        while time.time() < deadline:
+            command_records = server.poll("isaac.command", max_items=4)
+            if command_records:
+                break
+            time.sleep(0.01)
+        assert len(command_records) == 1
+        assert command_records[0].message.action_type == "STOP"
     finally:
         client.close()
+        server.close()
+
+
+def test_zmq_bus_late_agent_receives_buffered_control_message() -> None:
+    pytest.importorskip("zmq")
+    port = _free_tcp_port()
+    control_endpoint = f"tcp://127.0.0.1:{port}"
+    telemetry_endpoint = f"tcp://127.0.0.1:{port + 1}"
+    server = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="bridge")
+    client = None
+    try:
+        server.publish("isaac.task", TaskRequest(command_text="delayed follow"))
+        client = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="agent")
+        client.publish("isaac.capability", CapabilityReport(component="memory_agent", status="ready"))
+        deadline = time.time() + 2.0
+        records = []
+        while time.time() < deadline:
+            server.poll("isaac.capability", max_items=4)
+            records = client.poll("isaac.task", max_items=4)
+            if records:
+                break
+            time.sleep(0.01)
+        assert len(records) == 1
+        assert records[0].message.command_text == "delayed follow"
+    finally:
+        if client is not None:
+            client.close()
         server.close()

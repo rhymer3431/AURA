@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 
 from .base import DetectionResult, DetectorBackend, DetectorInfo
+from .capabilities import DetectorRuntimeReport
 
 
 @dataclass(frozen=True)
@@ -15,12 +16,22 @@ class ColorSegFallbackConfig:
 
 
 class ColorSegFallbackDetector(DetectorBackend):
-    def __init__(self, config: ColorSegFallbackConfig | None = None, *, warning: str = "") -> None:
+    def __init__(
+        self,
+        config: ColorSegFallbackConfig | None = None,
+        *,
+        warning: str = "",
+        runtime_report: DetectorRuntimeReport | None = None,
+        selected_reason: str = "",
+    ) -> None:
         self._config = config or ColorSegFallbackConfig()
+        self._runtime_report = runtime_report
         self._info = DetectorInfo(
             backend_name="color_seg_fallback",
             warning=str(warning),
             using_fallback=True,
+            selected_reason=str(selected_reason),
+            runtime_report=runtime_report,
         )
 
     @property
@@ -59,7 +70,7 @@ class ColorSegFallbackDetector(DetectorBackend):
                 bbox_xyxy=(x0, y0, x1, y1),
                 mask=mask,
                 centroid_xy=centroid,
-                metadata={"color_hint": color_name},
+                metadata={"color_hint": color_name, "appearance_signature": color_name},
             )
         ]
 

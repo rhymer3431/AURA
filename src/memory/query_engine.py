@@ -45,6 +45,7 @@ class MemoryQueryEngine:
         return RecallResult(
             query=query,
             candidates=candidates,
+            semantic_rules=rules,
             selected_object=selected_object,
             selected_place=selected_place,
         )

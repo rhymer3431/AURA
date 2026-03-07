@@ -6,6 +6,8 @@ from typing import Any
 
 import numpy as np
 
+from .capabilities import DetectorRuntimeReport
+
 
 @dataclass(frozen=True)
 class DetectionResult:
@@ -24,6 +26,8 @@ class DetectorInfo:
     engine_path: str = ""
     warning: str = ""
     using_fallback: bool = False
+    selected_reason: str = ""
+    runtime_report: DetectorRuntimeReport | None = None
 
 
 class DetectorBackend(ABC):
@@ -31,6 +35,10 @@ class DetectorBackend(ABC):
     @abstractmethod
     def info(self) -> DetectorInfo:
         raise NotImplementedError
+
+    @property
+    def runtime_report(self) -> DetectorRuntimeReport | None:
+        return self.info.runtime_report
 
     @abstractmethod
     def detect(

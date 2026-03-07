@@ -88,6 +88,7 @@ class TemporalEvent:
     event_type: str
     timestamp: float
     track_id: str = ""
+    person_id: str = ""
     object_id: str = ""
     pose: Pose3D | None = None
     payload: dict[str, Any] = field(default_factory=dict)
@@ -101,6 +102,12 @@ class EpisodeRecord:
     target_json: dict[str, Any]
     visited_places: list[str] = field(default_factory=list)
     objects_seen: list[str] = field(default_factory=list)
+    candidate_object_ids: list[str] = field(default_factory=list)
+    candidate_place_ids: list[str] = field(default_factory=list)
+    semantic_rules_applied: list[str] = field(default_factory=list)
+    follow_target_id: str = ""
+    speaker_person_id: str = ""
+    summary_tags: list[str] = field(default_factory=list)
     success: bool | None = None
     failure_reason: str = ""
     recovery_actions: list[str] = field(default_factory=list)
@@ -113,9 +120,13 @@ class EpisodeRecord:
 class SemanticRule:
     rule_key: str
     description: str
+    trigger_signature: str = ""
+    rule_type: str = "heuristic"
+    planner_hint: dict[str, Any] = field(default_factory=dict)
     support_count: int = 0
     success_count: int = 0
     success_rate: float = 0.0
+    last_updated: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -151,6 +162,7 @@ class RecallQuery:
 class RecallResult:
     query: RecallQuery
     candidates: list[WorkingMemoryCandidate]
+    semantic_rules: list[SemanticRule] = field(default_factory=list)
     selected_object: ObjectNode | None = None
     selected_place: PlaceNode | None = None
 

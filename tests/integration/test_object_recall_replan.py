@@ -58,3 +58,4 @@ def test_object_recall_replans_to_next_candidate_after_failure() -> None:
     assert first_command.action_type == "NAV_TO_PLACE"
     assert second_command.action_type == "NAV_TO_PLACE"
     assert first_command.metadata["candidate_id"] != second_command.metadata["candidate_id"]
+    assert "semantic_rule_keys" in first_command.metadata

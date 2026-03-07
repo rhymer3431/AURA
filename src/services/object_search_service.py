@@ -74,7 +74,10 @@ class ObjectSearchService:
             task_id=task_id,
             place_id=current.place_id,
             target_pose_xyz=pose,
-            metadata={"candidate_id": current.candidate_id},
+            metadata={
+                "candidate_id": current.candidate_id,
+                "semantic_rule_keys": [rule.rule_key for rule in self._active_plan.recall_result.semantic_rules],
+            },
         )
 
     def _build_nav_command(self, *, task_id: str):
@@ -86,11 +89,22 @@ class ObjectSearchService:
         place = self._memory.spatial_store.places.get(current.place_id)
         if place is None:
             return None
+        rule_keys = [rule.rule_key for rule in self._active_plan.recall_result.semantic_rules]
+        self._memory.record_candidate_attempt(
+            object_id=current.object_id,
+            place_id=current.place_id,
+            semantic_rule_keys=rule_keys,
+        )
         return self._subgoal_planner.nav_to_place(
             task_id=task_id,
             place_id=place.place_id,
             target_pose_xyz=place.pose,
-            metadata={"candidate_id": current.candidate_id, "object_id": current.object_id},
+            metadata={
+                "candidate_id": current.candidate_id,
+                "object_id": current.object_id,
+                "semantic_rule_keys": rule_keys,
+                "semantic_hints": [dict(rule.planner_hint, rule_key=rule.rule_key) for rule in self._active_plan.recall_result.semantic_rules],
+            },
         )
 
     def clear(self) -> None:

@@ -17,14 +17,18 @@ class SubgoalPlanner:
         self,
         *,
         target_track_id: str,
+        target_person_id: str = "",
         target_pose_xyz: tuple[float, float, float] | None,
         task_id: str = "",
+        metadata: dict[str, object] | None = None,
     ) -> ActionCommand:
         return ActionCommand(
             action_type="FOLLOW_TARGET",
             task_id=task_id,
             target_track_id=target_track_id,
+            target_person_id=target_person_id,
             target_pose_xyz=target_pose_xyz,
+            metadata=dict(metadata or {}),
         )
 
     def nav_to_place(

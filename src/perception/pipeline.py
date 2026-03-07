@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 
+from common.geometry import wrap_to_pi
 from inference.detectors.base import DetectionResult, DetectorBackend
 from inference.detectors.factory import DetectorFactoryConfig, create_detector_backend
 from inference.trackers.simple_tracker import SimpleTrackManager, TrackedDetection
@@ -84,6 +85,7 @@ class PerceptionPipeline:
                 snapshots=list(projected_detection.snapshots or []),
                 metadata=dict(projected_detection.metadata or {}),
             )
+            self._enrich_detection_metadata(detection2d, metadata)
             observations.append(self.mapper.to_obs_object(detection2d))
         fused = self.fuser.fuse(observations)
         speaker_events = self._parse_speaker_events(metadata, timestamp)
@@ -93,7 +95,14 @@ class PerceptionPipeline:
             projected_detections=projected,
             observations=fused,
             speaker_events=speaker_events,
-            metadata={"detector": self.detector.info.backend_name, **metadata},
+            metadata={
+                "detector": self.detector.info.backend_name,
+                "detector_selected_reason": self.detector.info.selected_reason,
+                "detector_runtime_report": None
+                if self.detector.runtime_report is None
+                else self.detector.runtime_report.as_dict(),
+                **metadata,
+            },
         )
 
     @staticmethod
@@ -115,3 +124,19 @@ class PerceptionPipeline:
                 )
             )
         return results
+
+    @staticmethod
+    def _enrich_detection_metadata(detection2d: Detection2D, metadata: dict[str, Any]) -> None:
+        robot_pose = metadata.get("robot_pose_xyz")
+        robot_yaw = metadata.get("robot_yaw_rad")
+        if isinstance(robot_pose, (list, tuple)) and len(robot_pose) >= 2:
+            dx = float(detection2d.world_pose_xyz[0]) - float(robot_pose[0])
+            dy = float(detection2d.world_pose_xyz[1]) - float(robot_pose[1])
+            absolute_yaw = float(np.arctan2(dy, dx))
+            if isinstance(robot_yaw, (int, float)):
+                detection2d.metadata["bearing_yaw_rad"] = float(wrap_to_pi(absolute_yaw - float(robot_yaw)))
+            else:
+                detection2d.metadata["bearing_yaw_rad"] = absolute_yaw
+        detection2d.metadata.setdefault("frame_source", metadata.get("frame_source", "unknown"))
+        if "capture_report" in metadata:
+            detection2d.metadata.setdefault("capture_report", metadata.get("capture_report"))
