@@ -54,6 +54,7 @@ def test_initial_stop_is_suppressed_until_first_trajectory() -> None:
             raw_text='{"pixel_x":10,"pixel_y":20,"stop":true,"reason":"arrived"}',
         ),
         finished_at=123.0,
+        generation=0,
     )
 
     assert orchestrator.goal_cache is not None
@@ -87,6 +88,7 @@ def test_stop_after_confirmed_trajectory_is_preserved() -> None:
             raw_text='{"pixel_x":10,"pixel_y":20,"stop":true,"reason":"arrived"}',
         ),
         finished_at=124.0,
+        generation=0,
     )
 
     assert orchestrator.goal_cache is not None
@@ -111,6 +113,7 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
             raw_text='{"pixel_x":11,"pixel_y":22,"stop":false,"reason":"forward"}',
         ),
         finished_at=123.0,
+        generation=0,
     )
 
     assert orchestrator.goal_cache is not None
@@ -127,6 +130,7 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
             raw_text='{"pixel_x":11,"pixel_y":22,"stop":false,"reason":"forward again"}',
         ),
         finished_at=124.0,
+        generation=0,
     )
 
     assert orchestrator.goal_cache is not None
@@ -167,3 +171,25 @@ def test_step_skips_periodic_s2_until_first_trajectory() -> None:
 
     assert response["debug"]["called_s1"] is True
     assert response["debug"]["called_s2"] is False
+
+
+def test_finish_s2_ignores_stale_generation_results() -> None:
+    orchestrator = DualOrchestrator(_args())
+    orchestrator._generation = 1
+
+    orchestrator._finish_s2(
+        S2Result(
+            ok=True,
+            pixel_x=9,
+            pixel_y=19,
+            stop=False,
+            reason="stale",
+            source="llm",
+            raw_text='{"pixel_x":9,"pixel_y":19,"stop":false,"reason":"stale"}',
+        ),
+        finished_at=125.0,
+        generation=0,
+    )
+
+    assert orchestrator.goal_cache is None
+    assert orchestrator.s2_calls == 0

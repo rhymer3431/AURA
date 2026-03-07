@@ -29,7 +29,7 @@ $RobotUsd = if ($env:G1_POINTGOAL_ROBOT_USD) {
     $DefaultRobotUsd
 }
 $SceneUsd = if ($env:G1_POINTGOAL_SCENE_USD) { $env:G1_POINTGOAL_SCENE_USD } else { "/Isaac/Environments/Simple_Warehouse/warehouse.usd" }
-$PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "pointgoal" }
+$PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "interactive" }
 $GoalX = if ($env:G1_POINTGOAL_GOAL_X) { $env:G1_POINTGOAL_GOAL_X } else { "2.0" }
 $GoalY = if ($env:G1_POINTGOAL_GOAL_Y) { $env:G1_POINTGOAL_GOAL_Y } else { "0.0" }
 $Instruction = if ($env:G1_POINTGOAL_INSTRUCTION) {
@@ -112,6 +112,10 @@ Write-Host "[G1 PointGoal] default server-url=$ServerUrl"
 Write-Host "[G1 PointGoal] default dual-server-url=$DualServerUrl"
 Write-Host "[G1 PointGoal] default force-runtime-camera=$ForceRuntimeCamera"
 Write-Host "[G1 PointGoal] user args override defaults when repeated."
+Write-Host "[G1 PointGoal] examples:"
+Write-Host "[G1 PointGoal]   interactive: .\\run_g1_pointgoal.ps1 --planner-mode interactive"
+Write-Host "[G1 PointGoal]   pointgoal  : .\\run_g1_pointgoal.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
+Write-Host "[G1 PointGoal]   dual       : .\\run_g1_pointgoal.ps1 --planner-mode dual --instruction `"Navigate to the target and stop.`""
 
 $LaunchArgs = @(
     "-m", $EntryModule,

@@ -55,3 +55,17 @@ def test_validate_args_accepts_standard_dual_mode():
 
     apply_demo_defaults(args)
     validate_args(args)
+
+
+def test_validate_args_accepts_interactive_mode_without_goal_or_instruction():
+    args = _parse_args("--planner-mode", "interactive")
+
+    apply_demo_defaults(args)
+    validate_args(args)
+
+
+def test_validate_args_rejects_empty_interactive_prompt():
+    args = _parse_args("--planner-mode", "interactive", "--interactive-prompt", "   ")
+
+    with pytest.raises(ValueError, match="--interactive-prompt must be non-empty"):
+        validate_args(args)

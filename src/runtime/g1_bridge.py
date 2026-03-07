@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 
 import numpy as np
@@ -36,12 +37,23 @@ class NavDPCommandSource:
         self._pending_exit_code: int | None = None
         self._pending_exit_frames = 0
         self._pending_exit_reason = ""
+        self._interactive_running = False
+        self._interactive_input_thread: threading.Thread | None = None
 
     def initialize(self, simulation_app, stage, controller) -> None:
         self._controller = controller
         for _ in range(max(int(self.args.startup_updates), 0)):
             simulation_app.update()
         self._planner.initialize(simulation_app, stage)
+        if self._planner.mode == "interactive":
+            self._interactive_running = True
+            self._print_interactive_help()
+            self._interactive_input_thread = threading.Thread(
+                target=self._interactive_input_loop,
+                name="g1-interactive-stdin",
+                daemon=True,
+            )
+            self._interactive_input_thread.start()
 
     def update(self, frame_idx: int) -> None:
         if self._controller is None:
@@ -72,7 +84,7 @@ class NavDPCommandSource:
                 if goal_distance_m <= float(self.args.goal_tolerance_m):
                     force_stop = True
                     reached_goal = True
-        else:
+        elif self._planner.mode == "dual":
             if update.stop:
                 force_stop = True
                 reached_goal = True
@@ -124,6 +136,8 @@ class NavDPCommandSource:
             if self._pending_exit_frames <= 0:
                 if self._planner.mode == "pointgoal":
                     prefix = "[G1_POINTGOAL]"
+                elif self._planner.mode == "interactive":
+                    prefix = "[G1_INTERACTIVE]"
                 elif self._planner.demo_object is not None:
                     prefix = "[G1_OBJECT_SEARCH]"
                 else:
@@ -136,13 +150,18 @@ class NavDPCommandSource:
             else:
                 self._pending_exit_frames -= 1
 
-        if frame_idx % max(int(self.args.log_interval), 1) == 0:
+        log_interval = max(int(self.args.log_interval), 1)
+        if self._planner.mode == "interactive" and update.interactive_phase == "roaming":
+            log_interval = max(int(self.args.interactive_idle_log_interval), 1)
+
+        if frame_idx % log_interval == 0:
             self._log_step(frame_idx, update, tracker_result.command, goal_distance_m, object_distance_m)
 
     def command(self) -> np.ndarray:
         return self._command.copy()
 
     def shutdown(self) -> None:
+        self._interactive_running = False
         self._planner.shutdown()
 
     def _arm_exit(self, exit_code: int, reason: str) -> None:
@@ -150,6 +169,53 @@ class NavDPCommandSource:
             self._pending_exit_code = int(exit_code)
             self._pending_exit_reason = str(reason)
             self._pending_exit_frames = 1
+
+    def _print_interactive_help(self) -> None:
+        print("[G1_INTERACTIVE][ROAM] terminal natural-language control")
+        print("[G1_INTERACTIVE][ROAM]   text      : submit a new navigation command")
+        print("[G1_INTERACTIVE][ROAM]   /help     : show this help")
+        print("[G1_INTERACTIVE][ROAM]   /cancel   : cancel the active task and resume roaming")
+        print("[G1_INTERACTIVE][ROAM]   /quit     : exit the runtime")
+
+    def _interactive_input_loop(self) -> None:
+        prompt = str(getattr(self.args, "interactive_prompt", "nl>")).strip() or "nl>"
+        while self._interactive_running and not self.quit_requested:
+            try:
+                raw = input(f"{prompt} ")
+            except EOFError:
+                return
+            except Exception as exc:  # noqa: BLE001
+                print(f"[G1_INTERACTIVE][ROAM] input loop stopped: {type(exc).__name__}: {exc}")
+                return
+
+            text = raw.strip()
+            if text == "":
+                continue
+
+            lowered = text.lower()
+            if lowered == "/help":
+                self._print_interactive_help()
+                continue
+            if lowered == "/cancel":
+                cancelled = self._planner.cancel_interactive_task()
+                if cancelled:
+                    print("[G1_INTERACTIVE][TASK] cancel requested")
+                else:
+                    print("[G1_INTERACTIVE][ROAM] no active task to cancel")
+                continue
+            if lowered == "/quit":
+                self._arm_exit(0, "interactive quit requested")
+                return
+            if lowered.startswith("/"):
+                print(f"[G1_INTERACTIVE][ROAM] unknown command: {text}")
+                continue
+
+            try:
+                command_id = self._planner.submit_interactive_instruction(text)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[G1_INTERACTIVE][TASK] failed to queue instruction: {type(exc).__name__}: {exc}")
+                continue
+            print(f"[G1_INTERACTIVE][TASK] command_id={command_id} queued instruction={text!r}")
 
     def _log_step(
         self,
@@ -170,6 +236,27 @@ class NavDPCommandSource:
                 f"plan_ok={update.stats.successful_calls} plan_fail={update.stats.failed_calls} "
                 f"plan_latency_ms={update.stats.latency_ms:.1f}{error_note}"
             )
+            return
+
+        if self._planner.mode == "interactive":
+            if update.interactive_phase == "task_active":
+                print(
+                    "[G1_INTERACTIVE][TASK]"
+                    f"[step={frame_idx}] command_id={update.interactive_command_id} "
+                    f"goal_v={update.goal_version} traj_v={update.traj_version} "
+                    f"stale_sec={update.stale_sec:.2f} "
+                    f"cmd=({float(command[0]):.3f},{float(command[1]):.3f},{float(command[2]):.3f}) "
+                    f"plan_ok={update.stats.successful_calls} plan_fail={update.stats.failed_calls} "
+                    f"plan_latency_ms={update.stats.latency_ms:.1f}{error_note}"
+                )
+            else:
+                print(
+                    "[G1_INTERACTIVE][ROAM]"
+                    f"[step={frame_idx}] "
+                    f"cmd=({float(command[0]):.3f},{float(command[1]):.3f},{float(command[2]):.3f}) "
+                    f"plan_ok={update.stats.successful_calls} plan_fail={update.stats.failed_calls} "
+                    f"plan_latency_ms={update.stats.latency_ms:.1f}{error_note}"
+                )
             return
 
         if self._planner.demo_object is not None:

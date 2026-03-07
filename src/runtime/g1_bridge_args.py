@@ -6,6 +6,7 @@ from locomotion.args import BOOTSTRAP_ARGS, BOOTSTRAP_PARSER, add_runtime_args
 
 DEFAULT_DUAL_INSTRUCTION = "Navigate safely to the target and stop when complete."
 DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse and stop when you reach it."
+DEFAULT_INTERACTIVE_PROMPT = "nl>"
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -21,8 +22,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--planner-mode",
         dest="planner_mode",
         type=str,
-        choices=("pointgoal", "dual"),
-        default="pointgoal",
+        choices=("pointgoal", "dual", "interactive"),
+        default="interactive",
     )
     parser.add_argument("--dual-server-url", dest="dual_server_url", type=str, default="http://127.0.0.1:8890")
     parser.add_argument(
@@ -58,6 +59,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop-threshold", dest="stop_threshold", type=float, default=-3.0)
     parser.add_argument("--startup-updates", dest="startup_updates", type=int, default=20)
     parser.add_argument("--log-interval", dest="log_interval", type=int, default=30)
+    parser.add_argument("--interactive-prompt", dest="interactive_prompt", type=str, default=DEFAULT_INTERACTIVE_PROMPT)
+    parser.add_argument("--interactive-idle-log-interval", dest="interactive_idle_log_interval", type=int, default=120)
 
     parser.add_argument("--cmd-max-vx", dest="cmd_max_vx", type=float, default=0.5)
     parser.add_argument("--cmd-max-vy", dest="cmd_max_vy", type=float, default=0.3)
@@ -84,20 +87,29 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--demo-object-size-m must be positive")
     if float(args.object_stop_radius_m) <= 0.0:
         raise ValueError("--object-stop-radius-m must be positive")
+    if int(args.interactive_idle_log_interval) <= 0:
+        raise ValueError("--interactive-idle-log-interval must be positive")
 
     if planner_mode == "pointgoal":
         if args.goal_x is None or args.goal_y is None:
             raise ValueError("--goal-x and --goal-y are required in planner-mode=pointgoal")
         if bool(args.spawn_demo_object):
             raise ValueError("--spawn-demo-object requires --planner-mode dual")
-    elif str(args.instruction).strip() == "":
-        raise ValueError("--instruction must be non-empty in planner-mode=dual")
+    elif planner_mode == "dual":
+        if str(args.instruction).strip() == "":
+            raise ValueError("--instruction must be non-empty in planner-mode=dual")
+    else:
+        if bool(args.spawn_demo_object):
+            raise ValueError("--spawn-demo-object requires --planner-mode dual")
+        if str(args.interactive_prompt).strip() == "":
+            raise ValueError("--interactive-prompt must be non-empty in planner-mode=interactive")
 
 
 __all__ = [
     "BOOTSTRAP_ARGS",
     "BOOTSTRAP_PARSER",
     "DEFAULT_DUAL_INSTRUCTION",
+    "DEFAULT_INTERACTIVE_PROMPT",
     "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
     "apply_demo_defaults",
     "build_arg_parser",

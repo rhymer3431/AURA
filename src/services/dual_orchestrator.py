@@ -165,6 +165,7 @@ class DualOrchestrator:
         self.last_s2_requested_stop = False
         self.last_s2_effective_stop = False
         self.s2_stop_suppressed_count = 0
+        self._generation = 0
 
     def _url(self, base_url: str, path: str) -> str:
         return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -213,6 +214,7 @@ class DualOrchestrator:
             return False, {"error": f"navigator_reset failed: {type(exc).__name__}: {exc}"}
 
         with self._lock:
+            self._generation += 1
             self.navdp_url = navdp_url
             self.s1_period_sec = max(s1_period_sec, 1.0e-3)
             self.s2_period_sec = max(s2_period_sec, 1.0e-3)
@@ -421,8 +423,10 @@ class DualOrchestrator:
             latency_ms = (time.perf_counter() - start) * 1000.0
             return S1Result(ok=False, error=f"{type(exc).__name__}: {exc}", latency_ms=float(latency_ms))
 
-    def _finish_s2(self, result: S2Result, finished_at: float) -> None:
+    def _finish_s2(self, result: S2Result, finished_at: float, generation: int) -> None:
         with self._lock:
+            if int(generation) != int(self._generation):
+                return
             self.s2_inflight = False
             self.s2_calls += 1
             self.last_s2_ts = float(finished_at)
@@ -474,15 +478,17 @@ class DualOrchestrator:
                 self.s2_retry_after_ts = float(finished_at) + delay
                 self.force_s2_pending = True
 
-    def _s2_worker(self, image_bgr: np.ndarray, events: dict[str, Any]) -> None:
+    def _s2_worker(self, image_bgr: np.ndarray, events: dict[str, Any], generation: int) -> None:
         try:
             result = self._call_s2(image_bgr=image_bgr, events=events)
         except Exception as exc:  # noqa: BLE001
             result = S2Result(ok=False, error=f"{type(exc).__name__}: {exc}", source="worker")
-        self._finish_s2(result=result, finished_at=time.time())
+        self._finish_s2(result=result, finished_at=time.time(), generation=int(generation))
 
-    def _finish_s1(self, result: S1Result, goal_version: int, finished_at: float) -> None:
+    def _finish_s1(self, result: S1Result, goal_version: int, finished_at: float, generation: int) -> None:
         with self._lock:
+            if int(generation) != int(self._generation):
+                return
             self.s1_inflight = False
             self.s1_calls += 1
             self.last_s1_ts = float(finished_at)
@@ -516,6 +522,7 @@ class DualOrchestrator:
         cam_pos: np.ndarray,
         cam_quat_wxyz: np.ndarray,
         goal_version: int,
+        generation: int,
     ) -> None:
         try:
             result = self._call_s1(
@@ -528,7 +535,12 @@ class DualOrchestrator:
             )
         except Exception as exc:  # noqa: BLE001
             result = S1Result(ok=False, error=f"{type(exc).__name__}: {exc}")
-        self._finish_s1(result=result, goal_version=int(goal_version), finished_at=time.time())
+        self._finish_s1(
+            result=result,
+            goal_version=int(goal_version),
+            finished_at=time.time(),
+            generation=int(generation),
+        )
 
     def _read_state_snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -611,10 +623,12 @@ class DualOrchestrator:
         launch_s1 = False
         s1_goal_version = -1
         s1_pixel_goal = (0, 0)
+        generation = -1
 
         with self._lock:
             if not self.initialized:
                 raise RuntimeError("dual_reset must be called before dual_step")
+            generation = int(self._generation)
             self.step_calls += 1
             goal = self.goal_cache
             traj = self.traj_cache
@@ -653,7 +667,7 @@ class DualOrchestrator:
         if launch_s2:
             threading.Thread(
                 target=self._s2_worker,
-                args=(np.asarray(image_bgr, dtype=np.uint8).copy(), dict(events)),
+                args=(np.asarray(image_bgr, dtype=np.uint8).copy(), dict(events), int(generation)),
                 name="dual-s2-worker",
                 daemon=True,
             ).start()
@@ -669,6 +683,7 @@ class DualOrchestrator:
                     np.asarray(cam_pos, dtype=np.float32).copy(),
                     np.asarray(cam_quat_wxyz, dtype=np.float32).copy(),
                     int(s1_goal_version),
+                    int(generation),
                 ),
                 name="dual-s1-worker",
                 daemon=True,
