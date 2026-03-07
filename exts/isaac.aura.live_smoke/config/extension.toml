@@ -1,0 +1,19 @@
+[package]
+version = "0.1.0"
+title = "Isaac Aura Live Smoke"
+description = "In-editor live smoke diagnostics and D455 bootstrap validation for Isaac Aura."
+category = "Utility"
+authors = ["OpenAI Codex"]
+keywords = ["isaac", "smoke", "diagnostics", "d455"]
+readme = "docs/README.md"
+
+[core]
+reloadable = true
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.kit.actions.core" = {}
+"omni.kit.menu.utils" = {}
+
+[[python.module]]
+name = "isaac.aura.live_smoke_ext"

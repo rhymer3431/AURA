@@ -2,127 +2,93 @@
 
 ## Default Principle
 - Default runtime path is direct IPC, not Flask/HTTP.
-- Small control messages use `MessageBus`.
+- Small control/state messages use `MessageBus`.
 - Large RGB/depth payloads prefer `SharedMemoryRing`.
-- In-process debug mode can fall back to inline frame payloads when shared memory is not configured.
 
 ## Transports
-- `ipc.inproc_bus.InprocBus`
-  - Default for local stack and loopback smoke tests.
-  - Deterministic and test-friendly.
-- `ipc.zmq_bus.ZmqBus`
-  - Current two-process localhost transport.
-  - Uses a 2-plane topology:
-    - control plane: bridge `ROUTER` bind, memory agent `DEALER` connect
-    - telemetry plane: bridge `PUB` bind, memory agent `SUB` connect
-  - Requires `pyzmq`.
-  - Buffers control messages on the bridge until at least one agent has registered over the control plane.
-  - Replays retained control messages (`isaac.task`, `isaac.notice`, `isaac.capability`) to late-joining agents for multi-agent fan-out.
-- `ipc.shm_ring.SharedMemoryRing`
-  - Stores encoded RGB/depth arrays and passes `ShmSlotRef` handles through `FrameHeader.metadata`.
-- `ipc.transport_health.TransportHealthTracker`
-  - Tracks last send/receive timestamps, reconnect attempts, queued messages, peer count, dropped messages, and last error per plane.
+- `InprocBus`
+  - single-process debug and loopback
+- `ZmqBus`
+  - control plane: bridge `ROUTER`, agent `DEALER`
+  - telemetry plane: bridge `PUB`, agent `SUB`
+  - retained control replay for late-joining agents
+- `SharedMemoryRing`
+  - RGB/depth payload slots referenced from `FrameHeader.metadata`
 
-## Message Types
-- `FrameHeader`
-  - `frame_id`, `timestamp_ns`, `source`
-  - `camera_pose_xyz`, `camera_quat_wxyz`
-  - `robot_pose_xyz`, `robot_yaw_rad`, `sim_time_s`
-  - shared-memory or inline frame references in `metadata`
+## Core Message Types
 - `TaskRequest`
-  - natural-language command plus `target_json` and optional `speaker_id`
+- `FrameHeader`
 - `ActionCommand`
-  - Common command set:
-    - `STOP`
-    - `LOOK_AT`
-    - `FOLLOW_TARGET`
-    - `NAV_TO_PLACE`
-    - `NAV_TO_POSE`
-    - `LOCAL_SEARCH`
-  - Carries `target_person_id` and semantic hint metadata when available
 - `ActionStatus`
-  - execution feedback from bridge/executor back to the orchestrator
-  - includes `state`, `reason`, `robot_pose_xyz`, and `distance_remaining_m`
 - `CapabilityReport`
-  - structured runtime diagnostics such as detector capability reports
-  - live bridge also emits structured D455/camera initialization diagnostics
 - `RuntimeNotice`
-  - human-readable runtime notices, including live-frame fallback notices
 - `HealthPing`
-  - lightweight process and transport liveness message
 
-## Topics
-- `isaac.task`
-  - control plane
-  - task text from local stack, CLI, or bridge process
-- `isaac.observation`
-  - telemetry plane
-  - `FrameHeader` from Isaac bridge to memory agent
-- `isaac.command`
-  - control plane
-  - `ActionCommand` from orchestrator to executor
-- `isaac.status`
-  - telemetry plane
-  - `ActionStatus` from executor back to orchestrator
-- `isaac.notice`
-  - control plane
-  - `RuntimeNotice`
-- `isaac.capability`
-  - control plane
-  - `CapabilityReport`
-- `isaac.health`
-  - telemetry plane from bridge to agent
-  - control-plane-compatible when emitted from the agent for registration/health
+## Command Set
+- `STOP`
+- `LOOK_AT`
+- `FOLLOW_TARGET`
+- `NAV_TO_PLACE`
+- `NAV_TO_POSE`
+- `LOCAL_SEARCH`
 
-## Actual Flow
-- Single-process loopback
-  - `apps.local_stack_app` or `apps.memory_agent_app --loopback`
-  - `TaskRequest -> Perception -> Memory -> ActionCommand`
-- Two-process local stack
-  1. Start bridge with bound control/telemetry endpoints
-  2. In live mode, the bridge process owns standalone `SimulationApp` and initializes the D455/live RGB-D path before entering the locomotion loop
-  3. Start memory agent and connect to the bridge
-  4. Memory agent publishes `CapabilityReport`/`HealthPing` to register on the control plane
-  5. Bridge publishes `TaskRequest` on control and `FrameHeader` on telemetry
-  6. RGB/depth payloads travel inline or through `SharedMemoryRing` references carried in `FrameHeader.metadata`
-  7. Memory agent reconstructs frames, updates memory, and publishes `ActionCommand` on control
-  8. Bridge drains `ActionCommand`, executes `NAV_TO_POSE` / `NAV_TO_PLACE` / `LOCAL_SEARCH` / `LOOK_AT` / `STOP` locally, and publishes `ActionStatus` on telemetry
-  9. `RuntimeNotice` and `CapabilityReport` remain on the control plane so late-connecting agents can still observe startup diagnostics
+## Standard Runtime Flow
+1. Bridge publishes `FrameHeader` and shared-memory references.
+2. Memory agent reconstructs the batch and runs perception -> memory -> orchestration.
+3. Memory agent publishes `ActionCommand`.
+4. Bridge executes low-level subgoals and publishes `ActionStatus`.
 
-## Live Smoke and IPC Parity
-- `apps.live_smoke_app` is not the normal multi-process runtime, but it reuses the same `FrameHeader`/`IsaacObservationBatch` shape through `apps.runtime_common.frame_sample_to_batch()`.
-- Smoke diagnostics are intentionally separate from the bridge runtime so that bootstrap failure can be observed without waiting for the full locomotion loop.
-- The smoke runner distinguishes:
-  - frame ingress succeeded but no detections
-  - detections produced
-  - memory update reached
-- This keeps live/synthetic parity at the batch interface even when the smoke process itself runs locally.
+## Live Smoke Parity
+- `apps.live_smoke_app` is not the normal bridge runtime, but it intentionally reuses the same batch shape.
+- That keeps live diagnostics aligned with the production `FrameHeader`/observation path.
 
-## Live Smoke Diagnostics Artifacts
-- Phase tracker JSON:
-  - current phase
-  - per-phase status
-  - timeout budget
-  - failure phase
-  - launch mode and recommendations
-- Additional artifacts:
-  - CLI args
-  - enabled extensions
-  - D455 asset resolution report
-  - D455 mount report
-  - stage prim tree
-  - sensor init report
-  - first-frame report
-  - smoke metrics
-- On Windows, `run_live_smoke.ps1` monitors the diagnostics artifact and enforces per-phase timeouts instead of one opaque global timeout.
+## Live Smoke Artifacts
+The diagnostics JSON records:
+- selected launch mode
+- deprecated alias use, if any
+- selected bootstrap profile
+- smoke target tier
+- current and failed phase
+- compatibility report
+- structured recommendation items
+- smoke tier result summary
 
-## Multi-Agent Notes
-- Multiple memory agents can connect to the same bridge over the control plane.
-- The bridge broadcasts retained control-plane messages to each registered agent.
-- Telemetry fan-out remains native PUB/SUB.
-- Command routing from multiple agents back to the bridge is still shared-topic broadcast/merge, not targeted per agent identity.
+Additional artifacts:
+- CLI args
+- enabled extensions
+- D455 asset resolution
+- D455 mount report
+- stage prim tree
+- sensor init report
+- first frame report
+- smoke metrics
+
+## Smoke Tier Semantics
+- `sensor_status`
+  - proves D455/frame ingress
+- `pipeline_status`
+  - proves perception ingress
+  - empty detection batch is allowed
+- `memory_status`
+  - proves memory update path
+
+These are stored separately so a blank scene does not look like total smoke failure.
+
+## Compatibility and Recommendation Layer
+Preflight and smoke generate a structured compatibility report:
+- environment availability
+- experience and assets availability
+- extension support
+- likely runtime mismatch
+- recommended launch mode/profile
+
+Recommendation items are derived from:
+- compatibility report
+- last failed phase
+- smoke tier result
+
+This is what drives “retry standalone with warmup”, “switch to editor_assisted”, or “treat as empty-scene pipeline pass”.
 
 ## Current Limits
-- In shared-memory mode, both processes must agree on shm name, slot size, and capacity.
-- Telemetry from the memory agent still reuses the control plane when needed; the primary telemetry direction remains bridge -> agent.
-- Multi-agent fan-out exists for retained control replay, but command arbitration is still shared-topic merge rather than targeted per-agent routing.
+- Multi-agent fan-out is retained replay plus shared-topic merge, not targeted routing.
+- `editor_assisted` and `extension_mode` require code to run inside an existing Full App / Kit process.

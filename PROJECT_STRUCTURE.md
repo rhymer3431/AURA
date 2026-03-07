@@ -12,6 +12,8 @@
 │   │   ├── MEMORY_ARCHITECTURE.md
 │   │   └── RUNTIME_MODES.md
 │   └── refactor_baseline/
+├── exts/
+│   └── isaac.aura.live_smoke/
 ├── logs/
 ├── scripts/
 │   └── powershell/
@@ -22,6 +24,7 @@
 │       ├── run_local_stack.ps1
 │       ├── run_live_smoke.ps1
 │       ├── run_live_smoke_attach.ps1
+│       ├── run_live_smoke_extension.ps1
 │       ├── run_live_smoke_preflight.ps1
 │       └── run_memory_agent.ps1
 ├── src/
@@ -35,7 +38,9 @@
 │   │       └── isaac_live_source.py
 │   ├── apps/
 │   │   ├── legacy_http/
+│   │   ├── editor_smoke_entry.py
 │   │   ├── isaac_bridge_app.py
+│   │   ├── isaac_bridge_editor_app.py
 │   │   ├── live_smoke_app.py
 │   │   ├── local_stack_app.py
 │   │   ├── memory_agent_app.py
@@ -66,8 +71,12 @@
 │   │   └── reid_store.py
 │   ├── runtime/
 │   │   ├── bootstrap_diagnostics.py
+│   │   ├── bootstrap_profiles.py
+│   │   ├── compatibility_report.py
 │   │   ├── isaac_launch_modes.py
-│   │   └── live_smoke_runner.py
+│   │   ├── live_smoke_runner.py
+│   │   ├── recommendation_engine.py
+│   │   └── smoke_result_model.py
 │   ├── services/
 │   │   ├── attention_service.py
 │   │   ├── follow_service.py
@@ -92,43 +101,31 @@
 - `src/runtime/planning_session.py`
   - direct in-process NavDP facade for point-goal and no-goal execution
 - `src/runtime/subgoal_executor.py`
-  - shared low-level execution helper for `PlanningSession`, `TrajectoryTracker`, and `ActionStatus` evaluation
+  - shared low-level execution helper for `PlanningSession`, `TrajectoryTracker`, and `ActionStatus`
 - `src/runtime/g1_bridge.py`
-  - low-level subgoal executor on top of locomotion and planning session
+  - low-level subgoal executor
 - `src/runtime/isaac_bridge_runtime.py`
-  - standalone Isaac Sim live bridge command source and runtime bootstrap helper
+  - standalone Isaac live bridge bootstrap
 - `src/runtime/live_smoke_runner.py`
-  - phase-based live smoke diagnostics, D455 mount verification, and minimal perception->memory ingress checks
-- `src/runtime/bootstrap_diagnostics.py`
-  - bootstrap phase tracker and diagnostics artifact writer
-- `src/runtime/isaac_launch_modes.py`
-  - standalone vs attach vs extension mode selection and recommendations
-- `src/runtime/isaac_editor_bridge.py`
-  - attach-to-running-editor bridge runtime that reuses the live bridge command source inside an existing Kit/Isaac session
-- `src/runtime/memory_agent_runtime.py`
-  - persistent memory-agent polling loop, periodic diagnostics, and snapshot persistence
-- `src/runtime/supervisor.py`
-  - consumes tasks, observations, and statuses; emits `ActionCommand`
-- `src/apps/runtime_common.py`
-  - shared bus/shm/frame-source helpers for local stack and two-process apps
-- `src/apps/isaac_bridge_editor_app.py`
-  - helper entrypoint for attaching the bridge to an already running Isaac editor/stage
+  - phase-based live smoke diagnostics, smoke tier aggregation, and minimal perception/memory ingress validation
+- `src/runtime/bootstrap_profiles.py`
+  - bootstrap profile selection for standalone/editor/extension smoke paths
+- `src/runtime/compatibility_report.py`
+  - structured environment compatibility report and recommended launch mode/profile
+- `src/runtime/recommendation_engine.py`
+  - next-action recommendations from compatibility + failed phase + smoke result
+- `src/runtime/smoke_result_model.py`
+  - sensor/pipeline/memory tier result model
 - `src/apps/live_smoke_app.py`
-  - dedicated preflight/smoke entrypoint for live bootstrap diagnostics
+  - preflight/smoke CLI entrypoint
+- `src/apps/editor_smoke_entry.py`
+  - official in-editor smoke callable reused by editor-assisted and extension mode
+- `src/apps/isaac_bridge_editor_app.py`
+  - bridge attach helper for existing Kit/Isaac sessions
 - `src/adapters/sensors/d455_mount.py`
-  - D455 asset resolution, stage mount helper, and prim tree reporting for smoke diagnostics
-- `src/inference/detectors`
-  - detector backend abstraction, TensorRT capability reporting, YOLOE post-processing, and fallback detector
-- `src/perception`
-  - detector/tracker/depth projection to `ObsObject`, plus stable person re-id
-- `src/memory`
-  - structured memory stores, query engine, consolidation, persistence
-- `src/services`
-  - task orchestration, follow, attention, object recall, semantic consolidation, memory facade
-- `src/ipc`
-  - message schemas, ZMQ control/telemetry transport, transport health tracking
-- `src/adapters/legacy_http` and `src/apps/legacy_http`
-  - compatibility-only HTTP path
+  - D455 asset resolution and stage mount helper
+- `exts/isaac.aura.live_smoke`
+  - packaged Isaac extension with menu/action entry for running live smoke in-editor
 
 ## Default Execution Path
 - Local debug:
@@ -138,19 +135,25 @@
   - `apps.isaac_bridge_app`
 - Live smoke diagnostics:
   - `apps.live_smoke_app`
-- Attach-to-running-editor:
-  - `apps.isaac_bridge_editor_app`
-- Low-level Isaac/G1 execution:
-  - `runtime.g1_bridge`
-  - `runtime.isaac_bridge_runtime`
+- In-editor smoke:
+  - `apps.editor_smoke_entry`
+  - `exts/isaac.aura.live_smoke`
 
-## Detector Path
-- Engine discovery starts from `artifacts/models/yoloe-26s-seg-pf.engine`.
-- `DetectorRuntimeReport` explains whether TensorRT import, deserialize, binding, and runtime execution are usable.
-- If TensorRT load or runtime execution is unavailable, fallback detector remains active.
+## Live Smoke Concepts
+- Official launch modes:
+  - `standalone_python`
+  - `editor_assisted`
+  - `extension_mode`
+- Deprecated alias:
+  - `full_app_attach`
+- Smoke tiers:
+  - `sensor`
+  - `pipeline`
+  - `memory`
+  - `full`
 
 ## Current Limits
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.
-- Standalone live smoke depends on Isaac `python.bat`, `SimulationApp`, and a valid D455 asset path; attach mode depends on a running Full App stage.
-- Multi-agent fan-out is now retained-replay based on the control plane; targeted routing is still not implemented.
+- `editor_assisted` and `extension_mode` require in-editor execution; external process attach is not implemented.
+- Multi-agent command arbitration is still shared-topic merge, not targeted routing.
 - Legacy HTTP wrappers remain in the tree for compatibility only.

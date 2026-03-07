@@ -21,11 +21,14 @@ from runtime.live_smoke_runner import LiveSmokeRunner
 def _args(tmp_path: Path) -> Namespace:
     return Namespace(
         launch_mode="standalone_python",
+        bootstrap_profile="auto",
+        smoke_target_tier="sensor",
         headless=True,
         diagnostics_path=str(tmp_path / "diagnostics.json"),
         artifacts_dir=str(tmp_path / "artifacts"),
         assets_root="/Isaac",
         d455_asset_path="",
+        experience_path="",
         d455_prim_path="/World/realsense_d455",
         image_width=96,
         image_height=96,
@@ -42,6 +45,11 @@ def _args(tmp_path: Path) -> Namespace:
         scene_prim_path="/World/Environment",
         scene_translate=(0.0, 0.0, 0.0),
         force_runtime_camera=False,
+        render_warmup_updates=-1,
+        physics_warmup_steps=-1,
+        stage_settle_updates=-1,
+        sensor_init_retries=-1,
+        sensor_init_retry_updates=-1,
         _argv=["--mode", "smoke"],
     )
 
@@ -115,13 +123,21 @@ def test_live_smoke_runner_process_sample_reaches_memory_update(tmp_path: Path) 
 
     metrics = runner._process_sample(sample)  # noqa: SLF001
 
-    assert metrics["frame_received"] is True
-    assert metrics["observation_batch_processed"] is True
-    assert metrics["memory_updated"] is True
-    assert metrics["observation_count"] == 1
+    assert metrics.frame_received is True
+    assert metrics.sensor_status.passed is True
+    assert metrics.pipeline_status.passed is True
+    assert metrics.memory_status.passed is True
+    assert metrics.detections_nonempty is True
+    assert metrics.memory_update_called is True
 
 
 def test_live_smoke_launch_mode_selection_and_recommendation() -> None:
     selection = select_launch_mode("auto", availability=LaunchModeAvailability(standalone_available=False, editor_available=True))
-    assert selection.selected_mode == "full_app_attach"
-    assert recommend_mode_for_failure(selected_mode="standalone_python", failure_phase="simulation_app_created") == "full_app_attach"
+    assert selection.selected_mode == "editor_assisted"
+    assert recommend_mode_for_failure(selected_mode="standalone_python", failure_phase="simulation_app_created") == "editor_assisted"
+
+
+def test_live_smoke_legacy_attach_alias_is_marked_deprecated() -> None:
+    selection = select_launch_mode("full_app_attach", availability=LaunchModeAvailability(standalone_available=False, editor_available=True))
+    assert selection.selected_mode == "editor_assisted"
+    assert selection.deprecated_alias_used is True

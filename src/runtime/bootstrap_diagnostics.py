@@ -13,16 +13,29 @@ DEFAULT_LIVE_SMOKE_PHASES = (
     "simulation_app_created",
     "required_extensions_ready",
     "stage_ready",
+    "stage_opened_or_created",
     "assets_root_resolved",
     "d455_asset_resolved",
     "d455_prim_spawned",
+    "d455_reference_bound",
+    "sensor_wrapper_created",
     "d455_depth_sensor_initialized",
+    "warmup_frames_started",
+    "warmup_frames_completed",
+    "annotators_ready",
     "render_products_ready",
     "first_rgb_frame_ready",
     "first_depth_frame_ready",
+    "first_nonempty_frame_ready",
     "first_pose_ready",
     "observation_batch_processed",
+    "perception_ingress_ready",
     "memory_updated",
+    "memory_ingress_ready",
+    "sensor_smoke_pass",
+    "pipeline_smoke_pass",
+    "memory_smoke_pass",
+    "full_smoke_pass",
     "smoke_pass",
 )
 
@@ -53,6 +66,10 @@ class BootstrapDiagnostics:
     isaac_python: str = ""
     python_executable: str = ""
     selected_launch_reason: str = ""
+    selected_profile: str = ""
+    selected_profile_reason: str = ""
+    launch_mode_alias: str = ""
+    smoke_target_tier: str = ""
     status: str = "pending"
     current_phase: str = ""
     failure_phase: str = ""
@@ -63,7 +80,10 @@ class BootstrapDiagnostics:
     enabled_extensions: list[str] = field(default_factory=list)
     phase_timeouts: dict[str, float] = field(default_factory=dict)
     recommendations: list[str] = field(default_factory=list)
+    recommendation_items: list[dict[str, Any]] = field(default_factory=list)
     artifacts: dict[str, str] = field(default_factory=dict)
+    compatibility_report: dict[str, Any] = field(default_factory=dict)
+    smoke_result: dict[str, Any] = field(default_factory=dict)
     context: dict[str, Any] = field(default_factory=dict)
     phases: list[BootstrapPhaseRecord] = field(default_factory=list)
 
@@ -125,6 +145,29 @@ class BootstrapPhaseTracker:
         if text == "" or text in self._diagnostics.recommendations:
             return
         self._diagnostics.recommendations.append(text)
+        self.flush()
+
+    def add_recommendation_item(self, item: dict[str, Any]) -> None:
+        payload = dict(item)
+        action = str(payload.get("action", "")).strip()
+        if action != "" and action not in self._diagnostics.recommendations:
+            self._diagnostics.recommendations.append(action)
+        self._diagnostics.recommendation_items.append(payload)
+        self.flush()
+
+    def set_compatibility_report(self, payload: dict[str, Any]) -> None:
+        self._diagnostics.compatibility_report = dict(payload)
+        self.flush()
+
+    def set_smoke_result(self, payload: dict[str, Any]) -> None:
+        self._diagnostics.smoke_result = dict(payload)
+        self.flush()
+
+    def update_phase_timeout(self, name: str, timeout_sec: float) -> None:
+        normalized = str(name)
+        self._diagnostics.phase_timeouts[normalized] = float(timeout_sec)
+        phase = self._phase(normalized)
+        phase.timeout_sec = float(timeout_sec)
         self.flush()
 
     def add_artifact(self, name: str, path: str | Path) -> None:
