@@ -9,6 +9,35 @@ DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse a
 DEFAULT_INTERACTIVE_PROMPT = "nl>"
 
 
+def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser.add_argument("--strict-d455", dest="strict_d455", action="store_true")
+    parser.add_argument("--force-runtime-camera", dest="force_runtime_camera", action="store_true")
+    parser.add_argument("--use-trajectory-z", dest="use_trajectory_z", action="store_true")
+    parser.add_argument("--image-width", dest="image_width", type=int, default=640)
+    parser.add_argument("--image-height", dest="image_height", type=int, default=640)
+    parser.add_argument("--depth-max-m", dest="depth_max_m", type=float, default=5.0)
+    parser.add_argument("--memory-db-path", dest="memory_db_path", type=str, default="state/memory/memory.sqlite")
+    parser.add_argument("--detector-engine-path", dest="detector_engine_path", type=str, default="")
+    parser.add_argument("--navdp-backend", dest="navdp_backend", type=str, choices=("auto", "policy", "heuristic"), default="auto")
+    parser.add_argument("--navdp-checkpoint", dest="navdp_checkpoint", type=str, default="")
+    parser.add_argument("--navdp-device", dest="navdp_device", type=str, default="cpu")
+    parser.add_argument("--navdp-amp", dest="navdp_amp", action="store_true")
+    parser.add_argument("--navdp-amp-dtype", dest="navdp_amp_dtype", type=str, default="float16")
+    parser.add_argument("--navdp-tf32", dest="navdp_tf32", action="store_true")
+    parser.add_argument("--plan-wait-timeout-sec", dest="plan_wait_timeout_sec", type=float, default=0.5)
+    parser.add_argument("--startup-updates", dest="startup_updates", type=int, default=20)
+    parser.add_argument("--log-interval", dest="log_interval", type=int, default=30)
+    parser.add_argument("--cmd-max-vx", dest="cmd_max_vx", type=float, default=0.5)
+    parser.add_argument("--cmd-max-vy", dest="cmd_max_vy", type=float, default=0.3)
+    parser.add_argument("--cmd-max-wz", dest="cmd_max_wz", type=float, default=0.8)
+    parser.add_argument("--lookahead-distance-m", dest="lookahead_distance_m", type=float, default=0.6)
+    parser.add_argument("--heading-slowdown-rad", dest="heading_slowdown_rad", type=float, default=0.6)
+    parser.add_argument("--traj-stale-timeout-sec", dest="traj_stale_timeout_sec", type=float, default=1.5)
+    parser.add_argument("--cmd-accel-limit", dest="cmd_accel_limit", type=float, default=1.0)
+    parser.add_argument("--cmd-yaw-accel-limit", dest="cmd_yaw_accel_limit", type=float, default=1.5)
+    return parser
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Run G1 NavDP navigation through the ONNX locomotion bridge in Isaac Sim.",
@@ -47,38 +76,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--goal-ttl-sec", dest="goal_ttl_sec", type=float, default=3.0)
     parser.add_argument("--traj-ttl-sec", dest="traj_ttl_sec", type=float, default=1.5)
     parser.add_argument("--traj-max-stale-sec", dest="traj_max_stale_sec", type=float, default=4.0)
-    parser.add_argument("--strict-d455", dest="strict_d455", action="store_true")
-    parser.add_argument("--force-runtime-camera", dest="force_runtime_camera", action="store_true")
-    parser.add_argument("--use-trajectory-z", dest="use_trajectory_z", action="store_true")
-    parser.add_argument("--image-width", dest="image_width", type=int, default=640)
-    parser.add_argument("--image-height", dest="image_height", type=int, default=640)
-    parser.add_argument("--depth-max-m", dest="depth_max_m", type=float, default=5.0)
     parser.add_argument("--timeout-sec", dest="timeout_sec", type=float, default=5.0)
     parser.add_argument("--reset-timeout-sec", dest="reset_timeout_sec", type=float, default=15.0)
     parser.add_argument("--retry", type=int, default=1)
     parser.add_argument("--stop-threshold", dest="stop_threshold", type=float, default=-3.0)
-    parser.add_argument("--memory-db-path", dest="memory_db_path", type=str, default="state/memory/memory.sqlite")
-    parser.add_argument("--detector-engine-path", dest="detector_engine_path", type=str, default="")
-    parser.add_argument("--navdp-backend", dest="navdp_backend", type=str, choices=("auto", "policy", "heuristic"), default="auto")
-    parser.add_argument("--navdp-checkpoint", dest="navdp_checkpoint", type=str, default="")
-    parser.add_argument("--navdp-device", dest="navdp_device", type=str, default="cpu")
-    parser.add_argument("--navdp-amp", dest="navdp_amp", action="store_true")
-    parser.add_argument("--navdp-amp-dtype", dest="navdp_amp_dtype", type=str, default="float16")
-    parser.add_argument("--navdp-tf32", dest="navdp_tf32", action="store_true")
-    parser.add_argument("--plan-wait-timeout-sec", dest="plan_wait_timeout_sec", type=float, default=0.5)
-    parser.add_argument("--startup-updates", dest="startup_updates", type=int, default=20)
-    parser.add_argument("--log-interval", dest="log_interval", type=int, default=30)
     parser.add_argument("--interactive-prompt", dest="interactive_prompt", type=str, default=DEFAULT_INTERACTIVE_PROMPT)
     parser.add_argument("--interactive-idle-log-interval", dest="interactive_idle_log_interval", type=int, default=120)
-
-    parser.add_argument("--cmd-max-vx", dest="cmd_max_vx", type=float, default=0.5)
-    parser.add_argument("--cmd-max-vy", dest="cmd_max_vy", type=float, default=0.3)
-    parser.add_argument("--cmd-max-wz", dest="cmd_max_wz", type=float, default=0.8)
-    parser.add_argument("--lookahead-distance-m", dest="lookahead_distance_m", type=float, default=0.6)
-    parser.add_argument("--heading-slowdown-rad", dest="heading_slowdown_rad", type=float, default=0.6)
-    parser.add_argument("--traj-stale-timeout-sec", dest="traj_stale_timeout_sec", type=float, default=1.5)
-    parser.add_argument("--cmd-accel-limit", dest="cmd_accel_limit", type=float, default=1.0)
-    parser.add_argument("--cmd-yaw-accel-limit", dest="cmd_yaw_accel_limit", type=float, default=1.5)
+    add_subgoal_executor_args(parser)
     return parser
 
 
@@ -120,6 +124,7 @@ __all__ = [
     "DEFAULT_DUAL_INSTRUCTION",
     "DEFAULT_INTERACTIVE_PROMPT",
     "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
+    "add_subgoal_executor_args",
     "apply_demo_defaults",
     "build_arg_parser",
     "validate_args",

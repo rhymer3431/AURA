@@ -27,27 +27,28 @@ Process 1:
 
 Process 2:
 ```powershell
-.\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --command "아까 봤던 사과를 찾아가"
+.\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source live --headless --command "아까 봤던 사과를 찾아가"
 ```
 
 - Small control messages travel over the ZMQ control plane.
 - `FrameHeader` and status telemetry travel over the ZMQ telemetry plane.
 - RGB/depth should use `SharedMemoryRing` in 2-process mode.
 - If ZMQ or shared memory is unavailable, use the in-process loopback mode.
+- In live mode the bridge process owns `SimulationApp` directly and runs the low-level `PlanningSession + TrajectoryTracker` executor locally.
 
 ## Frame Source Modes
 ```powershell
 .\scripts\powershell\run_isaac_bridge.ps1 --frame-source auto
-.\scripts\powershell\run_isaac_bridge.ps1 --frame-source live
+.\scripts\powershell\run_isaac_bridge.ps1 --frame-source live --headless
 .\scripts\powershell\run_isaac_bridge.ps1 --frame-source synthetic
 ```
 - `auto`
   - default
-  - tries live Isaac input first
-  - emits `RuntimeNotice` and falls back to synthetic if live capture is unavailable
+  - tries standalone Isaac bootstrap first
+  - emits `RuntimeNotice` and falls back to synthetic if `isaacsim` bootstrap is unavailable
 - `live`
-  - requires live Isaac input
-  - startup exits non-zero when live capture is unavailable
+  - requires standalone Isaac bootstrap and live RGB/depth capture
+  - startup exits non-zero when Isaac bootstrap or live capture is unavailable
 - `synthetic`
   - deterministic smoke-test path
 
@@ -81,5 +82,6 @@ Process 2:
 ## Current Limits
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.
 - Two-process mode is currently single bridge plus single memory agent.
-- Live Isaac frame capture outside an initialized Isaac runtime still falls back to synthetic in `auto` mode.
+- `apps.memory_agent_app` is still a short-cycle polling agent, not a long-running daemon supervisor.
+- Attach-to-running Isaac editor mode is not wired; the supported live path is standalone `SimulationApp`.
 - System2/VLM is optional and not required for the fast path.

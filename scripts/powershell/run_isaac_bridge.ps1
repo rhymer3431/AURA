@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 # Example:
-#   .\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source auto
+#   .\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source live --headless
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
@@ -14,7 +14,7 @@ $EntryModule = "apps.isaac_bridge_app"
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
     Write-Host "[Isaac Bridge] Isaac python launcher not found: `"$IsaacPython`""
-    Write-Host "[Isaac Bridge] Falling back to `"$PythonExe`" for direct IPC loopback or bridge-only runs."
+    Write-Host "[Isaac Bridge] Falling back to `"$PythonExe`" for synthetic or auto-fallback runs."
     $IsaacPython = $PythonExe
 }
 

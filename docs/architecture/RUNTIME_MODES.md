@@ -27,13 +27,14 @@
 - Entry: `scripts/powershell/run_isaac_bridge.ps1`
 - Module: `apps.isaac_bridge_app`
 - Purpose:
-  - publishes `TaskRequest` and `FrameHeader`
-  - drains `ActionCommand`
-  - can run loopback without Isaac Sim for smoke checks
-  - is the live Isaac frame publishing handoff point
+  - in `live` or live-capable `auto`, owns standalone `SimulationApp`
+  - publishes `FrameHeader` plus RGB/depth payloads over IPC
+  - drains `ActionCommand` and executes low-level NavDP/G1 subgoals locally
+  - publishes `ActionStatus`, `RuntimeNotice`, and sensor capability diagnostics
+  - can still run loopback without Isaac Sim for smoke checks
 - Modes:
   - `--bus inproc --loopback`
-  - `--bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561`
+  - `--bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source live --headless`
 
 ## 4. Low-Level G1 Executor
 - Entry: `scripts/powershell/run_g1_pointgoal.ps1`
@@ -56,10 +57,11 @@
 ## Frame Source Modes
 - `auto`
   - default
-  - live-first policy with synthetic fallback and `RuntimeNotice`
+  - live-first policy
+  - if `isaacsim` standalone bootstrap is unavailable, falls back to synthetic with `RuntimeNotice`
 - `live`
-  - live Isaac only
-  - startup fails if the live source is unavailable
+  - standalone Isaac Sim only
+  - startup fails if bootstrap or camera initialization is unavailable
 - `synthetic`
   - deterministic development/smoke-test path
 
@@ -76,5 +78,6 @@
 
 ## Current Limits
 - Two-process mode is presently a single bridge plus single memory-agent topology.
-- Live Isaac capture outside an initialized Isaac runtime still falls back to synthetic in `auto` mode.
+- `apps.memory_agent_app` still behaves like a short-cycle agent rather than a persistent daemon.
+- The supported live path is standalone `SimulationApp`; attach-to-running-editor mode is still out of scope.
 - System2/VLM remains optional and is not in the fast path.

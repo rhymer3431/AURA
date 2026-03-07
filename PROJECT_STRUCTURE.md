@@ -83,8 +83,12 @@
 ## Responsibilities
 - `src/runtime/planning_session.py`
   - direct in-process NavDP facade for point-goal and no-goal execution
+- `src/runtime/subgoal_executor.py`
+  - shared low-level execution helper for `PlanningSession`, `TrajectoryTracker`, and `ActionStatus` evaluation
 - `src/runtime/g1_bridge.py`
   - low-level subgoal executor on top of locomotion and planning session
+- `src/runtime/isaac_bridge_runtime.py`
+  - standalone Isaac Sim live bridge command source and runtime bootstrap helper
 - `src/runtime/supervisor.py`
   - consumes tasks, observations, and statuses; emits `ActionCommand`
 - `src/apps/runtime_common.py`
@@ -110,6 +114,7 @@
   - `apps.isaac_bridge_app`
 - Low-level Isaac/G1 execution:
   - `runtime.g1_bridge`
+  - `runtime.isaac_bridge_runtime`
 
 ## Detector Path
 - Engine discovery starts from `artifacts/models/yoloe-26s-seg-pf.engine`.
@@ -118,4 +123,6 @@
 
 ## Current Limits
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.
+- `apps.memory_agent_app` is still a short-cycle polling app, not a persistent daemon.
+- The supported live bridge path is standalone `SimulationApp`; attach-to-running-editor mode is not wired.
 - Legacy HTTP wrappers remain in the tree for compatibility only.

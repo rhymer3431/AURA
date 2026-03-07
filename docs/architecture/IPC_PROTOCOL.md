@@ -44,6 +44,7 @@
   - includes `state`, `reason`, `robot_pose_xyz`, and `distance_remaining_m`
 - `CapabilityReport`
   - structured runtime diagnostics such as detector capability reports
+  - live bridge also emits structured D455/camera initialization diagnostics
 - `RuntimeNotice`
   - human-readable runtime notices, including live-frame fallback notices
 - `HealthPing`
@@ -78,11 +79,14 @@
   - `TaskRequest -> Perception -> Memory -> ActionCommand`
 - Two-process local stack
   1. Start bridge with bound control/telemetry endpoints
-  2. Start memory agent and connect to the bridge
-  3. Memory agent publishes `CapabilityReport`/`HealthPing` to register on the control plane
-  4. Bridge publishes `TaskRequest` on control and `FrameHeader` on telemetry
-  5. Memory agent reconstructs frames, updates memory, and publishes `ActionCommand` on control
-  6. Bridge drains `ActionCommand`
+  2. In live mode, the bridge process owns standalone `SimulationApp` and initializes the D455/live RGB-D path before entering the locomotion loop
+  3. Start memory agent and connect to the bridge
+  4. Memory agent publishes `CapabilityReport`/`HealthPing` to register on the control plane
+  5. Bridge publishes `TaskRequest` on control and `FrameHeader` on telemetry
+  6. RGB/depth payloads travel inline or through `SharedMemoryRing` references carried in `FrameHeader.metadata`
+  7. Memory agent reconstructs frames, updates memory, and publishes `ActionCommand` on control
+  8. Bridge drains `ActionCommand`, executes `NAV_TO_POSE` / `NAV_TO_PLACE` / `LOCAL_SEARCH` / `LOOK_AT` / `STOP` locally, and publishes `ActionStatus` on telemetry
+  9. `RuntimeNotice` and `CapabilityReport` remain on the control plane so late-connecting agents can still observe startup diagnostics
 
 ## Current Limits
 - Current topology is single bridge plus single memory agent. Multi-agent fan-out is not wired yet.

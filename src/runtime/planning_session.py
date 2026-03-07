@@ -62,6 +62,7 @@ class PlanningSession:
         self.nogoal_planner: AsyncNoGoalPlanner | None = None
         self._last_plan_version = -1
         self._last_trajectory = np.zeros((0, 3), dtype=np.float32)
+        self.last_sensor_init_report: dict[str, Any] = {}
 
     @property
     def navdp_backend_name(self) -> str:
@@ -81,6 +82,14 @@ class PlanningSession:
             )
         )
         init_ok, init_msg = self.sensor.initialize(simulation_app, stage)
+        self.last_sensor_init_report = {
+            "ok": bool(init_ok),
+            "message": str(init_msg),
+            "capture_report": dict(self.sensor.last_capture_meta),
+            "camera_prim_path": str(self.sensor.rgb_prim_path or ""),
+            "depth_camera_prim_path": str(self.sensor.depth_prim_path or ""),
+            "runtime_mount": bool(self.sensor.runtime_camera_mode),
+        }
         print(f"[PLANNING_SESSION] sensor init: ok={init_ok} msg={init_msg}")
         if not init_ok:
             raise RuntimeError(init_msg)

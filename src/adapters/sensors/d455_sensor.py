@@ -37,6 +37,9 @@ class D455CaptureMeta:
     rgb_source: str = "missing"
     depth_source: str = "missing"
     fallback_used: bool = False
+    runtime_mount: bool = False
+    camera_prim_path: str = ""
+    depth_camera_prim_path: str = ""
     rgb_shape: tuple[int, ...] | None = None
     depth_shape: tuple[int, ...] | None = None
     depth_min_m: float | None = None
@@ -48,8 +51,13 @@ class D455CaptureMeta:
             "rgb_source": self.rgb_source,
             "depth_source": self.depth_source,
             "fallback_used": bool(self.fallback_used),
+            "runtime_mount": bool(self.runtime_mount),
             "note": self.note,
         }
+        if self.camera_prim_path != "":
+            payload["camera_prim_path"] = self.camera_prim_path
+        if self.depth_camera_prim_path != "":
+            payload["depth_camera_prim_path"] = self.depth_camera_prim_path
         if self.rgb_shape is not None:
             payload["rgb_shape"] = list(self.rgb_shape)
         if self.depth_shape is not None:
@@ -82,6 +90,10 @@ class D455SensorAdapter:
     def last_capture_meta(self) -> dict[str, Any]:
         return self._last_capture_meta.as_dict()
 
+    @property
+    def runtime_camera_mode(self) -> bool:
+        return bool(self._runtime_camera_mode)
+
     def _finalize_capture_meta(
         self,
         rgb: np.ndarray | None,
@@ -101,6 +113,9 @@ class D455SensorAdapter:
             rgb_source=rgb_source,
             depth_source=depth_source,
             fallback_used=fallback_used,
+            runtime_mount=bool(self._runtime_camera_mode),
+            camera_prim_path=str(self.rgb_prim_path or ""),
+            depth_camera_prim_path=str(self.depth_prim_path or ""),
             rgb_shape=tuple(rgb.shape) if rgb is not None else None,
             depth_shape=tuple(depth.shape) if depth is not None else None,
             depth_min_m=depth_min,
