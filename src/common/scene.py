@@ -92,3 +92,58 @@ def place_goal_marker(
         return True, marker_prim_path
     except Exception as exc:  # noqa: BLE001
         return False, f"goal marker creation failed: {type(exc).__name__}: {exc}"
+
+
+def _get_or_add_translate_op(xformable):
+    from pxr import UsdGeom
+
+    for op in xformable.GetOrderedXformOps():
+        if op.GetOpType() == UsdGeom.XformOp.TypeTranslate:
+            return op
+    return xformable.AddTranslateOp()
+
+
+def place_demo_object(
+    stage,
+    object_world_xy: np.ndarray,
+    *,
+    object_root_path: str = "/World/DemoObject",
+    object_size_m: float = 0.25,
+) -> tuple[bool, str, np.ndarray]:
+    try:
+        from pxr import Gf, UsdGeom
+    except Exception as exc:  # noqa: BLE001
+        return False, f"pxr import failed: {type(exc).__name__}: {exc}", np.zeros(3, dtype=np.float32)
+
+    size_m = float(object_size_m)
+    if size_m <= 0.0:
+        return False, f"object_size_m must be positive, got {object_size_m}", np.zeros(3, dtype=np.float32)
+
+    try:
+        root_prim = stage.DefinePrim(object_root_path, "Xform")
+        object_prim_path = f"{object_root_path}/Cube"
+        cube_prim = stage.DefinePrim(object_prim_path, "Cube")
+        if not root_prim.IsValid() or not cube_prim.IsValid():
+            return False, "failed to define demo object prims", np.zeros(3, dtype=np.float32)
+
+        cube = UsdGeom.Cube(cube_prim)
+        cube.CreateSizeAttr(size_m)
+        gprim = UsdGeom.Gprim(cube_prim)
+        gprim.CreateDisplayColorAttr([Gf.Vec3f(1.0, 0.1, 0.1)])
+
+        root_xform = UsdGeom.Xformable(root_prim)
+        translate_op = _get_or_add_translate_op(root_xform)
+        object_world_xyz = np.asarray(
+            [float(object_world_xy[0]), float(object_world_xy[1]), 0.5 * size_m],
+            dtype=np.float32,
+        )
+        translate_op.Set(
+            Gf.Vec3d(
+                float(object_world_xyz[0]),
+                float(object_world_xyz[1]),
+                float(object_world_xyz[2]),
+            )
+        )
+        return True, object_prim_path, object_world_xyz
+    except Exception as exc:  # noqa: BLE001
+        return False, f"demo object creation failed: {type(exc).__name__}: {exc}", np.zeros(3, dtype=np.float32)

@@ -39,6 +39,20 @@ def wrap_to_pi(angle: float) -> float:
     return float((angle + math.pi) % (2.0 * math.pi) - math.pi)
 
 
+def xy_distance(point_a: np.ndarray, point_b: np.ndarray) -> float:
+    a = np.asarray(point_a, dtype=np.float32).reshape(-1)
+    b = np.asarray(point_b, dtype=np.float32).reshape(-1)
+    if a.shape[0] < 2 or b.shape[0] < 2:
+        raise ValueError(f"xy_distance expects 2D points, got shapes {a.shape} and {b.shape}")
+    return float(np.linalg.norm(a[:2] - b[:2]))
+
+
+def within_xy_radius(point_a: np.ndarray, point_b: np.ndarray, radius_m: float) -> bool:
+    if float(radius_m) < 0.0:
+        raise ValueError(f"radius_m must be non-negative, got {radius_m}")
+    return xy_distance(point_a, point_b) <= float(radius_m) + 1.0e-6
+
+
 def world_goal_to_robot_frame(goal_xy: np.ndarray, robot_xy: np.ndarray, robot_yaw: float) -> np.ndarray:
     delta = np.asarray(goal_xy[:2], dtype=np.float32) - np.asarray(robot_xy[:2], dtype=np.float32)
     c = float(np.cos(robot_yaw))

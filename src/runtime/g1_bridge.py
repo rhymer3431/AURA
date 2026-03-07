@@ -3,9 +3,10 @@ from __future__ import annotations
 import time
 
 import numpy as np
+from common.geometry import within_xy_radius, xy_distance
 from control.trajectory_tracker import TrajectoryTracker, TrajectoryTrackerConfig
 
-from .g1_bridge_args import build_arg_parser, validate_args
+from .g1_bridge_args import apply_demo_defaults, build_arg_parser, validate_args
 from .planning import PlannerSession, TrajectoryUpdate
 
 
@@ -62,6 +63,8 @@ class NavDPCommandSource:
         reached_goal = False
         safety_timeout = False
         goal_distance_m = -1.0
+        object_distance_m = -1.0
+        object_reached = False
 
         if self._planner.mode == "pointgoal":
             if self._planner.goal_world_xy is not None:
@@ -77,6 +80,16 @@ class NavDPCommandSource:
             if no_response_sec > float(self.args.safety_timeout_sec):
                 force_stop = True
                 safety_timeout = True
+            if self._planner.demo_object is not None:
+                object_distance_m = xy_distance(base_state.position_w, self._planner.demo_object.world_xyz)
+                object_reached = within_xy_radius(
+                    base_state.position_w,
+                    self._planner.demo_object.world_xyz,
+                    self._planner.demo_object.stop_radius_m,
+                )
+                if object_reached:
+                    force_stop = True
+                    reached_goal = True
 
         tracker_result = self._tracker.compute_command(
             base_state.position_w,
@@ -89,6 +102,12 @@ class NavDPCommandSource:
         if reached_goal:
             if self._planner.mode == "pointgoal":
                 self._arm_exit(0, f"goal reached at step={frame_idx} dist={goal_distance_m:.3f}m")
+            elif object_reached and self._planner.demo_object is not None:
+                self._arm_exit(
+                    0,
+                    "demo object reached at step="
+                    f"{frame_idx} dist={object_distance_m:.3f}m prim={self._planner.demo_object.prim_path}",
+                )
             else:
                 self._arm_exit(
                     0,
@@ -103,7 +122,12 @@ class NavDPCommandSource:
 
         if self._pending_exit_code is not None:
             if self._pending_exit_frames <= 0:
-                prefix = "[G1_POINTGOAL]" if self._planner.mode == "pointgoal" else "[G1_DUAL]"
+                if self._planner.mode == "pointgoal":
+                    prefix = "[G1_POINTGOAL]"
+                elif self._planner.demo_object is not None:
+                    prefix = "[G1_OBJECT_SEARCH]"
+                else:
+                    prefix = "[G1_DUAL]"
                 reason = self._pending_exit_reason if self._pending_exit_reason != "" else "quit requested"
                 print(f"{prefix} shutdown reason: {reason}")
                 self.quit_requested = True
@@ -113,7 +137,7 @@ class NavDPCommandSource:
                 self._pending_exit_frames -= 1
 
         if frame_idx % max(int(self.args.log_interval), 1) == 0:
-            self._log_step(frame_idx, update, tracker_result.command, goal_distance_m)
+            self._log_step(frame_idx, update, tracker_result.command, goal_distance_m, object_distance_m)
 
     def command(self) -> np.ndarray:
         return self._command.copy()
@@ -127,7 +151,14 @@ class NavDPCommandSource:
             self._pending_exit_reason = str(reason)
             self._pending_exit_frames = 1
 
-    def _log_step(self, frame_idx: int, update: TrajectoryUpdate, command: np.ndarray, goal_distance_m: float) -> None:
+    def _log_step(
+        self,
+        frame_idx: int,
+        update: TrajectoryUpdate,
+        command: np.ndarray,
+        goal_distance_m: float,
+        object_distance_m: float,
+    ) -> None:
         error_note = f" last_error={update.stats.last_error}" if update.stats.last_error != "" else ""
         if self._planner.mode == "pointgoal":
             local_goal = update.goal_local_xy if update.goal_local_xy is not None else np.zeros(2, dtype=np.float32)
@@ -135,6 +166,19 @@ class NavDPCommandSource:
                 "[G1_POINTGOAL]"
                 f"[step={frame_idx}] goal_dist={goal_distance_m:.3f}m "
                 f"goal_local=({float(local_goal[0]):.3f},{float(local_goal[1]):.3f}) "
+                f"cmd=({float(command[0]):.3f},{float(command[1]):.3f},{float(command[2]):.3f}) "
+                f"plan_ok={update.stats.successful_calls} plan_fail={update.stats.failed_calls} "
+                f"plan_latency_ms={update.stats.latency_ms:.1f}{error_note}"
+            )
+            return
+
+        if self._planner.demo_object is not None:
+            print(
+                "[G1_OBJECT_SEARCH]"
+                f"[step={frame_idx}] object_dist={object_distance_m:.3f}m "
+                f"goal_v={update.goal_version} traj_v={update.traj_version} "
+                f"demo_object={self._planner.demo_object.prim_path} "
+                f"stale_sec={update.stale_sec:.2f} "
                 f"cmd=({float(command[0]):.3f},{float(command[1]):.3f},{float(command[2]):.3f}) "
                 f"plan_ok={update.stats.successful_calls} plan_fail={update.stats.failed_calls} "
                 f"plan_latency_ms={update.stats.latency_ms:.1f}{error_note}"
@@ -154,6 +198,7 @@ class NavDPCommandSource:
 def main() -> int:
     try:
         args = build_arg_parser().parse_args()
+        args = apply_demo_defaults(args)
         validate_args(args)
     except ValueError as exc:
         print(f"[G1_POINTGOAL] {exc}")

@@ -4,6 +4,9 @@ import argparse
 
 from locomotion.args import BOOTSTRAP_ARGS, BOOTSTRAP_PARSER, add_runtime_args
 
+DEFAULT_DUAL_INSTRUCTION = "Navigate safely to the target and stop when complete."
+DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse and stop when you reach it."
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -25,11 +28,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--instruction",
         type=str,
-        default="Navigate safely to the target and stop when complete.",
+        default=DEFAULT_DUAL_INSTRUCTION,
     )
     parser.add_argument("--goal-x", dest="goal_x", type=float, default=None)
     parser.add_argument("--goal-y", dest="goal_y", type=float, default=None)
     parser.add_argument("--goal-tolerance-m", dest="goal_tolerance_m", type=float, default=0.4)
+    parser.add_argument("--spawn-demo-object", dest="spawn_demo_object", action="store_true")
+    parser.add_argument("--demo-object-x", dest="demo_object_x", type=float, default=2.0)
+    parser.add_argument("--demo-object-y", dest="demo_object_y", type=float, default=0.0)
+    parser.add_argument("--demo-object-size-m", dest="demo_object_size_m", type=float, default=0.25)
+    parser.add_argument("--object-stop-radius-m", dest="object_stop_radius_m", type=float, default=0.8)
     parser.add_argument("--plan-interval-frames", dest="plan_interval_frames", type=int, default=3)
     parser.add_argument("--dual-request-gap-frames", dest="dual_request_gap_frames", type=int, default=3)
     parser.add_argument("--safety-timeout-sec", dest="safety_timeout_sec", type=float, default=20.0)
@@ -62,12 +70,36 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def apply_demo_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    if bool(getattr(args, "spawn_demo_object", False)) and str(args.planner_mode).lower() == "dual":
+        instruction = str(getattr(args, "instruction", "")).strip()
+        if instruction == "" or instruction == DEFAULT_DUAL_INSTRUCTION:
+            args.instruction = DEFAULT_OBJECT_SEARCH_INSTRUCTION
+    return args
+
+
 def validate_args(args: argparse.Namespace) -> None:
-    if str(args.planner_mode).lower() == "pointgoal":
+    planner_mode = str(args.planner_mode).lower()
+    if float(args.demo_object_size_m) <= 0.0:
+        raise ValueError("--demo-object-size-m must be positive")
+    if float(args.object_stop_radius_m) <= 0.0:
+        raise ValueError("--object-stop-radius-m must be positive")
+
+    if planner_mode == "pointgoal":
         if args.goal_x is None or args.goal_y is None:
             raise ValueError("--goal-x and --goal-y are required in planner-mode=pointgoal")
+        if bool(args.spawn_demo_object):
+            raise ValueError("--spawn-demo-object requires --planner-mode dual")
     elif str(args.instruction).strip() == "":
         raise ValueError("--instruction must be non-empty in planner-mode=dual")
 
 
-__all__ = ["BOOTSTRAP_ARGS", "BOOTSTRAP_PARSER", "build_arg_parser", "validate_args"]
+__all__ = [
+    "BOOTSTRAP_ARGS",
+    "BOOTSTRAP_PARSER",
+    "DEFAULT_DUAL_INSTRUCTION",
+    "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
+    "apply_demo_defaults",
+    "build_arg_parser",
+    "validate_args",
+]

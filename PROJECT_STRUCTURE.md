@@ -45,7 +45,9 @@
 
 ## Entrypoints
 - `run_g1_pointgoal.ps1`: root compatibility launcher.
+- `run_g1_object_search_demo.ps1`: root compatibility launcher for the warehouse object-search demo.
 - `scripts/powershell/run_g1_pointgoal.ps1`: canonical bridge launcher for `runtime.g1_bridge`.
+- `scripts/powershell/run_g1_object_search_demo.ps1`: canonical one-click object-search demo launcher.
 - `run_navdp_server.ps1`: root compatibility launcher.
 - `scripts/powershell/run_navdp_server.ps1`: canonical NavDP server launcher for `apps.navdp_server_app`.
 - `run_vlm_dual_server.ps1`: root compatibility launcher.

@@ -2,7 +2,9 @@
 
 ## Entry Surfaces
 - Canonical launcher: `.\scripts\powershell\run_g1_pointgoal.ps1`
+- Canonical object-search demo launcher: `.\scripts\powershell\run_g1_object_search_demo.ps1`
 - Compatibility launcher: `.\run_g1_pointgoal.ps1`
+- Compatibility object-search demo launcher: `.\run_g1_object_search_demo.ps1`
 - Compatibility Python entrypoint: `python -m navdp.g1_bridge`
 - Compatibility ONNX play shim: `play_g1_keyboard_onnx.py`
 
@@ -17,9 +19,11 @@
 .\run_vlm_dual_server.ps1 --port 8890 --navdp-url http://127.0.0.1:8888 --vlm-url http://127.0.0.1:8080 --s2-mode auto
 .\run_g1_pointgoal.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0 --server-url http://127.0.0.1:8888
 .\run_g1_pointgoal.ps1 --planner-mode dual --dual-server-url http://127.0.0.1:8890 --server-url http://127.0.0.1:8888 --instruction "Go to the destination safely and stop when reached."
+.\run_g1_object_search_demo.ps1
 ```
 
 ## Notes
 - The bridge runtime is now canonical under `src/runtime`.
 - Locomotion code and G1 assets are canonical under `src/locomotion`.
 - Planner, adapter, and tracking logic live directly under the functional packages in `src/`.
+- The warehouse object-search demo keeps the existing dual VLM -> pixel-goal -> NavDP flow, but spawns a bright red cube under `/World/DemoObject/Cube` and logs `object_dist`, `goal_v`, and `traj_v`.

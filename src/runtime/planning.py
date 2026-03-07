@@ -11,7 +11,7 @@ from adapters.d455_sensor import D455SensorAdapter, D455SensorAdapterConfig
 from adapters.dual_http import DualSystemClient, DualSystemClientConfig
 from adapters.navdp_http import NavDPClient, NavDPClientConfig
 from common.geometry import world_goal_to_camera_pointgoal
-from common.scene import place_goal_marker
+from common.scene import place_demo_object, place_goal_marker
 from control.async_planners import (
     AsyncDualPlanner,
     AsyncPointGoalPlanner,
@@ -46,6 +46,14 @@ class TrajectoryUpdate:
     sensor_meta: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class DemoObjectState:
+    prim_path: str
+    world_xyz: np.ndarray
+    size_m: float
+    stop_radius_m: float
+
+
 def _build_pointgoal_planner(args: argparse.Namespace, sensor: D455SensorAdapter, stage):
     client_cfg = NavDPClientConfig(
         base_url=str(args.server_url),
@@ -70,6 +78,36 @@ def _build_pointgoal_planner(args: argparse.Namespace, sensor: D455SensorAdapter
     else:
         print(f"[G1_POINTGOAL] goal marker skipped: {marker_msg}")
     return planner, goal_world_xy
+
+
+def _spawn_demo_object(stage, args: argparse.Namespace) -> DemoObjectState | None:
+    if not bool(args.spawn_demo_object):
+        return None
+
+    object_world_xy = np.asarray([float(args.demo_object_x), float(args.demo_object_y)], dtype=np.float32)
+    ok, object_prim_path, object_world_xyz = place_demo_object(
+        stage,
+        object_world_xy,
+        object_size_m=float(args.demo_object_size_m),
+    )
+    if not ok:
+        raise RuntimeError(f"demo object creation failed: {object_prim_path}")
+
+    demo_object = DemoObjectState(
+        prim_path=str(object_prim_path),
+        world_xyz=np.asarray(object_world_xyz, dtype=np.float32).copy(),
+        size_m=float(args.demo_object_size_m),
+        stop_radius_m=float(args.object_stop_radius_m),
+    )
+    print(
+        "[G1_OBJECT_SEARCH] demo object placed "
+        f"prim={demo_object.prim_path} "
+        f"xyz=({float(demo_object.world_xyz[0]):.3f},"
+        f"{float(demo_object.world_xyz[1]):.3f},"
+        f"{float(demo_object.world_xyz[2]):.3f}) "
+        f"size={demo_object.size_m:.3f}m stop_radius={demo_object.stop_radius_m:.3f}m"
+    )
+    return demo_object
 
 
 def _build_dual_planner(args: argparse.Namespace, sensor: D455SensorAdapter):
@@ -105,6 +143,7 @@ class PlannerSession:
         self.sensor: D455SensorAdapter | None = None
         self.planner: AsyncPointGoalPlanner | AsyncDualPlanner | None = None
         self.goal_world_xy: np.ndarray | None = None
+        self.demo_object: DemoObjectState | None = None
         self.mode = str(args.planner_mode).lower()
 
         self._last_trajectory_world = np.zeros((0, 3), dtype=np.float32)
@@ -135,6 +174,7 @@ class PlannerSession:
         if not init_ok:
             raise RuntimeError(f"D455 initialization failed: {init_msg}")
 
+        self.demo_object = _spawn_demo_object(stage, self.args)
         if self.mode == "pointgoal":
             self.planner, self.goal_world_xy = _build_pointgoal_planner(self.args, self.sensor, stage)
         else:

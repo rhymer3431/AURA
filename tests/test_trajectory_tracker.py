@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from navdp.g1_bridge.tracker import TrajectoryTracker, TrajectoryTrackerConfig
+from control.trajectory_tracker import TrajectoryTracker, TrajectoryTrackerConfig
 
 
 def _tracker() -> TrajectoryTracker:

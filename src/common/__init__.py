@@ -7,15 +7,18 @@ from .geometry import (
     trajectory_camera_to_world,
     trajectory_local_to_world,
     trajectory_robot_to_world,
+    within_xy_radius,
     world_goal_to_camera_pointgoal,
     world_goal_to_local_pointgoal,
     world_goal_to_robot_frame,
     wrap_to_pi,
+    xy_distance,
     yaw_to_quat_wxyz,
 )
 from .scene import (
     disable_rigid_bodies,
     get_single_pose,
+    place_demo_object,
     place_goal_marker,
     resolve_environment_reference,
 )
@@ -25,6 +28,7 @@ __all__ = [
     "disable_rigid_bodies",
     "get_single_pose",
     "normalize_navdp_trajectory",
+    "place_demo_object",
     "place_goal_marker",
     "quat_wxyz_to_rot_matrix",
     "quat_wxyz_to_yaw",
@@ -33,9 +37,11 @@ __all__ = [
     "trajectory_camera_to_world",
     "trajectory_local_to_world",
     "trajectory_robot_to_world",
+    "within_xy_radius",
     "world_goal_to_camera_pointgoal",
     "world_goal_to_local_pointgoal",
     "world_goal_to_robot_frame",
     "wrap_to_pi",
+    "xy_distance",
     "yaw_to_quat_wxyz",
 ]
