@@ -15,6 +15,18 @@ import requests
 
 from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world
 
+S2_JSON_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "pixel_x": {"type": "integer"},
+        "pixel_y": {"type": "integer"},
+        "stop": {"type": "boolean"},
+        "reason": {"type": "string"},
+    },
+    "required": ["pixel_x", "pixel_y", "stop", "reason"],
+    "additionalProperties": False,
+}
+
 
 def build_vlm_endpoint(url: str) -> str:
     raw = str(url).strip()
@@ -108,6 +120,11 @@ class DualOrchestrator:
         self.navdp_url = str(args.navdp_url)
         self.vlm_endpoint = build_vlm_endpoint(str(args.vlm_url))
         self.vlm_model = str(args.vlm_model)
+        self.vlm_temperature = float(args.vlm_temperature)
+        self.vlm_top_k = int(args.vlm_top_k)
+        self.vlm_top_p = float(args.vlm_top_p)
+        self.vlm_min_p = float(args.vlm_min_p)
+        self.vlm_repeat_penalty = float(args.vlm_repeat_penalty)
         self.s2_mode = str(args.s2_mode).lower()
         self.s1_period_sec = float(args.s1_period_sec)
         self.s2_period_sec = float(args.s2_period_sec)
@@ -272,8 +289,16 @@ class DualOrchestrator:
         )
         payload = {
             "model": self.vlm_model,
-            "temperature": 0.0,
+            "temperature": float(self.vlm_temperature),
+            "top_k": int(self.vlm_top_k),
+            "top_p": float(self.vlm_top_p),
+            "min_p": float(self.vlm_min_p),
+            "repeat_penalty": float(self.vlm_repeat_penalty),
             "max_tokens": 96,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {"schema": S2_JSON_SCHEMA},
+            },
             "messages": [
                 {
                     "role": "system",

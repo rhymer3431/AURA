@@ -7,6 +7,7 @@
 ## Default Asset Locations
 - Model: `artifacts/models/InternVLA-N1-System2.Q4_K_M.gguf`
 - MMProj: `artifacts/models/InternVLA-N1-System2.mmproj-Q8_0.gguf`
+- Chat template: `scripts/powershell/internvla_system2_chat_template.jinja`
 - Existing root file names are still accepted as fallback paths.
 
 ## Prerequisites
@@ -31,12 +32,17 @@
 - `INTERNVLA_PORT`
 - `INTERNVLA_MODEL_PATH`
 - `INTERNVLA_MMPROJ_PATH`
+- `INTERNVLA_CHAT_TEMPLATE_FILE`
 - `LLAMA_SERVER_EXE`
 - `INTERNVLA_HF_REPO`
 - `INTERNVLA_HF_MMPROJ_FILE`
 - `INTERNVLA_CTX_SIZE`
 - `INTERNVLA_GPU_LAYERS`
+- `INTERNVLA_REASONING_BUDGET`
 
 ## Runtime Notes
 - The launcher resolves project-relative paths from the repo root, not from the script directory.
 - The launcher prefers artifacts under `artifacts/models/` and only falls back to the legacy root filenames when those files still exist.
+- The launcher now pins the official InternVLA multimodal chat template instead of relying on GGUF metadata inference.
+- The default reasoning budget is `0` so the dual-system JSON response path does not wait on extra thinking tokens.
+- The dual server now requests System2 outputs with an explicit JSON schema and sane sampling overrides instead of relying on the GGUF sampling metadata defaults.
