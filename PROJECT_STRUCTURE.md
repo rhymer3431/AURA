@@ -9,6 +9,7 @@
 │   └── refactor_baseline/
 ├── experiments/
 │   └── launchers/
+├── llama.cpp/
 ├── logs/
 ├── scripts/
 │   └── powershell/
@@ -23,50 +24,65 @@
 │   ├── runtime/
 │   ├── services/
 │   └── vendor/
-├── navdp/
-├── navdp_sidecar/
-├── g1_play/
 ├── tests/
-└── tmp/
-    └── process_logs/
+├── tmp/
+│   └── process_logs/
+├── agents.md
+├── INTERNVLA_SYSTEM2_SETUP.md
+├── MIGRATION_LOG.md
+├── NAVDP_G1_POINTGOAL.md
+├── pyproject.toml
+├── REFACTOR_NOTES.md
+├── PROJECT_STRUCTURE.md
+└── RUNNING.md
 ```
 
 ## Folder Responsibilities
-- `src/adapters`: NavDP HTTP, dual-system HTTP, D455 capture, and external system boundaries.
-- `src/apps`: Flask app factories and executable server modules.
-- `src/common`: shared geometry, transforms, scene helpers, and other low-level utilities.
-- `src/control`: planners, async planner workers, trajectory tracking, and controller-side coordination.
-- `src/inference`: policy model code and inference-only logic.
-- `src/locomotion`: ONNX locomotion runtime, locomotion controller code, and tightly coupled G1 assets.
-- `src/runtime`: bridge orchestration, runtime sessions, CLI contracts, and high-level execution flow.
-- `src/services`: service-level request handling and orchestration logic.
-- `src/vendor`: bundled third-party code, isolated from first-party modules.
-- `navdp`, `navdp_sidecar`, `g1_play`: compatibility shims only. They preserve legacy imports and entrypoints but do not own canonical business logic.
+- `artifacts/models`: runtime model artifacts such as ONNX, checkpoint, and GGUF weights.
+- `docs/refactor_baseline`: refactor reference snapshots, default args, and migration support files.
+- `experiments/launchers`: experiment-specific launcher scripts that are not part of the default runtime path.
+- `llama.cpp`: bundled llama.cpp Windows binaries and shared libraries used by the VLM/System2 flows.
+- `logs`: runtime log output directory used by launcher flows.
+- `scripts/powershell`: canonical PowerShell launchers for the supported runtime modes.
+- `src/adapters`: external system boundaries including HTTP clients and D455 sensor integration.
+- `src/apps`: Flask app entry modules for the NavDP server and dual-system server.
+- `src/common`: shared geometry and scene helpers used across runtime layers.
+- `src/control`: planner coordination and trajectory tracking logic.
+- `src/inference`: policy-network loading and inference-only model code.
+- `src/locomotion`: ONNX locomotion runtime, controller, command handling, and G1-specific assets/config.
+- `src/runtime`: high-level bridge runtime, CLI contract, Isaac compatibility flow, and planning state.
+- `src/services`: request orchestration and service-layer business logic.
+- `src/vendor`: bundled third-party code and licenses isolated from first-party modules.
+- `tests`: focused unit tests for orchestration, bridge args, object-search helpers, and tracking logic.
+- `tmp/process_logs`: launcher-generated stdout/stderr captures for local process orchestration.
 
 ## Entrypoints
-- `run_g1_pointgoal.ps1`: root compatibility launcher.
-- `run_g1_object_search_demo.ps1`: root compatibility launcher for the warehouse object-search demo.
-- `scripts/powershell/run_g1_pointgoal.ps1`: canonical bridge launcher for `runtime.g1_bridge`.
-- `scripts/powershell/run_g1_object_search_demo.ps1`: canonical one-click object-search demo launcher.
-- `run_navdp_server.ps1`: root compatibility launcher.
-- `scripts/powershell/run_navdp_server.ps1`: canonical NavDP server launcher for `apps.navdp_server_app`.
-- `run_vlm_dual_server.ps1`: root compatibility launcher.
-- `scripts/powershell/run_vlm_dual_server.ps1`: canonical dual orchestrator launcher for `apps.dual_server_app`.
-- `play_g1_keyboard_onnx.py`: compatibility shim to `locomotion.entrypoint`.
-- `python -m navdp.g1_bridge`: preserved public compatibility entrypoint backed by `runtime.g1_bridge`.
+- `run_g1_pointgoal.ps1`: root compatibility launcher that delegates to `scripts/powershell/run_g1_pointgoal.ps1`.
+- `run_g1_object_search_demo.ps1`: root compatibility launcher that delegates to `scripts/powershell/run_g1_object_search_demo.ps1`.
+- `run_navdp_server.ps1`: root compatibility launcher that delegates to `scripts/powershell/run_navdp_server.ps1`.
+- `run_vlm_dual_server.ps1`: root compatibility launcher that delegates to `scripts/powershell/run_vlm_dual_server.ps1`.
+- `run_internvla_system2.ps1`: root compatibility launcher that delegates to `scripts/powershell/run_internvla_system2.ps1`.
+- `scripts/powershell/run_g1_pointgoal.ps1`: canonical G1 point-goal bridge launcher.
+- `scripts/powershell/run_g1_object_search_demo.ps1`: canonical warehouse object-search demo launcher.
+- `scripts/powershell/run_navdp_server.ps1`: canonical NavDP Flask server launcher for `src/apps/navdp_server_app.py`.
+- `scripts/powershell/run_vlm_dual_server.ps1`: canonical dual-server launcher for `src/apps/dual_server_app.py`.
+- `scripts/powershell/run_internvla_system2.ps1`: canonical InternVLA System2 launcher.
+- `python -m locomotion`: package entrypoint backed by `src/locomotion/__main__.py`.
 
 ## Key Runtime Modules
-- `src/runtime/g1_bridge.py`: bridge runtime and `NavDPCommandSource`.
-- `src/runtime/planning.py`: shared planner session and trajectory update state.
-- `src/runtime/g1_bridge_args.py`: bridge CLI contract.
-- `src/runtime/g1_isaac.py`: legacy Isaac runtime compatibility flow.
+- `src/runtime/g1_bridge.py`: bridge runtime, command-source wiring, and high-level point-goal execution flow.
+- `src/runtime/g1_bridge_args.py`: bridge CLI argument schema and parsing helpers.
+- `src/runtime/g1_isaac.py`: Isaac-side runtime compatibility flow.
+- `src/runtime/planning.py`: planner session state and trajectory update coordination.
+- `src/locomotion/entrypoint.py`: locomotion runtime entrypoint used by package/module execution.
 - `src/locomotion/runtime.py`: locomotion loop and ONNX controller orchestration.
-- `src/control/async_planners.py`: async planner workers.
-- `src/control/trajectory_tracker.py`: trajectory follower.
-- `src/adapters/navdp_http.py`: NavDP HTTP client plus compatibility re-exports for transform helpers.
-- `src/adapters/dual_http.py`: dual-system HTTP client.
-- `src/adapters/d455_sensor.py`: D455 sensor adapter.
-- `src/apps/navdp_server_app.py`: NavDP Flask app.
-- `src/apps/dual_server_app.py`: dual-system Flask app.
-- `src/services/navdp_inference_service.py`: NavDP inference service.
-- `src/services/dual_orchestrator.py`: dual orchestrator service.
+- `src/locomotion/controller.py`: low-level controller behavior for locomotion execution.
+- `src/control/async_planners.py`: asynchronous planner worker coordination.
+- `src/control/trajectory_tracker.py`: trajectory follower and tracking helpers.
+- `src/adapters/navdp_http.py`: NavDP HTTP client and adapter-facing transform helpers.
+- `src/adapters/dual_http.py`: dual-system HTTP client for VLM/NavDP integration.
+- `src/adapters/d455_sensor.py`: RealSense D455 sensor adapter.
+- `src/apps/navdp_server_app.py`: NavDP Flask app entry module.
+- `src/apps/dual_server_app.py`: dual-system Flask app entry module.
+- `src/services/navdp_inference_service.py`: NavDP inference request handling.
+- `src/services/dual_orchestrator.py`: dual-system orchestration service.
