@@ -160,6 +160,11 @@ class DualOrchestrator:
         self.step_calls = 0
         self.s1_inflight = False
         self.s2_inflight = False
+        self.last_s2_reason = ""
+        self.last_s2_raw_text = ""
+        self.last_s2_requested_stop = False
+        self.last_s2_effective_stop = False
+        self.s2_stop_suppressed_count = 0
 
     def _url(self, base_url: str, path: str) -> str:
         return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -236,6 +241,11 @@ class DualOrchestrator:
             self.step_calls = 0
             self.s1_inflight = False
             self.s2_inflight = False
+            self.last_s2_reason = ""
+            self.last_s2_raw_text = ""
+            self.last_s2_requested_stop = False
+            self.last_s2_effective_stop = False
+            self.s2_stop_suppressed_count = 0
             self.initialized = True
 
         self._debug(
@@ -285,7 +295,9 @@ class DualOrchestrator:
             f"Image size: width={w}, height={h}.\n"
             f"Instruction: {self.instruction}\n"
             f"Events: {json.dumps(events, ensure_ascii=True)}.\n"
-            "Pick pixel near free-space direction. Clamp bounds."
+            "Pick pixel near free-space direction. Clamp bounds.\n"
+            "Set stop=true ONLY if the robot has already reached the destination and should remain stopped now.\n"
+            "If any further navigation is needed, or if the scene is ambiguous, set stop=false."
         )
         payload = {
             "model": self.vlm_model,
@@ -415,23 +427,48 @@ class DualOrchestrator:
             self.s2_calls += 1
             self.last_s2_ts = float(finished_at)
             if result.ok:
-                self.goal_version += 1
+                requested_stop = bool(result.stop)
+                stop_suppressed = requested_stop and self.traj_version < 0
+                effective_stop = requested_stop and not stop_suppressed
+                reason = str(result.reason)
+                if stop_suppressed:
+                    self.s2_stop_suppressed_count += 1
+                    reason = reason + " [initial stop suppressed until first confirmed trajectory]"
+                same_goal_as_current = (
+                    self.goal_cache is not None
+                    and int(self.goal_cache.pixel_x) == int(result.pixel_x)
+                    and int(self.goal_cache.pixel_y) == int(result.pixel_y)
+                    and bool(self.goal_cache.stop) == bool(effective_stop)
+                )
+                if same_goal_as_current and self.goal_cache is not None:
+                    goal_version = int(self.goal_cache.version)
+                else:
+                    self.goal_version += 1
+                    goal_version = int(self.goal_version)
                 self.goal_cache = GoalCache(
                     pixel_x=int(result.pixel_x),
                     pixel_y=int(result.pixel_y),
-                    stop=bool(result.stop),
-                    reason=str(result.reason),
-                    version=int(self.goal_version),
+                    stop=bool(effective_stop),
+                    reason=reason,
+                    version=goal_version,
                     updated_at=float(finished_at),
                     source=str(result.source),
                 )
                 self.s2_success += 1
                 self.last_s2_error = ""
+                self.last_s2_reason = reason
+                self.last_s2_raw_text = str(result.raw_text)
+                self.last_s2_requested_stop = bool(requested_stop)
+                self.last_s2_effective_stop = bool(effective_stop)
                 self.s2_retry_after_ts = 0.0
                 self.force_s2_pending = False
             else:
                 self.s2_fail += 1
                 self.last_s2_error = str(result.error)
+                self.last_s2_reason = ""
+                self.last_s2_raw_text = str(result.raw_text)
+                self.last_s2_requested_stop = False
+                self.last_s2_effective_stop = False
                 base_delay = max(1.0, min(4.0, float(self.s2_period_sec)))
                 delay = min(float(self.s2_failure_backoff_max_sec), base_delay * (2 ** max(self.s2_fail - 1, 0)))
                 self.s2_retry_after_ts = float(finished_at) + delay
@@ -543,6 +580,11 @@ class DualOrchestrator:
                     "s2_fail": self.s2_fail,
                     "last_s1_error": self.last_s1_error,
                     "last_s2_error": self.last_s2_error,
+                    "last_s2_reason": self.last_s2_reason,
+                    "last_s2_requested_stop": self.last_s2_requested_stop,
+                    "last_s2_effective_stop": self.last_s2_effective_stop,
+                    "last_s2_raw_text": self.last_s2_raw_text[:400],
+                    "s2_stop_suppressed_count": self.s2_stop_suppressed_count,
                     "s1_inflight": self.s1_inflight,
                     "s2_inflight": self.s2_inflight,
                     "force_s2_pending": self.force_s2_pending,
@@ -583,8 +625,12 @@ class DualOrchestrator:
             goal_missing = goal is None
             goal_stale = (goal is not None) and ((now - goal.updated_at) > self.goal_ttl_sec)
             due_s2 = (now - self.last_s2_ts) >= self.s2_period_sec
+            awaiting_first_traj = goal is not None and traj is None and not goal.stop
             backoff_active = now < self.s2_retry_after_ts
             should_s2 = force_s2 or goal_missing or goal_stale or due_s2
+            if awaiting_first_traj and not force_s2:
+                # Keep the first S2 goal stable long enough for S1 to produce an initial trajectory.
+                should_s2 = goal_missing
             if backoff_active and not force_s2:
                 should_s2 = False
             if should_s2 and not self.s2_inflight:
