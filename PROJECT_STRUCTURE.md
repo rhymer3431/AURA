@@ -12,8 +12,6 @@
 │   │   ├── MEMORY_ARCHITECTURE.md
 │   │   └── RUNTIME_MODES.md
 │   └── refactor_baseline/
-├── experiments/
-│   └── launchers/
 ├── logs/
 ├── scripts/
 │   └── powershell/
@@ -22,10 +20,7 @@
 │       ├── run_g1_pointgoal.ps1
 │       ├── run_isaac_bridge.ps1
 │       ├── run_local_stack.ps1
-│       ├── run_memory_agent.ps1
-│       ├── run_navdp_server.ps1
-│       ├── run_system2_optional.ps1
-│       └── run_vlm_dual_server.ps1
+│       └── run_memory_agent.ps1
 ├── src/
 │   ├── adapters/
 │   │   ├── legacy_http/
@@ -34,13 +29,9 @@
 │   │   ├── legacy_http/
 │   │   ├── isaac_bridge_app.py
 │   │   ├── local_stack_app.py
-│   │   └── memory_agent_app.py
+│   │   ├── memory_agent_app.py
+│   │   └── runtime_common.py
 │   ├── common/
-│   │   ├── config/
-│   │   ├── schemas/
-│   │   ├── cv2_compat.py
-│   │   ├── geometry.py
-│   │   └── scene.py
 │   ├── control/
 │   ├── inference/
 │   │   ├── detectors/
@@ -58,43 +49,48 @@
 ├── state/
 │   ├── ipc/
 │   └── memory/
-│       ├── snapshots/
-│       └── vector/
 ├── tests/
 │   ├── integration/
 │   ├── ipc/
 │   ├── memory/
+│   ├── perception/
 │   └── services/
 └── tmp/
-    └── process_logs/
 ```
 
-## Folder Responsibilities
-- `src/adapters/sensors`: Isaac/D455-facing sensor and bridge adapters.
-- `src/adapters/legacy_http`: HTTP compatibility clients retained for NavDP/VLM sidecars.
-- `src/apps/isaac_bridge_app.py`: direct Isaac bridge entry scaffold.
-- `src/apps/memory_agent_app.py`: structured-memory/task-agent entry scaffold.
-- `src/apps/local_stack_app.py`: in-process debug stack using the new direct IPC abstractions.
-- `src/apps/legacy_http`: Flask compatibility apps isolated from the direct runtime path.
-- `src/control`: behavior FSM, critic, recovery, async planners, and trajectory tracking.
-- `src/ipc`: bus abstraction, message dataclasses, codec, ZMQ skeleton, and shared-memory ring.
-- `src/memory`: spatial/temporal/episodic/semantic/working memory plus query and persistence helpers.
-- `src/perception`: observation fusion, object mapping, speaker events, person tracking, and ReID skeletons.
-- `src/runtime`: direct runtime supervisor, planning session, Isaac runtime scaffold, and compatibility bridge code.
-- `src/services`: task orchestration, intent parsing, attention/follow/object-search services, plus legacy dual orchestrator compatibility.
-- `scripts/powershell/legacy`: canonical legacy HTTP launchers.
-- `state/memory`: runtime-generated SQLite, vector state, and snapshots.
-- `state/ipc`: runtime-created IPC artifacts.
+## Responsibilities
+- `src/runtime/planning_session.py`
+  - direct in-process NavDP facade for point-goal and no-goal execution
+- `src/runtime/g1_bridge.py`
+  - low-level subgoal executor on top of locomotion and planning session
+- `src/runtime/supervisor.py`
+  - consumes tasks, observations, and statuses; emits `ActionCommand`
+- `src/apps/runtime_common.py`
+  - shared bus/shm/demo-frame helpers for local stack and two-process apps
+- `src/inference/detectors`
+  - detector backend abstraction, TensorRT engine discovery, and fallback detector
+- `src/perception`
+  - detector/tracker/depth projection to `ObsObject`
+- `src/memory`
+  - structured memory stores, query engine, consolidation, persistence
+- `src/services`
+  - task orchestration, follow, attention, object recall, memory facade
+- `src/adapters/legacy_http` and `src/apps/legacy_http`
+  - compatibility-only HTTP path
 
-## Default Runtime Path
-- Direct path: `run_local_stack.ps1` or `run_isaac_bridge.ps1` -> `apps.local_stack_app` / `apps.isaac_bridge_app`
-- Legacy compatibility: `run_navdp_server.ps1`, `run_vlm_dual_server.ps1`
-- Low-level G1 executor remains `run_g1_pointgoal.ps1`
+## Default Execution Path
+- Local debug:
+  - `apps.local_stack_app`
+- Two-process:
+  - `apps.memory_agent_app`
+  - `apps.isaac_bridge_app`
+- Low-level Isaac/G1 execution:
+  - `runtime.g1_bridge`
 
-## Key Modules
-- `src/runtime/planning_session.py`: low-level subgoal execution session for pointgoal/nogoal actions.
-- `src/runtime/supervisor.py`: direct runtime coordinator for task requests, observations, and action commands.
-- `src/services/task_orchestrator.py`: behavior-state orchestration for attention, follow, recall, local search, and recovery.
-- `src/services/memory_service.py`: facade over spatial/temporal/episodic/semantic/working memory.
-- `src/ipc/messages.py`: `FrameHeader`, `ActionCommand`, `ActionStatus`, `TaskRequest`.
-- `src/adapters/sensors/isaac_bridge_adapter.py`: bus-facing Isaac bridge adapter.
+## Detector Path
+- Engine discovery starts from `artifacts/models/yoloe-26s-seg-pf.engine`.
+- If TensorRT load or decode is unavailable, fallback detector remains active.
+
+## Current Limits
+- TensorRT YOLOE post-processing is still pending.
+- Legacy HTTP wrappers remain in the tree for compatibility only.

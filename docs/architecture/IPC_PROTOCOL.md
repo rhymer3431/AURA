@@ -1,49 +1,62 @@
 # IPC Protocol
 
-## Design Goals
-- Default control path is direct IPC, not Flask/HTTP orchestration.
-- Large frame payloads are intended for shared memory ring buffers.
-- Small control/status messages use a bus abstraction that supports in-process debug and future localhost sockets.
+## Default Principle
+- Default runtime path is direct IPC, not Flask/HTTP.
+- Small control messages use `MessageBus`.
+- Large RGB/depth payloads prefer `SharedMemoryRing`.
+- In-process debug mode can fall back to inline frame payloads when shared memory is not configured.
 
-## Implemented Transports
+## Transports
 - `ipc.inproc_bus.InprocBus`
-  - Default single-process debug transport.
-  - Deterministic for tests and local stack scaffolding.
+  - Default for local stack and loopback smoke tests.
+  - Deterministic and test-friendly.
 - `ipc.zmq_bus.ZmqBus`
-  - Optional localhost transport with a `PAIR` socket skeleton.
+  - Current two-process localhost transport.
+  - Uses a `PAIR` socket for the current 2-process bridge/agent topology.
   - Requires `pyzmq`.
 - `ipc.shm_ring.SharedMemoryRing`
-  - Shared-memory slot ring for frame bytes.
-  - Returns `ShmSlotRef` handles instead of copying payloads through the message bus.
+  - Stores encoded RGB/depth arrays and passes `ShmSlotRef` handles through `FrameHeader.metadata`.
 
 ## Message Types
 - `FrameHeader`
   - `frame_id`, `timestamp_ns`, `source`
-  - Shared-memory references for RGB/depth
-  - Camera pose metadata
-- `ActionCommand`
-  - `LOOK_AT`, `FOLLOW_PERSON`, `NAV_TO_PLACE`, `NAV_TO_POSE`, `LOCAL_SEARCH`, `STOP`
-  - Carries task id plus target object/place/pose info
-- `ActionStatus`
-  - Execution state from the bridge back to the orchestrator
-  - Includes robot pose and distance remaining when available
+  - `camera_pose_xyz`, `camera_quat_wxyz`
+  - shared-memory or inline frame references in `metadata`
 - `TaskRequest`
-  - Natural-language task request with optional target JSON and speaker binding
+  - natural-language command plus `target_json` and optional `speaker_id`
+- `ActionCommand`
+  - Common command set:
+    - `STOP`
+    - `LOOK_AT`
+    - `FOLLOW_TARGET`
+    - `NAV_TO_PLACE`
+    - `NAV_TO_POSE`
+    - `LOCAL_SEARCH`
+- `ActionStatus`
+  - execution feedback from bridge/executor back to the orchestrator
+  - includes `state`, `reason`, `robot_pose_xyz`, and `distance_remaining_m`
 
 ## Topics
-- `isaac.observation`
-  - Bridge publishes `FrameHeader`
 - `isaac.task`
-  - Bridge or local stack publishes `TaskRequest`
+  - task text from local stack, CLI, or bridge process
+- `isaac.observation`
+  - `FrameHeader` from Isaac bridge to memory agent
 - `isaac.command`
-  - Orchestrator publishes `ActionCommand`
+  - `ActionCommand` from orchestrator to executor
 - `isaac.status`
-  - Bridge publishes `ActionStatus`
+  - `ActionStatus` from executor back to orchestrator
 
-## Encoding
-- `ipc.codec.encode_message()` serializes messages as compact JSON bytes.
-- `ipc.codec.decode_message()` restores typed dataclasses.
-- Tests cover codec round-trips for all mandatory message types.
+## Actual Flow
+- Single-process loopback
+  - `apps.local_stack_app` or `apps.memory_agent_app --loopback`
+  - `TaskRequest -> Perception -> Memory -> ActionCommand`
+- Two-process local stack
+  1. `apps.memory_agent_app --bus zmq --bind`
+  2. `apps.isaac_bridge_app --bus zmq --connect`
+  3. Bridge publishes `TaskRequest` and `FrameHeader`
+  4. Memory agent polls bus, reconstructs frames, updates memory, and publishes `ActionCommand`
+  5. Bridge drains `ActionCommand`
 
-## Planned Next Step
-- Replace `PAIR` with pub/sub or router/dealer once cross-process Isaac bridge and memory agent are wired together on Windows.
+## Current Limits
+- `PAIR` is enough for the current 2-process topology, but pub/sub or router/dealer is a likely next step for richer fan-out.
+- In shared-memory mode, both processes must agree on shm name, slot size, and capacity.

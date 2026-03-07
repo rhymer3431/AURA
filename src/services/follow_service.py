@@ -19,6 +19,9 @@ class FollowService:
     def bind_target(self, track_id: str) -> None:
         self._target_track_id = str(track_id)
 
+    def clear_target(self) -> None:
+        self._target_track_id = ""
+
     def ingest_observations(self, observations) -> None:  # noqa: ANN001
         self._tracker.update(list(observations))
         for track in self._tracker.all_tracks():

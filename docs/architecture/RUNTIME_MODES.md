@@ -1,36 +1,56 @@
 # Runtime Modes
 
-## Default Direct Modes
-- `scripts/powershell/run_local_stack.ps1`
-  - In-process debug stack.
-  - Uses `InprocBus`, `MemoryService`, and `TaskOrchestrator`.
-- `scripts/powershell/run_memory_agent.ps1`
-  - Starts the structured-memory/task layer without HTTP services.
-- `scripts/powershell/run_isaac_bridge.ps1`
-  - Intended Isaac-side direct bridge launcher.
-  - Uses Isaac Sim Python and the new direct-runtime entrypoint scaffold.
+## 1. Local Stack
+- Entry: `scripts/powershell/run_local_stack.ps1`
+- Module: `apps.local_stack_app`
+- Purpose:
+  - single-process debug path
+  - direct IPC architecture without HTTP
+  - detector -> memory -> orchestrator -> command flow in one process
+- Default transport:
+  - `InprocBus`
 
-## Low-Level Executor Mode
-- `scripts/powershell/run_g1_pointgoal.ps1`
-  - Keeps the existing G1 locomotion bridge available.
-  - Useful while direct orchestration is being integrated with live Isaac observations.
+## 2. Memory Agent
+- Entry: `scripts/powershell/run_memory_agent.ps1`
+- Module: `apps.memory_agent_app`
+- Purpose:
+  - runs structured memory plus task orchestration
+  - can loop back locally or poll a real bridge process
+- Modes:
+  - `--bus inproc --loopback`
+  - `--bus zmq --bind`
 
-## Legacy Compatibility Modes
+## 3. Isaac Bridge
+- Entry: `scripts/powershell/run_isaac_bridge.ps1`
+- Module: `apps.isaac_bridge_app`
+- Purpose:
+  - publishes `TaskRequest` and `FrameHeader`
+  - drains `ActionCommand`
+  - can run loopback without Isaac Sim for smoke checks
+  - remains the handoff point for future live Isaac frame publishing
+- Modes:
+  - `--bus inproc --loopback`
+  - `--bus zmq --connect`
+
+## 4. Low-Level G1 Executor
+- Entry: `scripts/powershell/run_g1_pointgoal.ps1`
+- Module: `runtime.g1_bridge`
+- Purpose:
+  - keeps NavDP + G1 locomotion as low-level execution
+  - consumes subgoals from supervisor/task layer
+  - uses direct in-process NavDP execution by default
+
+## 5. Legacy Compatibility
 - `scripts/powershell/legacy/run_navdp_server.ps1`
-  - Flask NavDP sidecar.
 - `scripts/powershell/legacy/run_vlm_dual_server.ps1`
-  - Flask dual orchestrator.
-- `scripts/powershell/run_navdp_server.ps1`
-  - Thin wrapper that forwards to the legacy launcher.
-- `scripts/powershell/run_vlm_dual_server.ps1`
-  - Thin wrapper that forwards to the legacy launcher.
+- These remain compatibility-only paths and are not the default runtime.
 
-## Optional System2
-- `scripts/powershell/run_system2_optional.ps1`
-  - Convenience wrapper around the existing InternVLA launcher.
-  - Not required for fast-path direct memory execution.
+## Detector Backend Priority
+1. TensorRT engine discovery at `artifacts/models/yoloe-26s-seg-pf.engine`
+2. TensorRT backend if runtime and engine are compatible
+3. Color segmentation fallback otherwise
 
-## Current Boundary
-- Direct runtime owns task semantics, memory query, critic/recovery, and IPC.
-- Legacy HTTP remains for compatibility and incremental migration.
-- NavDP/G1 remains the low-level trajectory executor.
+## Current Limits
+- TensorRT YOLOE decode path is still pending.
+- Two-process mode is presently a single bridge plus single memory-agent topology.
+- System2/VLM remains optional and is not in the fast path.

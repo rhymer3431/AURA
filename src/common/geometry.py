@@ -107,6 +107,17 @@ def world_goal_to_camera_pointgoal(
     return np.asarray([goal_x, goal_y], dtype=np.float32)
 
 
+def project_camera_point_to_world(
+    point_xyz_camera: np.ndarray,
+    camera_pos_world: np.ndarray,
+    camera_quat_wxyz: np.ndarray,
+) -> np.ndarray:
+    point = np.asarray(point_xyz_camera, dtype=np.float32).reshape(-1)
+    cam_pos = np.asarray(camera_pos_world, dtype=np.float32).reshape(-1)
+    rot = quat_wxyz_to_rot_matrix(camera_quat_wxyz).astype(np.float32)
+    return cam_pos[:3] + (rot @ point[:3])
+
+
 def trajectory_camera_to_world(
     trajectory_local: np.ndarray,
     camera_pos_world: np.ndarray,

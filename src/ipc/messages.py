@@ -32,6 +32,7 @@ class ActionCommand:
     action_type: Literal[
         "STOP",
         "LOOK_AT",
+        "FOLLOW_TARGET",
         "FOLLOW_PERSON",
         "NAV_TO_PLACE",
         "NAV_TO_POSE",

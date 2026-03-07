@@ -39,6 +39,7 @@ class MemoryService:
         for observation in observations:
             result = self.spatial_store.associate_observation(observation)
             self.temporal_store.remember_observation(observation, object_id=result.object_node.object_id)
+            self._record_episode_observation(result.place_node.place_id, result.object_node.object_id)
             results.append(result)
         return results
 
@@ -115,3 +116,14 @@ class MemoryService:
             "semantic_rules": [asdict(rule) for rule in self.semantic_store.list()],
         }
         return self.persistence.save_snapshot("memory_service", payload)
+
+    def _record_episode_observation(self, place_id: str, object_id: str) -> None:
+        if self._active_episode_id == "":
+            return
+        record = self.episodic_store.get(self._active_episode_id)
+        if record is None:
+            return
+        if place_id != "" and place_id not in record.visited_places:
+            record.visited_places.append(place_id)
+        if object_id != "" and object_id not in record.objects_seen:
+            record.objects_seen.append(object_id)

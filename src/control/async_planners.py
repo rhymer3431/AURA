@@ -3,12 +3,10 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 import numpy as np
 
-from adapters.dual_http import DualSystemClient
-from adapters.navdp_http import NavDPClient
 from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world, trajectory_local_to_world
 
 
@@ -96,7 +94,7 @@ class NoGoalPlannerInput:
 
 
 class AsyncNoGoalPlanner:
-    def __init__(self, client: NavDPClient, use_trajectory_z: bool):
+    def __init__(self, client: NavDPPlannerClient, use_trajectory_z: bool):
         self._client = client
         self._use_trajectory_z = bool(use_trajectory_z)
         self._lock = threading.Lock()
@@ -224,7 +222,7 @@ class AsyncNoGoalPlanner:
 
 
 class AsyncPointGoalPlanner:
-    def __init__(self, client: NavDPClient, use_trajectory_z: bool, pointgoal_frame: Literal["camera", "robot"] = "camera"):
+    def __init__(self, client: NavDPPlannerClient, use_trajectory_z: bool, pointgoal_frame: Literal["camera", "robot"] = "camera"):
         self._client = client
         self._use_trajectory_z = bool(use_trajectory_z)
         frame = str(pointgoal_frame).strip().lower()
@@ -372,7 +370,7 @@ class DualPlannerOutput:
 
 
 class AsyncDualPlanner:
-    def __init__(self, client: DualSystemClient):
+    def __init__(self, client: DualPlannerClient):
         self._client = client
         self._lock = threading.Lock()
         self._request_event = threading.Event()
@@ -526,3 +524,34 @@ class AsyncDualPlanner:
                     self._failed_calls += 1
                     self._last_error = f"{type(exc).__name__}: {exc}"
                     self._last_latency_ms = float(latency_ms)
+class NavDPPlannerClient(Protocol):
+    def pointgoal_step(
+        self,
+        point_goals: np.ndarray,
+        rgb_images: np.ndarray,
+        depth_images_m: np.ndarray,
+        sensor_meta: dict[str, Any] | None = None,
+    ):
+        ...
+
+    def nogoal_step(
+        self,
+        rgb_images: np.ndarray,
+        depth_images_m: np.ndarray,
+    ):
+        ...
+
+
+class DualPlannerClient(Protocol):
+    def dual_step(
+        self,
+        *,
+        rgb_image: np.ndarray,
+        depth_image_m: np.ndarray,
+        step_id: int,
+        cam_pos: np.ndarray,
+        cam_quat_wxyz: np.ndarray,
+        sensor_meta: dict[str, Any] | None = None,
+        events: dict[str, Any] | None = None,
+    ):
+        ...

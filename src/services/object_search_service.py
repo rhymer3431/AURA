@@ -92,3 +92,6 @@ class ObjectSearchService:
             target_pose_xyz=place.pose,
             metadata={"candidate_id": current.candidate_id, "object_id": current.object_id},
         )
+
+    def clear(self) -> None:
+        self._active_plan = None

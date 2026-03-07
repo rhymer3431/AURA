@@ -6,12 +6,13 @@ $SrcDir = Join-Path $RepoDir "src"
 $PathSep = [System.IO.Path]::PathSeparator
 $DefaultIsaacPython = "C:\isaac-sim\python.bat"
 $IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
+$PythonExe = if ($env:PYTHON_EXE) { $env:PYTHON_EXE } else { "python" }
 $EntryModule = "apps.isaac_bridge_app"
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
     Write-Host "[Isaac Bridge] Isaac python launcher not found: `"$IsaacPython`""
-    Write-Host "[Isaac Bridge] Set ISAAC_SIM_PYTHON to your python.bat path."
-    exit 1
+    Write-Host "[Isaac Bridge] Falling back to `"$PythonExe`" for direct IPC loopback or bridge-only runs."
+    $IsaacPython = $PythonExe
 }
 
 Push-Location $RepoDir

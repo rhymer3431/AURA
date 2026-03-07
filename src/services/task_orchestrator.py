@@ -152,3 +152,13 @@ class TaskOrchestrator:
             "active_episode_id": self._active_episode_id,
             "follow_target_id": self.follow_service.target_track_id,
         }
+
+    def cancel_active_task(self, *, reason: str = "cancelled") -> None:
+        if self._active_episode_id != "":
+            self.memory_service.finish_episode(success=False, failure_reason=reason)
+        self._active_request = None
+        self._active_intent = None
+        self._active_episode_id = ""
+        self.object_search_service.clear()
+        self.follow_service.clear_target()
+        self.fsm.transition(BehaviorState.IDLE, reason)

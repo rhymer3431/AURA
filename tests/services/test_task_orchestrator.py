@@ -43,7 +43,7 @@ def test_task_orchestrator_attend_and_follow_state_transitions() -> None:
 
     assert orchestrator.state == BehaviorState.FOLLOW_TARGET
     assert follow_command is not None
-    assert follow_command.action_type == "FOLLOW_PERSON"
+    assert follow_command.action_type == "FOLLOW_TARGET"
     assert follow_command.target_track_id == "person_k"
 
     recovery_command = orchestrator.step(

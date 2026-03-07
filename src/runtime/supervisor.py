@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacBridgeAdapterConfig, IsaacObservationBatch
+from inference.detectors.factory import DetectorFactoryConfig
 from ipc.base import MessageBus
 from ipc.inproc_bus import InprocBus
 from ipc.messages import ActionCommand, ActionStatus, TaskRequest
+from ipc.shm_ring import SharedMemoryRing
+from perception.pipeline import PerceptionPipeline
 from services.memory_service import MemoryService
 from services.task_orchestrator import TaskOrchestrator
 
@@ -13,6 +16,7 @@ from services.task_orchestrator import TaskOrchestrator
 @dataclass(frozen=True)
 class SupervisorConfig:
     memory_db_path: str = "state/memory/memory.sqlite"
+    detector_engine_path: str = ""
 
 
 class Supervisor:
@@ -20,15 +24,20 @@ class Supervisor:
         self,
         *,
         bus: MessageBus | None = None,
+        shm_ring: SharedMemoryRing | None = None,
         config: SupervisorConfig | None = None,
         memory_service: MemoryService | None = None,
         orchestrator: TaskOrchestrator | None = None,
+        perception_pipeline: PerceptionPipeline | None = None,
     ) -> None:
         self.bus = bus or InprocBus()
         self.config = config or SupervisorConfig()
         self.memory_service = memory_service or MemoryService(db_path=self.config.memory_db_path)
         self.orchestrator = orchestrator or TaskOrchestrator(self.memory_service)
-        self.bridge = IsaacBridgeAdapter(self.bus, IsaacBridgeAdapterConfig())
+        self.perception_pipeline = perception_pipeline or PerceptionPipeline(
+            detector_config=DetectorFactoryConfig(engine_path=self.config.detector_engine_path)
+        )
+        self.bridge = IsaacBridgeAdapter(self.bus, IsaacBridgeAdapterConfig(), shm_ring=shm_ring)
 
     def submit_task(self, command_text: str, *, target_json: dict[str, object] | None = None, speaker_id: str = "") -> TaskRequest:
         request = TaskRequest(command_text=command_text, target_json=dict(target_json or {}), speaker_id=speaker_id)
@@ -36,13 +45,47 @@ class Supervisor:
         self.orchestrator.submit_task(request)
         return request
 
-    def ingest(self, batch: IsaacObservationBatch) -> None:
-        self.bridge.publish_observation_batch(batch)
+    def submit_task_request(self, request: TaskRequest) -> TaskRequest:
+        self.bridge.publish_task_request(request)
+        self.orchestrator.submit_task(request)
+        return request
+
+    def ingest(self, batch: IsaacObservationBatch, *, publish: bool = True) -> None:
+        if publish:
+            self.bridge.publish_observation_batch(batch)
         if batch.speaker_events:
             for event in batch.speaker_events:
                 self.orchestrator.on_speaker_event(event)
         if batch.observations:
             self.orchestrator.on_observations(batch.observations)
+
+    def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
+        if batch.rgb_image is None or batch.depth_image_m is None:
+            self.ingest(batch, publish=publish)
+            return batch
+        intrinsic = batch.camera_intrinsic
+        if intrinsic is None:
+            intrinsic = self._default_intrinsic(batch.frame_header.width, batch.frame_header.height)
+        frame_result = self.perception_pipeline.process_frame(
+            rgb_image=batch.rgb_image,
+            depth_image_m=batch.depth_image_m,
+            timestamp=batch.frame_header.timestamp_ns / 1.0e9,
+            camera_pose_xyz=batch.frame_header.camera_pose_xyz,
+            camera_quat_wxyz=batch.frame_header.camera_quat_wxyz,
+            camera_intrinsic=intrinsic,
+            metadata=dict(batch.frame_header.metadata),
+        )
+        enriched = IsaacObservationBatch(
+            frame_header=batch.frame_header,
+            robot_pose_xyz=batch.robot_pose_xyz,
+            rgb_image=batch.rgb_image,
+            depth_image_m=batch.depth_image_m,
+            camera_intrinsic=intrinsic,
+            observations=frame_result.observations,
+            speaker_events=[*batch.speaker_events, *frame_result.speaker_events],
+        )
+        self.ingest(enriched, publish=publish)
+        return enriched
 
     def step(
         self,
@@ -50,13 +93,44 @@ class Supervisor:
         now: float,
         robot_pose: tuple[float, float, float],
         action_status: ActionStatus | None = None,
+        publish: bool = True,
     ) -> ActionCommand | None:
-        if action_status is not None:
+        if action_status is not None and publish:
             self.bridge.publish_status(action_status)
         command = self.orchestrator.step(now=now, robot_pose=robot_pose, action_status=action_status)
-        if command is not None:
+        if command is not None and publish:
             self.bus.publish(self.bridge.config.command_topic, command)
         return command
 
+    def run_bus_cycle(
+        self,
+        *,
+        now: float,
+        robot_pose: tuple[float, float, float] | None = None,
+    ) -> ActionCommand | None:
+        latest_robot_pose = robot_pose
+        for request in self.bridge.drain_task_requests():
+            self.orchestrator.submit_task(request)
+        for frame_header in self.bridge.drain_frame_headers():
+            batch = self.bridge.reconstruct_batch(frame_header)
+            latest_robot_pose = batch.robot_pose_xyz
+            self.process_frame(batch, publish=False)
+        statuses = self.bridge.drain_statuses()
+        latest_status = statuses[-1] if statuses else None
+        pose = latest_robot_pose or (0.0, 0.0, 0.0)
+        return self.step(now=now, robot_pose=pose, action_status=latest_status, publish=True)
+
     def snapshot(self) -> dict[str, object]:
-        return self.orchestrator.snapshot()
+        snapshot = self.orchestrator.snapshot()
+        snapshot["detector_backend"] = self.perception_pipeline.detector.info.backend_name
+        return snapshot
+
+    @staticmethod
+    def _default_intrinsic(width: int, height: int):
+        w = max(int(width), 1)
+        h = max(int(height), 1)
+        focal = float(max(w, h))
+        return __import__("numpy").asarray(
+            [[focal, 0.0, w * 0.5], [0.0, focal, h * 0.5], [0.0, 0.0, 1.0]],
+            dtype="float32",
+        )

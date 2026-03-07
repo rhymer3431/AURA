@@ -1,6 +1,7 @@
 from .geometry import (
     camera_axes_world,
     normalize_navdp_trajectory,
+    project_camera_point_to_world,
     quat_wxyz_to_rot_matrix,
     quat_wxyz_to_yaw,
     step_pose_towards_target,
@@ -28,6 +29,7 @@ __all__ = [
     "disable_rigid_bodies",
     "get_single_pose",
     "normalize_navdp_trajectory",
+    "project_camera_point_to_world",
     "place_demo_object",
     "place_goal_marker",
     "quat_wxyz_to_rot_matrix",

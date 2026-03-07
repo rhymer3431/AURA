@@ -21,7 +21,7 @@ class SubgoalPlanner:
         task_id: str = "",
     ) -> ActionCommand:
         return ActionCommand(
-            action_type="FOLLOW_PERSON",
+            action_type="FOLLOW_TARGET",
             task_id=task_id,
             target_track_id=target_track_id,
             target_pose_xyz=target_pose_xyz,
