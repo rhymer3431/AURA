@@ -18,10 +18,12 @@
 - Module: `apps.memory_agent_app`
 - Purpose:
   - runs structured memory plus task orchestration
-  - can loop back locally or poll a real bridge process
+  - can loop back locally or run as a persistent ZMQ agent
+  - republishes diagnostics so a restarted bridge can re-register the agent
+  - periodically persists structured memory snapshots to SQLite in serve mode
 - Modes:
   - `--bus inproc --loopback`
-  - `--bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561`
+  - `--bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --serve`
 
 ## 3. Isaac Bridge
 - Entry: `scripts/powershell/run_isaac_bridge.ps1`
@@ -62,8 +64,19 @@
 - `live`
   - standalone Isaac Sim only
   - startup fails if bootstrap or camera initialization is unavailable
-- `synthetic`
+  - `synthetic`
   - deterministic development/smoke-test path
+
+## 3b. Editor Attach Bridge
+- Entry:
+  - `apps.isaac_bridge_editor_app.attach_current_stage(...)`
+- Purpose:
+  - attaches the bridge to an already running Kit/Isaac editor session
+  - reuses the same live bridge command source without owning `SimulationApp`
+  - intended for Script Editor or custom extension integration
+- Limits:
+  - the host/editor is responsible for providing the active controller and calling `tick()`
+  - this path is not yet packaged as a full Omniverse extension
 
 ## TensorRT Capability Reporting
 - `TensorRtYoloeDetector` now emits a structured capability report.
@@ -77,7 +90,7 @@
 - In the current environment, a serialization mismatch still falls back to the color-seg backend.
 
 ## Current Limits
-- Two-process mode is presently a single bridge plus single memory-agent topology.
-- `apps.memory_agent_app` still behaves like a short-cycle agent rather than a persistent daemon.
-- The supported live path is standalone `SimulationApp`; attach-to-running-editor mode is still out of scope.
+- Two-process mode now supports multiple agent subscribers on the same bridge, with retained control replay for late joiners.
+- Control-plane fan-out is broadcast-based; targeted routing per agent identity is still out of scope.
+- Actual live smoke still depends on a working local Isaac Sim installation and valid camera prims in the loaded stage.
 - System2/VLM remains optional and is not in the fast path.

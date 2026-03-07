@@ -16,11 +16,12 @@
     - control plane: bridge `ROUTER` bind, memory agent `DEALER` connect
     - telemetry plane: bridge `PUB` bind, memory agent `SUB` connect
   - Requires `pyzmq`.
-  - Buffers control messages on the bridge until the agent has registered over the control plane.
+  - Buffers control messages on the bridge until at least one agent has registered over the control plane.
+  - Replays retained control messages (`isaac.task`, `isaac.notice`, `isaac.capability`) to late-joining agents for multi-agent fan-out.
 - `ipc.shm_ring.SharedMemoryRing`
   - Stores encoded RGB/depth arrays and passes `ShmSlotRef` handles through `FrameHeader.metadata`.
 - `ipc.transport_health.TransportHealthTracker`
-  - Tracks last send/receive timestamps, reconnect attempts, queued messages, dropped messages, and last error per plane.
+  - Tracks last send/receive timestamps, reconnect attempts, queued messages, peer count, dropped messages, and last error per plane.
 
 ## Message Types
 - `FrameHeader`
@@ -87,6 +88,12 @@
   7. Memory agent reconstructs frames, updates memory, and publishes `ActionCommand` on control
   8. Bridge drains `ActionCommand`, executes `NAV_TO_POSE` / `NAV_TO_PLACE` / `LOCAL_SEARCH` / `LOOK_AT` / `STOP` locally, and publishes `ActionStatus` on telemetry
   9. `RuntimeNotice` and `CapabilityReport` remain on the control plane so late-connecting agents can still observe startup diagnostics
+
+## Multi-Agent Notes
+- Multiple memory agents can connect to the same bridge over the control plane.
+- The bridge broadcasts retained control-plane messages to each registered agent.
+- Telemetry fan-out remains native PUB/SUB.
+- Command routing from multiple agents back to the bridge is still shared-topic broadcast/merge, not targeted per agent identity.
 
 ## Current Limits
 - Current topology is single bridge plus single memory agent. Multi-agent fan-out is not wired yet.

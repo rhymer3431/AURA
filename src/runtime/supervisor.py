@@ -19,6 +19,15 @@ class SupervisorConfig:
     detector_engine_path: str = ""
 
 
+@dataclass(frozen=True)
+class BusCycleResult:
+    command: ActionCommand | None
+    task_count: int
+    frame_count: int
+    status_count: int
+    robot_pose: tuple[float, float, float]
+
+
 class Supervisor:
     def __init__(
         self,
@@ -119,17 +128,34 @@ class Supervisor:
         now: float,
         robot_pose: tuple[float, float, float] | None = None,
     ) -> ActionCommand | None:
+        return self.run_bus_cycle_result(now=now, robot_pose=robot_pose).command
+
+    def run_bus_cycle_result(
+        self,
+        *,
+        now: float,
+        robot_pose: tuple[float, float, float] | None = None,
+    ) -> BusCycleResult:
         latest_robot_pose = robot_pose
-        for request in self.bridge.drain_task_requests():
+        task_requests = self.bridge.drain_task_requests()
+        for request in task_requests:
             self.orchestrator.submit_task(request)
-        for frame_header in self.bridge.drain_frame_headers():
+        frame_headers = self.bridge.drain_frame_headers()
+        for frame_header in frame_headers:
             batch = self.bridge.reconstruct_batch(frame_header)
             latest_robot_pose = batch.robot_pose_xyz
             self.process_frame(batch, publish=False)
         statuses = self.bridge.drain_statuses()
         latest_status = statuses[-1] if statuses else None
         pose = latest_robot_pose or (0.0, 0.0, 0.0)
-        return self.step(now=now, robot_pose=pose, action_status=latest_status, publish=True)
+        command = self.step(now=now, robot_pose=pose, action_status=latest_status, publish=True)
+        return BusCycleResult(
+            command=command,
+            task_count=len(task_requests),
+            frame_count=len(frame_headers),
+            status_count=len(statuses),
+            robot_pose=tuple(float(v) for v in pose[:3]),
+        )
 
     def snapshot(self) -> dict[str, object]:
         snapshot = self.orchestrator.snapshot()

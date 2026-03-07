@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -37,6 +39,7 @@ class IsaacBridgeCommandSource:
         self._last_robot_pose_xyz = (0.0, 0.0, 0.0)
         self._last_robot_yaw = 0.0
         self._health_period = max(int(getattr(args, "log_interval", 30)), 1)
+        self._sensor_report_path = str(getattr(args, "sensor_report_path", "")).strip()
 
     @property
     def planning_session(self) -> PlanningSession:
@@ -203,6 +206,13 @@ class IsaacBridgeCommandSource:
         }
         has_full_camera = bool(sensor is not None and sensor.rgb_prim_path and sensor.depth_prim_path)
         status = "ready" if has_full_camera else "fallback"
+        print(
+            "[ISAAC_BRIDGE] "
+            f"sensor_status={status} runtime_mount={details.get('runtime_mount', False)} "
+            f"rgb={details.get('camera_prim_path', '') or capture_report.get('camera_prim_path', '')} "
+            f"depth={details.get('depth_camera_prim_path', '') or capture_report.get('depth_camera_prim_path', '')}"
+        )
+        self._write_sensor_report(status=status, details=details)
         self._bridge.publish_capability(
             CapabilityReport(
                 component="sensor",
@@ -219,6 +229,23 @@ class IsaacBridgeCommandSource:
                 notice=str(init_report.get("message", "sensor initialized")),
                 details=details,
             )
+        )
+
+    def _write_sensor_report(self, *, status: str, details: dict[str, object]) -> None:
+        if self._sensor_report_path == "":
+            return
+        path = Path(self._sensor_report_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "status": str(status),
+                    "details": details,
+                },
+                ensure_ascii=True,
+                indent=2,
+            ),
+            encoding="utf-8",
         )
 
     def _publish_status(self, execution: SubgoalExecutionResult) -> None:

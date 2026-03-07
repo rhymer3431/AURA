@@ -19,6 +19,15 @@
 ```
 - Useful for validating the bridge/agent IPC flow without a second process.
 
+## Persistent Memory Agent
+```powershell
+.\scripts\powershell\run_memory_agent.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --serve --agent-id memory_agent_a
+.\scripts\powershell\run_memory_agent.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --serve --agent-id memory_agent_b
+```
+- `--serve` keeps the agent alive and polling.
+- The agent republishes diagnostics periodically so a restarted bridge can rediscover it.
+- SQLite snapshot persistence runs periodically in serve mode.
+
 ## Two-Process Local Stack
 Process 1:
 ```powershell
@@ -41,6 +50,7 @@ Process 2:
 .\scripts\powershell\run_isaac_bridge.ps1 --frame-source auto
 .\scripts\powershell\run_isaac_bridge.ps1 --frame-source live --headless
 .\scripts\powershell\run_isaac_bridge.ps1 --frame-source synthetic
+.\scripts\powershell\run_isaac_bridge.ps1 --frame-source live --headless --sensor-report-path .\tmp\isaac_live_smoke_report.json
 ```
 - `auto`
   - default
@@ -51,6 +61,25 @@ Process 2:
   - startup exits non-zero when Isaac bootstrap or live capture is unavailable
 - `synthetic`
   - deterministic smoke-test path
+
+## Editor Attach
+```python
+from apps.isaac_bridge_editor_app import attach_current_stage
+
+session = attach_current_stage(
+    controller=my_controller,
+    argv=[
+        "--bus", "zmq",
+        "--control-endpoint", "tcp://127.0.0.1:5560",
+        "--telemetry-endpoint", "tcp://127.0.0.1:5561",
+        "--frame-source", "live",
+    ],
+)
+session.tick()
+session.close()
+```
+- This path is for Script Editor or custom extension code inside an already running Kit/Isaac session.
+- The host editor owns `SimulationApp`; the attached bridge just reuses the current stage/controller.
 
 ## Detector Backend
 - Preferred backend order:
@@ -81,7 +110,7 @@ Process 2:
 
 ## Current Limits
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.
-- Two-process mode is currently single bridge plus single memory agent.
-- `apps.memory_agent_app` is still a short-cycle polling agent, not a long-running daemon supervisor.
-- Attach-to-running Isaac editor mode is not wired; the supported live path is standalone `SimulationApp`.
+- Control-plane fan-out is broadcast-based; targeted per-agent routing is still not implemented.
+- `apps.memory_agent_app` has a persistent serve mode, but it is still single-process and not supervised by an external service manager.
+- Actual live smoke still depends on a working local Isaac Sim installation and valid camera prims in the current stage.
 - System2/VLM is optional and not required for the fast path.

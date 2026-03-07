@@ -89,10 +89,16 @@
   - low-level subgoal executor on top of locomotion and planning session
 - `src/runtime/isaac_bridge_runtime.py`
   - standalone Isaac Sim live bridge command source and runtime bootstrap helper
+- `src/runtime/isaac_editor_bridge.py`
+  - attach-to-running-editor bridge runtime that reuses the live bridge command source inside an existing Kit/Isaac session
+- `src/runtime/memory_agent_runtime.py`
+  - persistent memory-agent polling loop, periodic diagnostics, and snapshot persistence
 - `src/runtime/supervisor.py`
   - consumes tasks, observations, and statuses; emits `ActionCommand`
 - `src/apps/runtime_common.py`
   - shared bus/shm/frame-source helpers for local stack and two-process apps
+- `src/apps/isaac_bridge_editor_app.py`
+  - helper entrypoint for attaching the bridge to an already running Isaac editor/stage
 - `src/inference/detectors`
   - detector backend abstraction, TensorRT capability reporting, YOLOE post-processing, and fallback detector
 - `src/perception`
@@ -112,6 +118,8 @@
 - Two-process:
   - `apps.memory_agent_app`
   - `apps.isaac_bridge_app`
+- Attach-to-running-editor:
+  - `apps.isaac_bridge_editor_app`
 - Low-level Isaac/G1 execution:
   - `runtime.g1_bridge`
   - `runtime.isaac_bridge_runtime`
@@ -123,6 +131,6 @@
 
 ## Current Limits
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.
-- `apps.memory_agent_app` is still a short-cycle polling app, not a persistent daemon.
-- The supported live bridge path is standalone `SimulationApp`; attach-to-running-editor mode is not wired.
+- Actual live smoke still depends on a working local Isaac Sim installation and compatible camera prims in the loaded stage.
+- Multi-agent fan-out is now retained-replay based on the control plane; targeted routing is still not implemented.
 - Legacy HTTP wrappers remain in the tree for compatibility only.

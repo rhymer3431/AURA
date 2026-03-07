@@ -30,6 +30,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--loopback", action="store_true")
     parser.add_argument("--frame-source", type=str, choices=("auto", "live", "synthetic"), default="auto")
     parser.add_argument("--strict-live", action="store_true")
+    parser.add_argument("--sensor-report-path", type=str, default="")
     return parser.parse_args(argv)
 
 

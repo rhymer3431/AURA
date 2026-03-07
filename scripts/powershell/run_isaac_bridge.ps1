@@ -2,6 +2,7 @@ $ErrorActionPreference = "Stop"
 
 # Example:
 #   .\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source live --headless
+#   .\scripts\powershell\run_isaac_bridge.ps1 --frame-source live --headless --sensor-report-path .\tmp\isaac_live_smoke_report.json
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))

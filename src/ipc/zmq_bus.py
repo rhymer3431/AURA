@@ -11,6 +11,7 @@ from .transport_health import TransportHealthTracker
 class ZmqBus(MessageBus):
     CONTROL_TOPICS = {"isaac.task", "isaac.command", "isaac.notice", "isaac.capability"}
     TELEMETRY_TOPICS = {"isaac.observation", "isaac.status", "isaac.health"}
+    RETAINED_CONTROL_TOPICS = {"isaac.task", "isaac.notice", "isaac.capability"}
 
     def __init__(
         self,
@@ -20,8 +21,10 @@ class ZmqBus(MessageBus):
         control_endpoint: str = "",
         telemetry_endpoint: str = "",
         role: str = "",
+        identity: str = "",
         control_timeout_ms: int = 250,
         telemetry_timeout_ms: int = 250,
+        retained_control_history: int = 8,
     ) -> None:
         try:
             import zmq
@@ -46,8 +49,12 @@ class ZmqBus(MessageBus):
         self._buffer: dict[str, deque[BusRecord]] = defaultdict(deque)
         self._pending_control: deque[tuple[bytes, bytes]] = deque()
         self._known_peers: list[bytes] = []
+        self._retained_control_limit = max(int(retained_control_history), 0)
+        self._retained_control: dict[str, deque[tuple[bytes, bytes]]] = defaultdict(
+            lambda: deque(maxlen=self._retained_control_limit if self._retained_control_limit > 0 else None)
+        )
         self._health = TransportHealthTracker()
-        self._control_socket = self._build_control_socket(timeout_ms=int(control_timeout_ms))
+        self._control_socket = self._build_control_socket(timeout_ms=int(control_timeout_ms), identity=str(identity))
         self._telemetry_socket = self._build_telemetry_socket(timeout_ms=int(telemetry_timeout_ms))
         self._poller = zmq.Poller()
         self._poller.register(self._control_socket, zmq.POLLIN)
@@ -66,6 +73,7 @@ class ZmqBus(MessageBus):
             self._health.telemetry.on_send()
             return
         if plane == "control" and self._role == "bridge":
+            self._retain_control(topic, raw_topic, raw_payload)
             self._flush_incoming()
             if not self._known_peers:
                 self._pending_control.append((raw_topic, raw_payload))
@@ -93,12 +101,14 @@ class ZmqBus(MessageBus):
             self._telemetry_socket.close(linger=0)
         self._control_socket.close(linger=0)
 
-    def _build_control_socket(self, *, timeout_ms: int):
+    def _build_control_socket(self, *, timeout_ms: int, identity: str):
         socket_type = self._zmq.ROUTER if self._role == "bridge" else self._zmq.DEALER
         socket = self._context.socket(socket_type)
         socket.setsockopt(self._zmq.LINGER, 0)
         socket.setsockopt(self._zmq.RCVTIMEO, int(timeout_ms))
         socket.setsockopt(self._zmq.SNDTIMEO, int(timeout_ms))
+        if self._role != "bridge" and identity.strip() != "":
+            socket.setsockopt(self._zmq.IDENTITY, identity.encode("utf-8", errors="ignore"))
         if self._role == "bridge":
             socket.bind(self._control_endpoint)
         else:
@@ -144,6 +154,9 @@ class ZmqBus(MessageBus):
                 if peer not in self._known_peers:
                     self._known_peers.append(peer)
                     self._health.control.on_retry()
+                    self._health.control.on_peers(len(self._known_peers))
+                    if not self._pending_control:
+                        self._replay_retained_control(peer)
                 topic, message = decode_envelope(raw_topic, raw_payload)
             else:
                 if len(parts) < 2:
@@ -173,6 +186,22 @@ class ZmqBus(MessageBus):
                 self._control_socket.send_multipart([peer, raw_topic, raw_payload])
                 self._health.control.on_send()
         self._health.control.on_queue(0)
+
+    def _retain_control(self, topic: str, raw_topic: bytes, raw_payload: bytes) -> None:
+        if self._retained_control_limit <= 0:
+            return
+        normalized = str(topic)
+        if normalized not in self.RETAINED_CONTROL_TOPICS:
+            return
+        self._retained_control[normalized].append((raw_topic, raw_payload))
+
+    def _replay_retained_control(self, peer: bytes) -> None:
+        if self._retained_control_limit <= 0:
+            return
+        for topic in sorted(self._retained_control):
+            for raw_topic, raw_payload in self._retained_control[topic]:
+                self._control_socket.send_multipart([peer, raw_topic, raw_payload])
+                self._health.control.on_send()
 
     @classmethod
     def _route_plane(cls, topic: str) -> str:

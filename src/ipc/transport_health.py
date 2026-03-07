@@ -12,6 +12,7 @@ class SocketHealth:
     reconnect_attempts: int = 0
     queued_messages: int = 0
     dropped_messages: int = 0
+    peer_count: int = 0
     last_error: str = ""
 
     def on_send(self) -> None:
@@ -26,6 +27,9 @@ class SocketHealth:
     def on_queue(self, count: int) -> None:
         self.queued_messages = int(count)
 
+    def on_peers(self, count: int) -> None:
+        self.peer_count = int(count)
+
     def on_drop(self, count: int = 1, *, error: str = "") -> None:
         self.dropped_messages += int(count)
         if error != "":
@@ -39,6 +43,7 @@ class SocketHealth:
             "reconnect_attempts": self.reconnect_attempts,
             "queued_messages": self.queued_messages,
             "dropped_messages": self.dropped_messages,
+            "peer_count": self.peer_count,
             "last_error": self.last_error,
         }
 

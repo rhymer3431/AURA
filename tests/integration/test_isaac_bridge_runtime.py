@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import json
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
@@ -115,7 +116,7 @@ class _FakePlanningSession:
         return None
 
 
-def _args() -> Namespace:
+def _args(tmp_path: Path | None = None) -> Namespace:
     return Namespace(
         command="",
         startup_updates=0,
@@ -133,13 +134,14 @@ def _args() -> Namespace:
         cmd_yaw_accel_limit=1.5,
         log_interval=1,
         physics_dt=1.0 / 60.0,
+        sensor_report_path="" if tmp_path is None else str(tmp_path / "sensor_report.json"),
     )
 
 
-def test_isaac_bridge_command_source_publishes_live_frame_and_status() -> None:
+def test_isaac_bridge_command_source_publishes_live_frame_and_status(tmp_path: Path) -> None:
     bus = InprocBus()
     planning_session = _FakePlanningSession()
-    command_source = IsaacBridgeCommandSource(_args(), bus=bus, planning_session=planning_session)
+    command_source = IsaacBridgeCommandSource(_args(tmp_path), bus=bus, planning_session=planning_session)
 
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     bus.publish("isaac.command", ActionCommand(action_type="NAV_TO_POSE", target_pose_xyz=(1.0, 0.0, 0.0)))
@@ -165,3 +167,6 @@ def test_isaac_bridge_command_source_publishes_live_frame_and_status() -> None:
     assert frame_header.metadata["capture_report"]["camera_prim_path"] == "/World/G1/CameraRGB"
     assert status.metadata["action_type"] == "NAV_TO_POSE"
     assert tuple(np.round(command_source.command(), 4)) != (0.0, 0.0, 0.0)
+    report_payload = json.loads((tmp_path / "sensor_report.json").read_text(encoding="utf-8"))
+    assert report_payload["status"] == "ready"
+    assert report_payload["details"]["camera_prim_path"] == "/World/G1/CameraRGB"

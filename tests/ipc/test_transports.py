@@ -116,3 +116,52 @@ def test_zmq_bus_late_agent_receives_buffered_control_message() -> None:
         if client is not None:
             client.close()
         server.close()
+
+
+def test_zmq_bus_multi_agent_fanout_and_replay() -> None:
+    pytest.importorskip("zmq")
+    port = _free_tcp_port()
+    control_endpoint = f"tcp://127.0.0.1:{port}"
+    telemetry_endpoint = f"tcp://127.0.0.1:{port + 1}"
+    server = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="bridge")
+    client_a = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="agent", identity="agent-a")
+    client_b = None
+    try:
+        client_a.publish("isaac.capability", CapabilityReport(component="agent_a", status="ready"))
+        deadline = time.time() + 2.0
+        while time.time() < deadline:
+            records = server.poll("isaac.capability", max_items=4)
+            if records:
+                break
+            time.sleep(0.01)
+
+        server.publish("isaac.task", TaskRequest(command_text="shared follow"))
+
+        deadline = time.time() + 2.0
+        task_records_a = []
+        while time.time() < deadline:
+            task_records_a = client_a.poll("isaac.task", max_items=4)
+            if task_records_a:
+                break
+            time.sleep(0.01)
+        assert len(task_records_a) == 1
+        assert task_records_a[0].message.command_text == "shared follow"
+
+        client_b = ZmqBus(control_endpoint=control_endpoint, telemetry_endpoint=telemetry_endpoint, role="agent", identity="agent-b")
+        client_b.publish("isaac.capability", CapabilityReport(component="agent_b", status="ready"))
+        deadline = time.time() + 2.0
+        task_records_b = []
+        while time.time() < deadline:
+            server.poll("isaac.capability", max_items=8)
+            task_records_b = client_b.poll("isaac.task", max_items=4)
+            if task_records_b:
+                break
+            time.sleep(0.01)
+        assert len(task_records_b) == 1
+        assert task_records_b[0].message.command_text == "shared follow"
+        assert server.health.control.peer_count == 2
+    finally:
+        if client_b is not None:
+            client_b.close()
+        client_a.close()
+        server.close()

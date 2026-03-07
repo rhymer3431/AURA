@@ -38,6 +38,7 @@ def build_runtime_io(
     role: str = "",
     control_endpoint: str = "",
     telemetry_endpoint: str = "",
+    identity: str = "",
 ) -> RuntimeIo:
     kind = str(bus_kind).strip().lower()
     if kind == "inproc":
@@ -60,6 +61,7 @@ def build_runtime_io(
             control_endpoint=str(resolved_control),
             telemetry_endpoint=str(resolved_telemetry),
             role=resolved_role,
+            identity=str(identity),
         ),
         shm_ring=shm_ring,
     )
