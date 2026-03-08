@@ -5,6 +5,7 @@ from __future__ import annotations
 import fnmatch
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import onnxruntime as ort
@@ -59,6 +60,21 @@ def infer_policy_backend(policy_path: str) -> str:
     return "onnxruntime"
 
 
+def _candidate_onnx_paths_for_engine(engine_path: str) -> list[Path]:
+    engine = Path(engine_path)
+    candidates = [
+        engine.with_suffix(".onnx"),
+        engine.parent / "policy.onnx",
+    ]
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            seen.add(candidate)
+            resolved.append(candidate)
+    return resolved
+
+
 class _OnnxPolicySession:
     backend_name = "onnxruntime"
 
@@ -100,11 +116,9 @@ class _TensorRtPolicySession:
         self._trt = trt
         self._logger = trt.Logger(trt.Logger.ERROR)
         self._runtime = trt.Runtime(self._logger)
+        self._policy_path = policy_path
 
-        with open(policy_path, "rb") as engine_file:
-            serialized_engine = engine_file.read()
-
-        self._engine = self._runtime.deserialize_cuda_engine(serialized_engine)
+        self._engine = self._load_engine_with_rebuild()
         if self._engine is None:
             raise RuntimeError(f"Failed to deserialize TensorRT engine: {policy_path}")
         self._context = self._engine.create_execution_context()
@@ -140,6 +154,52 @@ class _TensorRtPolicySession:
         self._output_ptr = 0
         self._stream = 0
         self._allocate_buffers()
+
+    def _deserialize_engine(self, engine_path: str):
+        with open(engine_path, "rb") as engine_file:
+            serialized_engine = engine_file.read()
+        return self._runtime.deserialize_cuda_engine(serialized_engine)
+
+    def _load_engine_with_rebuild(self):
+        engine = self._deserialize_engine(self._policy_path)
+        if engine is not None:
+            return engine
+
+        source_onnx = self._find_source_onnx()
+        if source_onnx is None:
+            return None
+
+        print(f"[INFO] TensorRT engine is incompatible or unreadable: {self._policy_path}")
+        print(f"[INFO] Rebuilding TensorRT engine from ONNX: {source_onnx}")
+        self._rebuild_engine_from_onnx(source_onnx=source_onnx, engine_path=self._policy_path)
+        return self._deserialize_engine(self._policy_path)
+
+    def _find_source_onnx(self) -> str | None:
+        for candidate in _candidate_onnx_paths_for_engine(self._policy_path):
+            if candidate.is_file():
+                return str(candidate)
+        return None
+
+    def _rebuild_engine_from_onnx(self, source_onnx: str, engine_path: str) -> None:
+        logger = self._trt.Logger(self._trt.Logger.INFO)
+        builder = self._trt.Builder(logger)
+        network = builder.create_network(1 << int(self._trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
+        parser = self._trt.OnnxParser(network, logger)
+
+        with open(source_onnx, "rb") as onnx_file:
+            parsed = parser.parse(onnx_file.read())
+        if not parsed:
+            errors = [str(parser.get_error(index)) for index in range(parser.num_errors)]
+            raise RuntimeError(f"TensorRT engine rebuild failed while parsing ONNX: {errors}")
+
+        config = builder.create_builder_config()
+        config.set_memory_pool_limit(self._trt.MemoryPoolType.WORKSPACE, 1 << 28)
+        serialized_engine = builder.build_serialized_network(network, config)
+        if serialized_engine is None:
+            raise RuntimeError(f"TensorRT engine rebuild returned None for source ONNX: {source_onnx}")
+
+        with open(engine_path, "wb") as engine_file:
+            engine_file.write(serialized_engine)
 
     def _read_tensor_shape(self, tensor_name: str) -> tuple[int, ...]:
         shape = tuple(int(dim) for dim in self._engine.get_tensor_shape(tensor_name))

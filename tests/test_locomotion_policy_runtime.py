@@ -78,3 +78,26 @@ def test_tensorrt_policy_session_matches_onnx(tmp_path: Path) -> None:
 
     assert trt_session.backend_name == "tensorrt"
     assert np.allclose(onnx_outputs, trt_outputs, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.skipif(importlib.util.find_spec("tensorrt") is None, reason="TensorRT is not installed")
+@pytest.mark.skipif(importlib.util.find_spec("cuda") is None, reason="cuda-python is not installed")
+def test_tensorrt_policy_session_rebuilds_engine_from_neighbor_onnx(tmp_path: Path) -> None:
+    engine_path = tmp_path / "g1_policy_fp32.engine"
+    neighbor_onnx_path = tmp_path / "policy.onnx"
+    neighbor_onnx_path.write_bytes(POLICY_PATH.read_bytes())
+    engine_path.write_bytes(b"invalid-engine")
+
+    onnx_session = create_policy_session(str(POLICY_PATH), providers=["CPUExecutionProvider"], device_preference="cpu")
+    trt_session = create_policy_session(str(engine_path), providers=[], device_preference="cuda")
+    sample = np.random.default_rng(1).standard_normal((310,), dtype=np.float32)
+
+    try:
+        onnx_outputs = onnx_session.run(sample)
+        trt_outputs = trt_session.run(sample)
+    finally:
+        onnx_session.close()
+        trt_session.close()
+
+    assert engine_path.stat().st_size > len(b"invalid-engine")
+    assert np.allclose(onnx_outputs, trt_outputs, atol=1e-5, rtol=1e-5)
