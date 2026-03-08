@@ -20,6 +20,18 @@
 - Module: `apps.isaac_bridge_app`
 - In live mode this owns standalone `SimulationApp` and executes low-level subgoals locally.
 
+## 3A. G1 Pipeline and Dual-System Notes
+- Canonical G1 pipeline launcher: `scripts/powershell/run_pipeline.ps1`
+- Runtime module: `runtime.g1_bridge`
+- `interactive`
+  - starts in no-goal roaming
+  - dual-system path begins only after a natural-language task is submitted
+- `pointgoal`
+  - uses direct NavDP pointgoal planning
+  - does not use System 2
+- Code still contains `planner-mode=dual`, but the current PowerShell launcher does not expose it directly.
+- Detailed frame, System 2, System 1, and cache flow is documented in `docs/architecture/DUAL_SYSTEM_PIPELINE.md`.
+
 ## 4. Live Smoke Launch Modes
 - `standalone_python`
   - official headless standalone smoke path
