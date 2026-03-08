@@ -72,16 +72,16 @@ def test_build_viewer_overlay_payload_is_json_safe_and_stable() -> None:
         observations=[],
         speaker_events=[],
         metadata={
-            "detector": "tensorrt_yoloe",
-            "detector_selected_reason": "engine_ready",
+            "detector": "ultralytics_yolo",
+            "detector_selected_reason": "ultralytics_backend_ready",
         },
     )
 
     payload = build_viewer_overlay_payload(frame_result)
 
     assert payload == {
-        "detector_backend": "tensorrt_yoloe",
-        "detector_selected_reason": "engine_ready",
+        "detector_backend": "ultralytics_yolo",
+        "detector_selected_reason": "ultralytics_backend_ready",
         "detections": [
             {
                 "class_name": "apple",

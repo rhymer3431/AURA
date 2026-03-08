@@ -97,8 +97,7 @@ def _args() -> Namespace:
         log_interval=1,
         interactive_idle_log_interval=120,
         memory_db_path="state/memory/memory.sqlite",
-        detector_engine_path="artifacts/models/__missing__.engine",
-        detector_model_path="",
+        detector_model_path="artifacts/models/__missing__.engine",
         detector_device="",
     )
 

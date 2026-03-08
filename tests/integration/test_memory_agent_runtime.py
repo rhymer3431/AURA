@@ -28,7 +28,7 @@ def _args(tmp_path: Path) -> Namespace:
         command="아까 봤던 사과를 찾아가",
         scene="apple",
         loopback=True,
-        detector_engine_path="",
+        detector_model_path="artifacts/models/__missing__.engine",
         frame_source="synthetic",
         strict_live=False,
         serve=True,

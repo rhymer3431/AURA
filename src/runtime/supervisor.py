@@ -17,7 +17,6 @@ from services.task_orchestrator import TaskOrchestrator
 @dataclass(frozen=True)
 class SupervisorConfig:
     memory_db_path: str = "state/memory/memory.sqlite"
-    detector_engine_path: str = ""
     detector_model_path: str = ""
     detector_device: str = ""
 
@@ -48,7 +47,6 @@ class Supervisor:
         self.orchestrator = orchestrator or TaskOrchestrator(self.memory_service)
         self.perception_pipeline = perception_pipeline or PerceptionPipeline(
             detector_config=DetectorFactoryConfig(
-                engine_path=self.config.detector_engine_path,
                 model_path=self.config.detector_model_path,
                 device=self.config.detector_device,
             )

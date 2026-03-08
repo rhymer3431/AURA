@@ -12,7 +12,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--command", type=str, default="아까 봤던 사과를 찾아가")
     parser.add_argument("--memory-db-path", type=str, default="state/memory/memory.sqlite")
     parser.add_argument("--scene", type=str, default="")
-    parser.add_argument("--detector-engine-path", type=str, default="")
     parser.add_argument("--detector-model-path", type=str, default="")
     parser.add_argument("--detector-device", type=str, default="")
     parser.add_argument("--frame-source", type=str, choices=("auto", "live", "synthetic"), default="auto")
@@ -25,7 +24,6 @@ def main(argv: list[str] | None = None) -> int:
     supervisor = Supervisor(
         config=SupervisorConfig(
             memory_db_path=args.memory_db_path,
-            detector_engine_path=args.detector_engine_path,
             detector_model_path=args.detector_model_path,
             detector_device=args.detector_device,
         )

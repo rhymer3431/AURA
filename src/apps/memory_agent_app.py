@@ -22,7 +22,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--command", type=str, default="아까 봤던 사과를 찾아가")
     parser.add_argument("--scene", type=str, default="")
     parser.add_argument("--loopback", action="store_true")
-    parser.add_argument("--detector-engine-path", type=str, default="")
     parser.add_argument("--detector-model-path", type=str, default="")
     parser.add_argument("--detector-device", type=str, default="")
     parser.add_argument("--frame-source", type=str, choices=("auto", "live", "synthetic"), default="auto")

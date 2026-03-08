@@ -814,7 +814,6 @@ class LiveSmokeRunner:
         return Supervisor(
             config=SupervisorConfig(
                 memory_db_path="",
-                detector_engine_path=str(getattr(self.args, "detector_engine_path", "")),
                 detector_model_path=str(getattr(self.args, "detector_model_path", "")),
                 detector_device=str(getattr(self.args, "detector_device", "")),
             ),

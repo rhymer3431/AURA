@@ -105,7 +105,6 @@ def run_lightweight_bridge(
                 shm_ring=runtime_io.shm_ring,
                 config=SupervisorConfig(
                     memory_db_path=args.memory_db_path,
-                    detector_engine_path=args.detector_engine_path,
                     detector_model_path=args.detector_model_path,
                     detector_device=args.detector_device,
                 ),
