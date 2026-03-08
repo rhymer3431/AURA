@@ -146,7 +146,7 @@ class NavDPCommandSource:
                 self._pending_exit_frames -= 1
 
         log_interval = max(int(self.args.log_interval), 1)
-        if self._mode == "interactive" and command is None:
+        if self._mode == "interactive" and update.interactive_phase == "roaming":
             log_interval = max(int(self.args.interactive_idle_log_interval), 1)
         if frame_idx % log_interval == 0:
             self._log_step(frame_idx, update, command, evaluation)
@@ -176,10 +176,14 @@ class NavDPCommandSource:
         if self._mode == "dual":
             instruction = str(getattr(self.args, "instruction", "")).strip()
             if instruction != "":
-                target_json: dict[str, object] = {}
-                if bool(getattr(self.args, "spawn_demo_object", False)):
-                    target_json["target_class"] = "cube"
-                self.supervisor.submit_task(instruction, target_json=target_json)
+                self.planning_session.ensure_navdp_service_ready(context="dual startup")
+                self.planning_session.ensure_dual_service_ready(context="dual startup")
+                self.planning_session.start_dual_task(instruction)
+                self._manual_command = self._build_planner_managed_command(task_id="dual", source="g1_bridge_dual")
+            return
+        if self._mode == "interactive":
+            self.planning_session.ensure_navdp_service_ready(context="interactive startup")
+            self._manual_command = self._build_planner_managed_command(task_id="interactive", source="g1_bridge_interactive")
 
     def _resolve_action_command(self, *, robot_pose: tuple[float, float, float]) -> ActionCommand | None:
         if self._manual_command is not None:
@@ -203,9 +207,9 @@ class NavDPCommandSource:
 
     def _print_interactive_help(self) -> None:
         print("[G1_INTERACTIVE][ROAM] terminal natural-language control")
-        print("[G1_INTERACTIVE][ROAM]   text      : submit a new direct task request")
+        print("[G1_INTERACTIVE][ROAM]   text      : submit a System2 navigation request")
         print("[G1_INTERACTIVE][ROAM]   /help     : show this help")
-        print("[G1_INTERACTIVE][ROAM]   /cancel   : cancel the active task and stop")
+        print("[G1_INTERACTIVE][ROAM]   /cancel   : cancel the active task and resume roaming")
         print("[G1_INTERACTIVE][ROAM]   /quit     : exit the runtime")
 
     def _interactive_input_loop(self) -> None:
@@ -228,8 +232,11 @@ class NavDPCommandSource:
                 self._print_interactive_help()
                 continue
             if lowered == "/cancel":
-                self.supervisor.orchestrator.cancel_active_task(reason="interactive_cancel")
-                print("[G1_INTERACTIVE][TASK] cancel requested")
+                cancelled = self.planning_session.cancel_interactive_task()
+                if cancelled:
+                    print("[G1_INTERACTIVE][TASK] cancel requested")
+                else:
+                    print("[G1_INTERACTIVE][ROAM] no active task to cancel")
                 continue
             if lowered == "/quit":
                 self._arm_exit(0, "interactive quit requested")
@@ -238,8 +245,14 @@ class NavDPCommandSource:
                 print(f"[G1_INTERACTIVE][ROAM] unknown command: {text}")
                 continue
 
-            request = self.supervisor.submit_task(text)
-            print(f"[G1_INTERACTIVE][TASK] task_id={request.task_id} queued instruction={text!r}")
+            try:
+                self.planning_session.ensure_navdp_service_ready(context="interactive task")
+                self.planning_session.ensure_dual_service_ready(context="interactive task")
+                command_id = self.planning_session.submit_interactive_instruction(text)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[G1_INTERACTIVE][TASK] rejected instruction={text!r} error={type(exc).__name__}: {exc}")
+                continue
+            print(f"[G1_INTERACTIVE][TASK] command_id={command_id} queued instruction={text!r}")
 
     def _ensure_view_runtime(self) -> None:
         if self._launch_mode != "g1_view":
@@ -275,9 +288,22 @@ class NavDPCommandSource:
     def _log_prefix(self) -> str:
         if self._mode == "pointgoal":
             return "[G1_POINTGOAL]"
+        if self._mode == "dual":
+            return "[G1_DUAL]"
         if self._mode == "interactive":
             return "[G1_INTERACTIVE]"
         return "[G1_DIRECT]"
+
+    def _build_planner_managed_command(self, *, task_id: str, source: str) -> ActionCommand:
+        return ActionCommand(
+            action_type="LOCAL_SEARCH",
+            task_id=task_id,
+            metadata={
+                "source": source,
+                "planner_managed": True,
+                "planner_mode": self._mode,
+            },
+        )
 
     def _log_step(
         self,

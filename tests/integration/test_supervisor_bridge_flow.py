@@ -39,6 +39,8 @@ class _FakePlanningSession:
     def __init__(self) -> None:
         self.last_action_type = ""
         self._plan_version = -1
+        self.started_instructions: list[str] = []
+        self.health_checks: list[str] = []
 
     def initialize(self, simulation_app, stage) -> None:  # noqa: ANN001
         _ = simulation_app, stage
@@ -73,8 +75,46 @@ class _FakePlanningSession:
             stop=False,
         )
 
+    def ensure_navdp_service_ready(self, *, context: str) -> None:
+        self.health_checks.append(f"navdp:{context}")
+
+    def ensure_dual_service_ready(self, *, context: str) -> None:
+        self.health_checks.append(f"dual:{context}")
+
+    def start_dual_task(self, instruction: str) -> None:
+        self.started_instructions.append(str(instruction))
+
     def shutdown(self) -> None:
         return None
+
+
+class _InteractivePlanningSession(_FakePlanningSession):
+    def __init__(self) -> None:
+        super().__init__()
+        self.submitted_instructions: list[str] = []
+
+    def submit_interactive_instruction(self, instruction: str) -> int:
+        self.submitted_instructions.append(str(instruction))
+        return len(self.submitted_instructions)
+
+    def cancel_interactive_task(self) -> bool:
+        return True
+
+    def plan_with_observation(self, observation, *, action_command, robot_pos_world, robot_yaw, robot_quat_wxyz):  # noqa: ANN001
+        _ = robot_pos_world, robot_yaw, robot_quat_wxyz
+        self.last_action_type = action_command.action_type if action_command is not None else ""
+        self._plan_version += 1
+        return TrajectoryUpdate(
+            trajectory_world=np.asarray([[0.25, 0.0, 0.0], [0.55, 0.0, 0.0]], dtype=np.float32),
+            plan_version=self._plan_version,
+            stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=2.0, last_plan_step=int(observation.frame_id)),
+            source_frame_id=int(observation.frame_id),
+            action_command=action_command,
+            stop=False,
+            interactive_phase="task_active",
+            interactive_command_id=max(len(self.submitted_instructions), 1),
+            interactive_instruction=self.submitted_instructions[-1] if self.submitted_instructions else "",
+        )
 
 
 def _args() -> Namespace:
@@ -108,16 +148,37 @@ def _free_tcp_port() -> int:
         return int(sock.getsockname()[1])
 
 
-def test_supervisor_to_g1_bridge_command_flow() -> None:
+def test_dual_mode_bootstraps_planner_managed_command_flow() -> None:
     planning_session = _FakePlanningSession()
     command_source = NavDPCommandSource(_args(), planning_session=planning_session)
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     command_source.update(1)
 
-    assert planning_session.last_action_type == "NAV_TO_PLACE"
-    assert command_source.supervisor.snapshot()["state"] == "GoToRememberedObject"
+    assert planning_session.started_instructions == ["아까 봤던 사과를 찾아가"]
+    assert planning_session.health_checks == ["navdp:dual startup", "dual:dual startup"]
+    assert planning_session.last_action_type == "LOCAL_SEARCH"
     assert command_source._active_command is not None
+    assert command_source._active_command.metadata["planner_managed"] is True
     assert command_source._runtime_io is None
+
+
+def test_interactive_mode_uses_planning_session_control_flow(monkeypatch: pytest.MonkeyPatch) -> None:
+    planning_session = _InteractivePlanningSession()
+    args = _args()
+    args.planner_mode = "interactive"
+    args.instruction = ""
+    monkeypatch.setattr(NavDPCommandSource, "_interactive_input_loop", lambda self: None)
+    command_source = NavDPCommandSource(args, planning_session=planning_session)
+
+    command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
+    command_source.planning_session.submit_interactive_instruction("go to the loading dock")
+    command_source.update(1)
+
+    assert planning_session.health_checks == ["navdp:interactive startup"]
+    assert planning_session.submitted_instructions == ["go to the loading dock"]
+    assert planning_session.last_action_type == "LOCAL_SEARCH"
+    assert command_source.supervisor.snapshot()["state"] == "Idle"
+    assert tuple(np.round(command_source.command(), 4)) != (0.0, 0.0, 0.0)
 
 
 def test_g1_view_mode_publishes_overlay_metadata_over_zmq_and_shm() -> None:
@@ -177,7 +238,7 @@ def test_g1_view_mode_publishes_overlay_metadata_over_zmq_and_shm() -> None:
         assert batch.rgb_image is not None
         assert batch.depth_image_m is not None
         assert batch.rgb_image.shape == (96, 96, 3)
-        assert planning_session.last_action_type == "NAV_TO_PLACE"
+        assert planning_session.last_action_type == "LOCAL_SEARCH"
     finally:
         if viewer_io is not None:
             viewer_io.close()

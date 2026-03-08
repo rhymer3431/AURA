@@ -5,67 +5,66 @@ from argparse import Namespace
 import numpy as np
 
 from control.async_planners import DualPlannerOutput, PlannerOutput
-from runtime.planning import PlannerSession
+from ipc.messages import ActionCommand
+from runtime.planning_session import PlanningSession
 
 
-def _args() -> Namespace:
+def _args(*, planner_mode: str = "interactive", instruction: str = "") -> Namespace:
     return Namespace(
-        planner_mode="interactive",
+        planner_mode=planner_mode,
         server_url="http://127.0.0.1:8888",
         dual_server_url="http://127.0.0.1:8890",
-        instruction="",
-        goal_x=None,
-        goal_y=None,
-        goal_tolerance_m=0.4,
-        spawn_demo_object=False,
-        demo_object_x=2.0,
-        demo_object_y=0.0,
-        demo_object_size_m=0.25,
-        object_stop_radius_m=0.8,
+        instruction=instruction,
+        use_trajectory_z=False,
+        plan_wait_timeout_sec=0.5,
         plan_interval_frames=1,
         dual_request_gap_frames=1,
-        safety_timeout_sec=20.0,
         s1_period_sec=0.2,
         s2_period_sec=1.0,
         goal_ttl_sec=3.0,
         traj_ttl_sec=1.5,
         traj_max_stale_sec=4.0,
-        strict_d455=False,
-        force_runtime_camera=False,
-        use_trajectory_z=False,
-        image_width=32,
-        image_height=32,
-        depth_max_m=5.0,
         timeout_sec=5.0,
         reset_timeout_sec=15.0,
         retry=1,
         stop_threshold=-3.0,
-        startup_updates=0,
-        log_interval=30,
-        interactive_prompt="nl>",
-        interactive_idle_log_interval=120,
-        cmd_max_vx=0.5,
-        cmd_max_vy=0.3,
-        cmd_max_wz=0.8,
-        lookahead_distance_m=0.6,
-        heading_slowdown_rad=0.6,
-        traj_stale_timeout_sec=1.5,
-        cmd_accel_limit=1.0,
-        cmd_yaw_accel_limit=1.5,
+        navdp_backend="heuristic",
+        navdp_checkpoint="",
+        navdp_device="cpu",
+        navdp_amp=False,
+        navdp_amp_dtype="float16",
+        navdp_tf32=False,
     )
 
 
-class _FakeSensor:
-    def __init__(self) -> None:
-        self.intrinsic = np.eye(3, dtype=np.float32)
+def _planner_managed_command(task_id: str = "interactive") -> ActionCommand:
+    return ActionCommand(
+        action_type="LOCAL_SEARCH",
+        task_id=task_id,
+        metadata={"planner_managed": True},
+    )
 
-    def capture_rgbd_with_meta(self, _unused):  # noqa: ANN001
-        rgb = np.zeros((8, 8, 3), dtype=np.uint8)
-        depth = np.ones((8, 8), dtype=np.float32)
-        return rgb, depth, {"rgb_source": "fake", "depth_source": "fake"}
 
-    def get_rgb_camera_pose_world(self):
-        return np.zeros(3, dtype=np.float32), np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
+def _observation(session: PlanningSession, frame_id: int):
+    return session.build_local_observation(
+        frame_id=frame_id,
+        rgb=np.zeros((8, 8, 3), dtype=np.uint8),
+        depth=np.ones((8, 8), dtype=np.float32),
+        camera_pose_xyz=(0.0, 0.0, 1.2),
+        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
+        intrinsic=np.eye(3, dtype=np.float32),
+        sensor_meta={"rgb_source": "fake", "depth_source": "fake"},
+    )
+
+
+def _step(session: PlanningSession, frame_id: int):
+    return session.plan_with_observation(
+        _observation(session, frame_id),
+        action_command=_planner_managed_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
 
 
 class _FakeNavDPClient:
@@ -135,23 +134,23 @@ class _FakePlanner:
         return self.status
 
 
-def _make_session() -> tuple[PlannerSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeDualClient]:
-    session = PlannerSession(_args())
-    session.sensor = _FakeSensor()
+def _make_session() -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeDualClient]:
+    session = PlanningSession(_args())
+    session._intrinsic = np.eye(3, dtype=np.float32)
     nogoal_planner = _FakePlanner()
     dual_planner = _FakePlanner()
-    nogoal_client = _FakeNavDPClient()
+    navdp_client = _FakeNavDPClient()
     dual_client = _FakeDualClient()
+    session.navdp_client = navdp_client
     session.nogoal_planner = nogoal_planner
     session.dual_planner = dual_planner
-    session._nogoal_client = nogoal_client
     session._dual_client = dual_client
     assert session._activate_roaming("test startup") is True
-    return session, nogoal_planner, dual_planner, nogoal_client, dual_client
+    return session, nogoal_planner, dual_planner, navdp_client, dual_client
 
 
-def test_interactive_roaming_uses_nogoal_planner():
-    session, nogoal_planner, _dual_planner, nogoal_client, _dual_client = _make_session()
+def test_interactive_roaming_uses_nogoal_planner() -> None:
+    session, nogoal_planner, _dual_planner, navdp_client, _dual_client = _make_session()
     nogoal_planner.outputs = [
         PlannerOutput(
             plan_version=0,
@@ -165,16 +164,16 @@ def test_interactive_roaming_uses_nogoal_planner():
     ]
     nogoal_planner.status = (1, 0, "", 3.0)
 
-    update = session.update(1)
+    update = _step(session, 1)
 
-    assert nogoal_client.reset_calls == 1
+    assert navdp_client.reset_calls == 1
     assert len(nogoal_planner.submitted) == 1
     assert update.interactive_phase == "roaming"
     assert update.trajectory_world.shape == (2, 3)
 
 
-def test_interactive_command_switches_to_task_mode_and_resets_dual():
-    session, _nogoal_planner, dual_planner, _nogoal_client, dual_client = _make_session()
+def test_interactive_command_switches_to_task_mode_and_resets_dual() -> None:
+    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -195,7 +194,7 @@ def test_interactive_command_switches_to_task_mode_and_resets_dual():
     dual_planner.status = (1, 0, "", 4.0)
     command_id = session.submit_interactive_instruction("go to the loading dock")
 
-    update = session.update(2)
+    update = _step(session, 2)
 
     assert command_id == 1
     assert dual_client.instructions == ["go to the loading dock"]
@@ -205,8 +204,8 @@ def test_interactive_command_switches_to_task_mode_and_resets_dual():
     assert update.traj_version == 4
 
 
-def test_interactive_completion_returns_to_roaming():
-    session, nogoal_planner, dual_planner, nogoal_client, dual_client = _make_session()
+def test_interactive_completion_returns_to_roaming() -> None:
+    session, nogoal_planner, dual_planner, navdp_client, dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -242,14 +241,15 @@ def test_interactive_completion_returns_to_roaming():
     dual_planner.status = (2, 0, "", 4.0)
     session.submit_interactive_instruction("inspect the pallet")
 
-    first_update = session.update(1)
-    second_update = session.update(2)
+    first_update = _step(session, 1)
+    second_update = _step(session, 2)
 
     assert first_update.interactive_phase == "task_active"
     assert second_update.interactive_phase == "roaming"
     assert second_update.interactive_command_id == -1
+    assert second_update.stop is True
     assert dual_client.instructions == ["inspect the pallet"]
-    assert nogoal_client.reset_calls == 2
+    assert navdp_client.reset_calls == 2
 
     nogoal_planner.outputs = [
         PlannerOutput(
@@ -264,14 +264,14 @@ def test_interactive_completion_returns_to_roaming():
     ]
     nogoal_planner.status = (1, 0, "", 2.0)
 
-    roaming_update = session.update(3)
+    roaming_update = _step(session, 3)
 
     assert roaming_update.interactive_phase == "roaming"
     assert roaming_update.trajectory_world.shape == (2, 3)
 
 
-def test_interactive_new_instruction_preempts_active_task():
-    session, _nogoal_planner, dual_planner, _nogoal_client, dual_client = _make_session()
+def test_interactive_new_instruction_preempts_active_task() -> None:
+    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -307,9 +307,9 @@ def test_interactive_new_instruction_preempts_active_task():
     dual_planner.status = (1, 0, "", 4.0)
 
     first_id = session.submit_interactive_instruction("go forward")
-    first_update = session.update(1)
+    first_update = _step(session, 1)
     second_id = session.submit_interactive_instruction("turn left and move")
-    second_update = session.update(2)
+    second_update = _step(session, 2)
 
     assert first_id == 1
     assert second_id == 2
@@ -319,8 +319,8 @@ def test_interactive_new_instruction_preempts_active_task():
     assert dual_client.instructions == ["go forward", "turn left and move"]
 
 
-def test_interactive_cancel_returns_to_roaming():
-    session, _nogoal_planner, dual_planner, nogoal_client, _dual_client = _make_session()
+def test_interactive_cancel_returns_to_roaming() -> None:
+    session, _nogoal_planner, dual_planner, navdp_client, _dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -340,13 +340,56 @@ def test_interactive_cancel_returns_to_roaming():
     ]
     dual_planner.status = (1, 0, "", 4.0)
     session.submit_interactive_instruction("go forward")
-    task_update = session.update(1)
+    task_update = _step(session, 1)
 
     assert task_update.interactive_phase == "task_active"
     assert session.cancel_interactive_task() is True
 
-    cancel_update = session.update(2)
+    cancel_update = _step(session, 2)
 
     assert cancel_update.interactive_phase == "roaming"
     assert cancel_update.interactive_command_id == -1
-    assert nogoal_client.reset_calls == 2
+    assert navdp_client.reset_calls == 2
+
+
+def test_dual_mode_uses_dual_server_for_trajectory_generation() -> None:
+    session = PlanningSession(_args(planner_mode="dual", instruction="head to the dock"))
+    session._intrinsic = np.eye(3, dtype=np.float32)
+    session.navdp_client = _FakeNavDPClient()
+    session.pointgoal_planner = _FakePlanner()
+    session.nogoal_planner = _FakePlanner()
+    session.dual_planner = _FakePlanner()
+    dual_client = _FakeDualClient()
+    session._dual_client = dual_client
+    session.dual_planner.outputs = [
+        DualPlannerOutput(
+            plan_version=0,
+            source_frame_id=1,
+            trajectory_world=np.asarray([[0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32),
+            stop=False,
+            goal_version=5,
+            traj_version=7,
+            stale_sec=0.1,
+            used_cached_traj=False,
+            debug={},
+            latency_ms=3.5,
+            successful_calls=1,
+            failed_calls=0,
+            last_error="",
+        )
+    ]
+    session.dual_planner.status = (1, 0, "", 3.5)
+
+    session.start_dual_task("head to the dock")
+    update = session.plan_with_observation(
+        _observation(session, 1),
+        action_command=_planner_managed_command(task_id="dual"),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert dual_client.instructions == ["head to the dock"]
+    assert update.goal_version == 5
+    assert update.traj_version == 7
+    assert update.trajectory_world.shape == (2, 3)

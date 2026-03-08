@@ -85,6 +85,7 @@ class SubgoalExecutor:
         )
         evaluation = self.evaluate_action(
             action_command=action_command,
+            trajectory_update=update,
             robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
             robot_yaw=float(robot_yaw),
         )
@@ -128,6 +129,7 @@ class SubgoalExecutor:
     ) -> ActionStatus | None:
         if action_command is None:
             return None
+        planner_managed = bool(action_command.metadata.get("planner_managed", False))
         if action_command.action_type == "STOP":
             return ActionStatus(
                 command_id=action_command.command_id,
@@ -146,6 +148,15 @@ class SubgoalExecutor:
                 distance_remaining_m=max(float(evaluation.goal_distance_m), 0.0),
                 metadata={"action_type": action_command.action_type},
             )
+        if planner_managed and bool(trajectory_update.stop) and trajectory_update.stats.last_error == "":
+            return ActionStatus(
+                command_id=action_command.command_id,
+                state="succeeded",
+                success=True,
+                robot_pose_xyz=robot_pose,
+                distance_remaining_m=0.0,
+                metadata={"action_type": action_command.action_type, "planner_managed": True},
+            )
         if (
             trajectory_update.stats.last_error != ""
             and trajectory_update.trajectory_world.shape[0] == 0
@@ -158,7 +169,7 @@ class SubgoalExecutor:
                 reason=trajectory_update.stats.last_error,
                 robot_pose_xyz=robot_pose,
                 distance_remaining_m=None if evaluation.goal_distance_m < 0.0 else float(evaluation.goal_distance_m),
-                metadata={"action_type": action_command.action_type},
+                metadata={"action_type": action_command.action_type, "planner_managed": planner_managed},
             )
         if action_command.action_type == "LOOK_AT" and abs(float(evaluation.yaw_error_rad)) < 0.05:
             return ActionStatus(
@@ -175,18 +186,22 @@ class SubgoalExecutor:
             success=False,
             robot_pose_xyz=robot_pose,
             distance_remaining_m=None if evaluation.goal_distance_m < 0.0 else float(evaluation.goal_distance_m),
-            metadata={"action_type": action_command.action_type},
+            metadata={"action_type": action_command.action_type, "planner_managed": planner_managed},
         )
 
     def evaluate_action(
         self,
         *,
         action_command: ActionCommand | None,
+        trajectory_update: TrajectoryUpdate | None,
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> CommandEvaluation:
         if action_command is None:
             return CommandEvaluation(force_stop=True, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=False)
+        if bool(action_command.metadata.get("planner_managed", False)):
+            planner_stop = bool(trajectory_update.stop) if trajectory_update is not None else False
+            return CommandEvaluation(force_stop=planner_stop, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=planner_stop)
         if action_command.action_type == "STOP":
             return CommandEvaluation(force_stop=True, goal_distance_m=0.0, yaw_error_rad=0.0, reached_goal=False)
         if action_command.action_type == "LOOK_AT":
