@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from runtime.g1_bridge import build_launch_config
 from runtime.g1_bridge_args import (
     DEFAULT_OBJECT_SEARCH_INSTRUCTION,
     DEFAULT_VIEWER_CONTROL_ENDPOINT,
@@ -91,6 +92,15 @@ def test_apply_launch_mode_defaults_forces_headless_for_g1_view():
 
     assert args.resolved_launch_mode == "g1_view"
     assert args.headless is True
+
+
+def test_build_launch_config_keeps_viewport_updates_for_g1_view():
+    args = _parse_args("--launch-mode", "g1_view")
+
+    apply_launch_mode_defaults(args)
+    launch_config = build_launch_config(args)
+
+    assert launch_config == {"headless": True}
 
 
 def test_resolve_launch_mode_keeps_legacy_headless_behavior_when_unspecified():

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import traceback
 
 import numpy as np
 
@@ -301,6 +302,14 @@ class NavDPCommandSource:
         )
 
 
+def build_launch_config(args) -> dict[str, bool]:
+    launch_config = {"headless": bool(args.headless)}
+    launch_mode = str(getattr(args, "resolved_launch_mode", resolve_launch_mode(args))).strip().lower()
+    if bool(args.headless) and launch_mode != "g1_view":
+        launch_config["disable_viewport_updates"] = True
+    return launch_config
+
+
 def main() -> int:
     try:
         args = build_arg_parser().parse_args()
@@ -314,13 +323,15 @@ def main() -> int:
     from isaacsim import SimulationApp
     from locomotion.runtime import run as run_g1_play
 
-    launch_config = {"headless": bool(args.headless)}
-    if bool(args.headless):
-        launch_config["disable_viewport_updates"] = True
+    launch_config = build_launch_config(args)
     simulation_app = SimulationApp(launch_config=launch_config)
 
     try:
         return run_g1_play(args, simulation_app, command_source=NavDPCommandSource(args))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[G1_POINTGOAL] unhandled exception: {type(exc).__name__}: {exc}")
+        print(traceback.format_exc())
+        return 1
     finally:
         simulation_app.close()
 
