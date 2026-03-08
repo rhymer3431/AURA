@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from locomotion.controller import create_policy_session, infer_policy_backend
+from locomotion.paths import resolve_default_policy_path
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,17 @@ def _build_tensorrt_engine(onnx_path: Path, engine_path: Path) -> None:
 def test_infer_policy_backend_detects_engine_suffix() -> None:
     assert infer_policy_backend("artifacts/models/g1_policy_fp32.engine") == "tensorrt"
     assert infer_policy_backend("artifacts/models/policy.onnx") == "onnxruntime"
+
+
+def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> None:
+    models_dir = tmp_path / "artifacts" / "models"
+    models_dir.mkdir(parents=True)
+    engine_path = models_dir / "g1_policy_fp32.engine"
+    onnx_path = models_dir / "policy.onnx"
+    engine_path.write_bytes(b"engine")
+    onnx_path.write_bytes(b"onnx")
+
+    assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
 
 
 def test_onnx_policy_session_runs_exported_policy() -> None:
