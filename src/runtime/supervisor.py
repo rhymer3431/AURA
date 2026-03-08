@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacBridgeAdapterConfig, IsaacObservationBatch
 from inference.detectors.factory import DetectorFactoryConfig
@@ -9,6 +9,7 @@ from ipc.inproc_bus import InprocBus
 from ipc.messages import ActionCommand, ActionStatus, CapabilityReport, HealthPing, RuntimeNotice, TaskRequest
 from ipc.shm_ring import SharedMemoryRing
 from perception.pipeline import PerceptionPipeline
+from perception.viewer_overlay import build_viewer_overlay_payload
 from services.memory_service import MemoryService
 from services.task_orchestrator import TaskOrchestrator
 
@@ -97,8 +98,15 @@ class Supervisor:
                 "capture_report": dict(batch.capture_report),
             },
         )
+        enriched_header = replace(
+            batch.frame_header,
+            metadata={
+                **dict(batch.frame_header.metadata),
+                "viewer_overlay": build_viewer_overlay_payload(frame_result),
+            },
+        )
         enriched = IsaacObservationBatch(
-            frame_header=batch.frame_header,
+            frame_header=enriched_header,
             robot_pose_xyz=batch.robot_pose_xyz,
             robot_yaw_rad=batch.robot_yaw_rad,
             sim_time_s=batch.sim_time_s,

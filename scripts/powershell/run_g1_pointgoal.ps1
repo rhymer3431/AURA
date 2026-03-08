@@ -3,6 +3,8 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
 $EntryModule = "runtime.g1_bridge"
+$ViewerScript = Join-Path $ScriptDir "run_g1_viewer.ps1"
+$ProcessLogDir = Join-Path $RepoDir "tmp\process_logs"
 $SrcDir = Join-Path $RepoDir "src"
 $PathSep = [System.IO.Path]::PathSeparator
 $DefaultIsaacPython = "C:\isaac-sim\python.bat"
@@ -37,8 +39,14 @@ $Instruction = if ($env:G1_POINTGOAL_INSTRUCTION) {
 } else {
     "Navigate safely to the target and stop when complete."
 }
+$LaunchMode = if ($env:G1_POINTGOAL_LAUNCH_MODE) { $env:G1_POINTGOAL_LAUNCH_MODE } else { "" }
 $ServerUrl = if ($env:G1_POINTGOAL_SERVER_URL) { $env:G1_POINTGOAL_SERVER_URL } else { "http://127.0.0.1:8888" }
 $DualServerUrl = if ($env:G1_POINTGOAL_DUAL_SERVER_URL) { $env:G1_POINTGOAL_DUAL_SERVER_URL } else { "http://127.0.0.1:8890" }
+$ViewerControlEndpoint = if ($env:G1_POINTGOAL_VIEWER_CONTROL_ENDPOINT) { $env:G1_POINTGOAL_VIEWER_CONTROL_ENDPOINT } else { "tcp://127.0.0.1:5580" }
+$ViewerTelemetryEndpoint = if ($env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT) { $env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT } else { "tcp://127.0.0.1:5581" }
+$ViewerShmName = if ($env:G1_POINTGOAL_VIEWER_SHM_NAME) { $env:G1_POINTGOAL_VIEWER_SHM_NAME } else { "g1_view_frames" }
+$ViewerShmSlotSize = if ($env:G1_POINTGOAL_VIEWER_SHM_SLOT_SIZE) { $env:G1_POINTGOAL_VIEWER_SHM_SLOT_SIZE } else { "8388608" }
+$ViewerShmCapacity = if ($env:G1_POINTGOAL_VIEWER_SHM_CAPACITY) { $env:G1_POINTGOAL_VIEWER_SHM_CAPACITY } else { "8" }
 $ForceRuntimeCamera = if ($env:G1_POINTGOAL_FORCE_RUNTIME_CAMERA) {
     $env:G1_POINTGOAL_FORCE_RUNTIME_CAMERA
 } else {
@@ -64,9 +72,71 @@ function Test-LaunchArgPresent {
     return $false
 }
 
+function Get-LaunchArgValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$InputArgs,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Names,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$DefaultValue
+    )
+
+    $resolved = $DefaultValue
+    for ($i = 0; $i -lt $InputArgs.Length; $i++) {
+        $launchArg = $InputArgs[$i]
+        foreach ($name in $Names) {
+            if ($launchArg -eq $name) {
+                if (($i + 1) -lt $InputArgs.Length) {
+                    $resolved = $InputArgs[$i + 1]
+                }
+                continue
+            }
+            if ($launchArg.StartsWith("$name=")) {
+                $resolved = $launchArg.Substring($name.Length + 1)
+            }
+        }
+    }
+    return $resolved
+}
+
+function Start-BackgroundPowerShell {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$ScriptArgs
+    )
+
+    New-Item -ItemType Directory -Path $ProcessLogDir -Force | Out-Null
+    $safeName = ($Name -replace '[^A-Za-z0-9_-]', '_')
+    $stdoutLog = Join-Path $ProcessLogDir "${safeName}.stdout.log"
+    $stderrLog = Join-Path $ProcessLogDir "${safeName}.stderr.log"
+    $argList = @(
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $ScriptPath
+    ) + $ScriptArgs
+    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $argList -WorkingDirectory $RepoDir -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog -PassThru
+    Write-Host "[$Name] started pid=$($proc.Id)"
+    Write-Host "[$Name] stdout-log=`"$stdoutLog`" stderr-log=`"$stderrLog`""
+    return $proc
+}
+
 $HasPolicyOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--policy")
 $HasRobotOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--robot_usd", "--robot-usd", "--usd-path")
 $HasSceneOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--scene-usd", "--scene_usd", "--env-url")
+$EffectiveLaunchMode = Get-LaunchArgValue -InputArgs $args -Names @("--launch-mode") -DefaultValue $LaunchMode
+$EffectiveViewerControlEndpoint = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-control-endpoint") -DefaultValue $ViewerControlEndpoint
+$EffectiveViewerTelemetryEndpoint = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-telemetry-endpoint") -DefaultValue $ViewerTelemetryEndpoint
+$EffectiveViewerShmName = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-name") -DefaultValue $ViewerShmName
+$EffectiveViewerShmSlotSize = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-slot-size") -DefaultValue $ViewerShmSlotSize
+$EffectiveViewerShmCapacity = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-capacity") -DefaultValue $ViewerShmCapacity
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
     Write-Host "[G1 PointGoal] Isaac python launcher not found: `"$IsaacPython`""
@@ -108,14 +178,23 @@ if ([string]::IsNullOrWhiteSpace($SceneUsd)) {
 Write-Host "[G1 PointGoal] default planner-mode=$PlannerMode"
 Write-Host "[G1 PointGoal] default goal=($GoalX, $GoalY)"
 Write-Host "[G1 PointGoal] default instruction=`"$Instruction`""
+if ([string]::IsNullOrWhiteSpace($LaunchMode)) {
+    Write-Host "[G1 PointGoal] default launch-mode=<legacy>"
+} else {
+    Write-Host "[G1 PointGoal] default launch-mode=$LaunchMode"
+}
 Write-Host "[G1 PointGoal] default server-url=$ServerUrl"
 Write-Host "[G1 PointGoal] default dual-server-url=$DualServerUrl"
+Write-Host "[G1 PointGoal] default viewer-control-endpoint=$ViewerControlEndpoint"
+Write-Host "[G1 PointGoal] default viewer-telemetry-endpoint=$ViewerTelemetryEndpoint"
+Write-Host "[G1 PointGoal] default viewer-shm-name=$ViewerShmName"
 Write-Host "[G1 PointGoal] default force-runtime-camera=$ForceRuntimeCamera"
 Write-Host "[G1 PointGoal] user args override defaults when repeated."
 Write-Host "[G1 PointGoal] examples:"
-Write-Host "[G1 PointGoal]   interactive: .\\run_g1_pointgoal.ps1 --planner-mode interactive"
+Write-Host "[G1 PointGoal]   interactive: .\\run_g1_pointgoal.ps1 --planner-mode interactive --launch-mode gui"
 Write-Host "[G1 PointGoal]   pointgoal  : .\\run_g1_pointgoal.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
 Write-Host "[G1 PointGoal]   dual       : .\\run_g1_pointgoal.ps1 --planner-mode dual --instruction `"Navigate to the target and stop.`""
+Write-Host "[G1 PointGoal]   g1_view    : .\\run_g1_pointgoal.ps1 --planner-mode dual --launch-mode g1_view --instruction `"Find the bright red cube.`""
 
 $LaunchArgs = @(
     "-m", $EntryModule,
@@ -126,8 +205,17 @@ $LaunchArgs = @(
     "--goal-y", $GoalY,
     "--instruction", $Instruction,
     "--server-url", $ServerUrl,
-    "--dual-server-url", $DualServerUrl
+    "--dual-server-url", $DualServerUrl,
+    "--viewer-control-endpoint", $ViewerControlEndpoint,
+    "--viewer-telemetry-endpoint", $ViewerTelemetryEndpoint,
+    "--viewer-shm-name", $ViewerShmName,
+    "--viewer-shm-slot-size", $ViewerShmSlotSize,
+    "--viewer-shm-capacity", $ViewerShmCapacity
 )
+
+if (-not [string]::IsNullOrWhiteSpace($LaunchMode)) {
+    $LaunchArgs += @("--launch-mode", $LaunchMode)
+}
 
 if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
     $LaunchArgs += @("--env-url", $SceneUsd)
@@ -139,16 +227,39 @@ if ($ForceRuntimeCamera -notin @("0", "false", "False", "FALSE", "no", "No", "NO
 
 Push-Location $RepoDir
 $PreviousPythonPath = $env:PYTHONPATH
+$ViewerProcess = $null
 if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = $SrcDir
 } else {
     $env:PYTHONPATH = "$SrcDir$PathSep$PreviousPythonPath"
 }
 try {
+    if ($EffectiveLaunchMode -eq "g1_view") {
+        if (-not (Test-Path -LiteralPath $ViewerScript)) {
+            Write-Host "[G1 PointGoal] viewer launcher not found: `"$ViewerScript`""
+            exit 1
+        }
+        $ViewerArgs = @(
+            "--control-endpoint", $EffectiveViewerControlEndpoint,
+            "--telemetry-endpoint", $EffectiveViewerTelemetryEndpoint,
+            "--shm-name", $EffectiveViewerShmName,
+            "--shm-slot-size", $EffectiveViewerShmSlotSize,
+            "--shm-capacity", $EffectiveViewerShmCapacity
+        )
+        $ViewerProcess = Start-BackgroundPowerShell -ScriptPath $ViewerScript -Name "G1Viewer" -ScriptArgs $ViewerArgs
+    }
     & $IsaacPython @LaunchArgs @args
     exit $LASTEXITCODE
 }
 finally {
+    if ($null -ne $ViewerProcess) {
+        try {
+            if (-not $ViewerProcess.HasExited) {
+                Stop-Process -Id $ViewerProcess.Id -Force
+            }
+        } catch {
+        }
+    }
     if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
         Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
     } else {

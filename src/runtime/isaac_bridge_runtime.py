@@ -30,6 +30,7 @@ class IsaacBridgeCommandSource:
         self.quit_requested = False
         self.exit_code = 0
         self.shutdown_reason = ""
+        self.requires_render = bool(getattr(args, "headless", False))
         self._controller = None
         self._bridge = IsaacBridgeAdapter(bus, IsaacBridgeAdapterConfig(), shm_ring=shm_ring)
         self._executor = SubgoalExecutor(args, planning_session=planning_session)

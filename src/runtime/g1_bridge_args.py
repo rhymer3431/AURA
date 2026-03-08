@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import argparse
+from typing import Literal
 
 from locomotion.args import BOOTSTRAP_ARGS, BOOTSTRAP_PARSER, add_runtime_args
 
 DEFAULT_DUAL_INSTRUCTION = "Navigate safely to the target and stop when complete."
 DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse and stop when you reach it."
 DEFAULT_INTERACTIVE_PROMPT = "nl>"
+DEFAULT_VIEWER_CONTROL_ENDPOINT = "tcp://127.0.0.1:5580"
+DEFAULT_VIEWER_TELEMETRY_ENDPOINT = "tcp://127.0.0.1:5581"
+DEFAULT_VIEWER_SHM_NAME = "g1_view_frames"
+DEFAULT_VIEWER_SHM_SLOT_SIZE = 8 * 1024 * 1024
+DEFAULT_VIEWER_SHM_CAPACITY = 8
 
 
 def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -47,6 +53,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     add_runtime_args(parser)
     parser.set_defaults(env_url="/Isaac/Environments/Simple_Warehouse/warehouse.usd")
+    parser.add_argument("--launch-mode", dest="launch_mode", type=str, choices=("gui", "g1_view"), default="")
 
     parser.add_argument("--server-url", dest="server_url", type=str, default="http://127.0.0.1:8888")
     parser.add_argument(
@@ -84,6 +91,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stop-threshold", dest="stop_threshold", type=float, default=-3.0)
     parser.add_argument("--interactive-prompt", dest="interactive_prompt", type=str, default=DEFAULT_INTERACTIVE_PROMPT)
     parser.add_argument("--interactive-idle-log-interval", dest="interactive_idle_log_interval", type=int, default=120)
+    parser.add_argument("--viewer-control-endpoint", dest="viewer_control_endpoint", type=str, default=DEFAULT_VIEWER_CONTROL_ENDPOINT)
+    parser.add_argument("--viewer-telemetry-endpoint", dest="viewer_telemetry_endpoint", type=str, default=DEFAULT_VIEWER_TELEMETRY_ENDPOINT)
+    parser.add_argument("--viewer-shm-name", dest="viewer_shm_name", type=str, default=DEFAULT_VIEWER_SHM_NAME)
+    parser.add_argument("--viewer-shm-slot-size", dest="viewer_shm_slot_size", type=int, default=DEFAULT_VIEWER_SHM_SLOT_SIZE)
+    parser.add_argument("--viewer-shm-capacity", dest="viewer_shm_capacity", type=int, default=DEFAULT_VIEWER_SHM_CAPACITY)
     add_subgoal_executor_args(parser)
     return parser
 
@@ -120,14 +132,37 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("--interactive-prompt must be non-empty in planner-mode=interactive")
 
 
+def resolve_launch_mode(args: argparse.Namespace) -> Literal["gui", "g1_view", "headless"]:
+    raw_mode = str(getattr(args, "launch_mode", "")).strip().lower()
+    if raw_mode == "gui":
+        return "gui"
+    if raw_mode == "g1_view":
+        return "g1_view"
+    return "headless" if bool(getattr(args, "headless", False)) else "gui"
+
+
+def apply_launch_mode_defaults(args: argparse.Namespace) -> argparse.Namespace:
+    resolved_mode = resolve_launch_mode(args)
+    args.resolved_launch_mode = resolved_mode
+    args.headless = resolved_mode != "gui"
+    return args
+
+
 __all__ = [
     "BOOTSTRAP_ARGS",
     "BOOTSTRAP_PARSER",
     "DEFAULT_DUAL_INSTRUCTION",
     "DEFAULT_INTERACTIVE_PROMPT",
     "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
+    "DEFAULT_VIEWER_CONTROL_ENDPOINT",
+    "DEFAULT_VIEWER_TELEMETRY_ENDPOINT",
+    "DEFAULT_VIEWER_SHM_NAME",
+    "DEFAULT_VIEWER_SHM_SLOT_SIZE",
+    "DEFAULT_VIEWER_SHM_CAPACITY",
     "add_subgoal_executor_args",
+    "apply_launch_mode_defaults",
     "apply_demo_defaults",
     "build_arg_parser",
+    "resolve_launch_mode",
     "validate_args",
 ]

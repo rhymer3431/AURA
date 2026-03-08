@@ -5,11 +5,12 @@ import time
 
 import numpy as np
 
+from apps.runtime_common import RuntimeIo, build_runtime_io
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from common.geometry import quat_wxyz_to_yaw
 from ipc.messages import ActionCommand, ActionStatus, FrameHeader
 
-from .g1_bridge_args import apply_demo_defaults, build_arg_parser, validate_args
+from .g1_bridge_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
 from .planning_session import PlanningSession, TrajectoryUpdate
 from .subgoal_executor import CommandEvaluation, SubgoalExecutor
 from .supervisor import Supervisor, SupervisorConfig
@@ -27,18 +28,20 @@ class NavDPCommandSource:
         self.quit_requested = False
         self.exit_code = 0
         self.shutdown_reason = ""
+        self._launch_mode = str(getattr(args, "resolved_launch_mode", resolve_launch_mode(args))).strip().lower()
+        self.requires_render = self._launch_mode in {"g1_view", "headless"}
 
         self._controller = None
         self._mode = str(getattr(args, "planner_mode", "interactive")).strip().lower()
         self._executor = SubgoalExecutor(args, planning_session=planning_session or PlanningSession(args))
-        self._supervisor = supervisor or Supervisor(
-            config=SupervisorConfig(
-                memory_db_path=str(getattr(args, "memory_db_path", "state/memory/memory.sqlite")),
-                detector_engine_path=str(getattr(args, "detector_engine_path", "")),
-                detector_model_path=str(getattr(args, "detector_model_path", "")),
-                detector_device=str(getattr(args, "detector_device", "")),
-            )
+        self._supervisor_config = SupervisorConfig(
+            memory_db_path=str(getattr(args, "memory_db_path", "state/memory/memory.sqlite")),
+            detector_engine_path=str(getattr(args, "detector_engine_path", "")),
+            detector_model_path=str(getattr(args, "detector_model_path", "")),
+            detector_device=str(getattr(args, "detector_device", "")),
         )
+        self._supervisor = supervisor
+        self._runtime_io: RuntimeIo | None = None
         self._command = np.zeros(3, dtype=np.float32)
         self._active_command: ActionCommand | None = None
         self._pending_status: ActionStatus | None = None
@@ -52,6 +55,8 @@ class NavDPCommandSource:
 
     @property
     def supervisor(self) -> Supervisor:
+        if self._supervisor is None:
+            self._supervisor = Supervisor(config=self._supervisor_config)
         return self._supervisor
 
     @property
@@ -63,6 +68,7 @@ class NavDPCommandSource:
         for _ in range(max(int(self.args.startup_updates), 0)):
             simulation_app.update()
         self._executor.initialize(simulation_app, stage)
+        self._ensure_view_runtime()
         self._bootstrap_mode()
         if self._mode == "interactive":
             self._interactive_running = True
@@ -108,7 +114,7 @@ class NavDPCommandSource:
                 camera_intrinsic=observation.intrinsic,
                 capture_report=dict(observation.sensor_meta),
             )
-            self._supervisor.process_frame(batch, publish=False)
+            self.supervisor.process_frame(batch, publish=self._launch_mode == "g1_view")
 
         command = self._resolve_action_command(robot_pose=robot_pose)
         execution = self._executor.step(
@@ -151,6 +157,9 @@ class NavDPCommandSource:
     def shutdown(self) -> None:
         self._interactive_running = False
         self._executor.shutdown()
+        if self._runtime_io is not None:
+            self._runtime_io.close(unlink_shm=True)
+            self._runtime_io = None
 
     def _bootstrap_mode(self) -> None:
         if self._mode == "pointgoal":
@@ -170,13 +179,13 @@ class NavDPCommandSource:
                 target_json: dict[str, object] = {}
                 if bool(getattr(self.args, "spawn_demo_object", False)):
                     target_json["target_class"] = "cube"
-                self._supervisor.submit_task(instruction, target_json=target_json)
+                self.supervisor.submit_task(instruction, target_json=target_json)
 
     def _resolve_action_command(self, *, robot_pose: tuple[float, float, float]) -> ActionCommand | None:
         if self._manual_command is not None:
             self._active_command = self._manual_command
             return self._manual_command
-        command = self._supervisor.step(
+        command = self.supervisor.step(
             now=time.time(),
             robot_pose=robot_pose,
             action_status=self._pending_status,
@@ -219,7 +228,7 @@ class NavDPCommandSource:
                 self._print_interactive_help()
                 continue
             if lowered == "/cancel":
-                self._supervisor.orchestrator.cancel_active_task(reason="interactive_cancel")
+                self.supervisor.orchestrator.cancel_active_task(reason="interactive_cancel")
                 print("[G1_INTERACTIVE][TASK] cancel requested")
                 continue
             if lowered == "/quit":
@@ -229,8 +238,39 @@ class NavDPCommandSource:
                 print(f"[G1_INTERACTIVE][ROAM] unknown command: {text}")
                 continue
 
-            request = self._supervisor.submit_task(text)
+            request = self.supervisor.submit_task(text)
             print(f"[G1_INTERACTIVE][TASK] task_id={request.task_id} queued instruction={text!r}")
+
+    def _ensure_view_runtime(self) -> None:
+        if self._launch_mode != "g1_view":
+            if self._supervisor is None:
+                self._supervisor = Supervisor(config=self._supervisor_config)
+            return
+        if self._runtime_io is not None:
+            return
+        self._runtime_io = build_runtime_io(
+            bus_kind="zmq",
+            endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
+            bind=True,
+            shm_name=str(getattr(self.args, "viewer_shm_name", "g1_view_frames")),
+            shm_slot_size=int(getattr(self.args, "viewer_shm_slot_size", 8 * 1024 * 1024)),
+            shm_capacity=int(getattr(self.args, "viewer_shm_capacity", 8)),
+            create_shm=True,
+            role="bridge",
+            control_endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
+            telemetry_endpoint=str(getattr(self.args, "viewer_telemetry_endpoint", "")),
+        )
+        self._supervisor = Supervisor(
+            bus=self._runtime_io.bus,
+            shm_ring=self._runtime_io.shm_ring,
+            config=self._supervisor_config,
+        )
+        print(
+            "[G1_VIEW] viewer bridge ready "
+            f"control={getattr(self.args, 'viewer_control_endpoint', '')} "
+            f"telemetry={getattr(self.args, 'viewer_telemetry_endpoint', '')} "
+            f"shm={getattr(self.args, 'viewer_shm_name', '')}"
+        )
 
     def _log_prefix(self) -> str:
         if self._mode == "pointgoal":
@@ -267,6 +307,7 @@ def main() -> int:
         args = build_arg_parser().parse_args()
         args = apply_demo_defaults(args)
         validate_args(args)
+        args = apply_launch_mode_defaults(args)
     except ValueError as exc:
         print(f"[G1_POINTGOAL] {exc}")
         return 2

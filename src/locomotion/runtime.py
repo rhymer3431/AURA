@@ -89,6 +89,8 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
 
     if command_source is None:
         command_source = ConsoleCmdVelController(timeout=args.cmd_vel_timeout)
+    requires_render = bool(getattr(command_source, "requires_render", False))
+    render_world = (not args.headless) or requires_render
 
     shutdown_reason = ""
 
@@ -118,7 +120,7 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
         while simulation_app.is_running() and not command_source.quit_requested:
             if state["initialized"] and not state["reset_needed"]:
                 command_source.update(state["step"])
-            world.step(render=not args.headless)
+            world.step(render=render_world)
             if world.is_stopped():
                 state["reset_needed"] = True
             if args.max_steps > 0 and state["step"] >= args.max_steps:

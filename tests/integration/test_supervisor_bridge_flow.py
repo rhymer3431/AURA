@@ -1,17 +1,23 @@
 from __future__ import annotations
 
+import socket
 import sys
+import time
+import uuid
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
+from apps.runtime_common import build_runtime_io
 from runtime.g1_bridge import NavDPCommandSource
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 
@@ -91,8 +97,16 @@ def _args() -> Namespace:
         log_interval=1,
         interactive_idle_log_interval=120,
         memory_db_path="state/memory/memory.sqlite",
-        detector_engine_path="",
+        detector_engine_path="artifacts/models/__missing__.engine",
+        detector_model_path="",
+        detector_device="",
     )
+
+
+def _free_tcp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
 
 
 def test_supervisor_to_g1_bridge_command_flow() -> None:
@@ -104,3 +118,68 @@ def test_supervisor_to_g1_bridge_command_flow() -> None:
     assert planning_session.last_action_type == "NAV_TO_PLACE"
     assert command_source.supervisor.snapshot()["state"] == "GoToRememberedObject"
     assert command_source._active_command is not None
+    assert command_source._runtime_io is None
+
+
+def test_g1_view_mode_publishes_overlay_metadata_over_zmq_and_shm() -> None:
+    pytest.importorskip("zmq")
+    planning_session = _FakePlanningSession()
+    port = _free_tcp_port()
+    args = _args()
+    args.launch_mode = "g1_view"
+    args.resolved_launch_mode = "g1_view"
+    args.headless = True
+    args.viewer_control_endpoint = f"tcp://127.0.0.1:{port}"
+    args.viewer_telemetry_endpoint = f"tcp://127.0.0.1:{port + 1}"
+    args.viewer_shm_name = f"g1_view_test_{uuid.uuid4().hex[:12]}"
+    args.viewer_shm_slot_size = 2 * 1024 * 1024
+    args.viewer_shm_capacity = 4
+    command_source = NavDPCommandSource(args, planning_session=planning_session)
+    viewer_io = None
+    try:
+        command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
+        viewer_io = build_runtime_io(
+            bus_kind="zmq",
+            endpoint=args.viewer_control_endpoint,
+            bind=False,
+            shm_name=args.viewer_shm_name,
+            shm_slot_size=args.viewer_shm_slot_size,
+            shm_capacity=args.viewer_shm_capacity,
+            create_shm=False,
+            role="agent",
+            control_endpoint=args.viewer_control_endpoint,
+            telemetry_endpoint=args.viewer_telemetry_endpoint,
+            identity="test-g1-viewer",
+        )
+        time.sleep(0.1)
+
+        observed_header = None
+        for frame_idx in range(1, 8):
+            command_source.update(frame_idx)
+            deadline = time.time() + 0.25
+            while time.time() < deadline:
+                records = viewer_io.bus.poll("isaac.observation", max_items=32)
+                if records:
+                    observed_header = records[-1].message
+                    break
+                time.sleep(0.01)
+            if observed_header is not None:
+                break
+
+        assert observed_header is not None
+        assert "viewer_overlay" in observed_header.metadata
+        overlay = observed_header.metadata["viewer_overlay"]
+        assert overlay["detector_backend"] != ""
+        assert overlay["detections"]
+        assert overlay["detections"][0]["class_name"] == "apple"
+        assert overlay["detections"][0]["bbox_xyxy"] == [28, 24, 67, 71]
+
+        batch = IsaacBridgeAdapter(viewer_io.bus, shm_ring=viewer_io.shm_ring).reconstruct_batch(observed_header)
+        assert batch.rgb_image is not None
+        assert batch.depth_image_m is not None
+        assert batch.rgb_image.shape == (96, 96, 3)
+        assert planning_session.last_action_type == "NAV_TO_PLACE"
+    finally:
+        if viewer_io is not None:
+            viewer_io.close()
+        command_source.shutdown()
