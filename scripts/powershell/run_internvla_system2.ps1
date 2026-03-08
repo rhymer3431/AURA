@@ -144,7 +144,10 @@ function Ensure-Cuda131Runtime([string]$BaseDir, [string]$ServerDir, [switch]$Fo
 
 $ResolvedModelPath = Resolve-ProjectPath $ModelPath
 $ResolvedMmprojPath = Resolve-ProjectPath $MmprojPath
-$ResolvedChatTemplateFile = Resolve-ProjectPath $ChatTemplateFile
+$ResolvedChatTemplateFile = $null
+if (-not [string]::IsNullOrWhiteSpace($ChatTemplateFile)) {
+    $ResolvedChatTemplateFile = Resolve-ProjectPath $ChatTemplateFile
+}
 if (-not (Test-Path -LiteralPath $ResolvedModelPath)) {
     $fallbackModel = Resolve-ProjectPath "InternVLA-N1-System2.Q4_K_M.gguf"
     if (Test-Path -LiteralPath $fallbackModel) { $ResolvedModelPath = $fallbackModel }
@@ -180,10 +183,10 @@ if (-not (Test-Path -LiteralPath $ResolvedMmprojPath)) {
     }
 }
 
-if (-not (Test-Path -LiteralPath $ResolvedChatTemplateFile)) {
+if (-not [string]::IsNullOrWhiteSpace($ResolvedChatTemplateFile) -and -not (Test-Path -LiteralPath $ResolvedChatTemplateFile)) {
     Write-Host "[InternVLA System2] chat template not found: `"$ResolvedChatTemplateFile`""
-    Write-Host "[InternVLA System2] Set INTERNVLA_CHAT_TEMPLATE_FILE or pass -ChatTemplateFile."
-    exit 1
+    Write-Host "[InternVLA System2] continuing without --chat-template-file"
+    $ResolvedChatTemplateFile = $null
 }
 
 if ($null -eq $ResolvedLlamaServerPath -or -not (Test-Path -LiteralPath $ResolvedLlamaServerPath)) {
@@ -206,22 +209,31 @@ Write-Host "[InternVLA System2] Starting llama-server"
 Write-Host "[InternVLA System2] llama-server=`"$ResolvedLlamaServerPath`""
 Write-Host "[InternVLA System2] model=`"$ResolvedModelPath`""
 Write-Host "[InternVLA System2] mmproj=`"$ResolvedMmprojPath`""
-Write-Host "[InternVLA System2] chat-template=`"$ResolvedChatTemplateFile`""
+if ([string]::IsNullOrWhiteSpace($ResolvedChatTemplateFile)) {
+    Write-Host "[InternVLA System2] chat-template=disabled"
+} else {
+    Write-Host "[InternVLA System2] chat-template=`"$ResolvedChatTemplateFile`""
+}
 Write-Host "[InternVLA System2] host=$ListenHost port=$Port"
 Write-Host "[InternVLA System2] reasoning-budget=$ReasoningBudget"
 
 Push-Location $RepoDir
 try {
-    & $ResolvedLlamaServerPath `
-        --host $ListenHost `
-        --port $Port `
-        --model $ResolvedModelPath `
-        --mmproj $ResolvedMmprojPath `
-        --chat-template-file $ResolvedChatTemplateFile `
-        --ctx-size $ContextSize `
-        --gpu-layers $GpuLayerArg `
-        --reasoning-budget $ReasoningBudget `
-        @args
+    $ServerArgs = @(
+        "--host", $ListenHost,
+        "--port", $Port,
+        "--model", $ResolvedModelPath,
+        "--mmproj", $ResolvedMmprojPath,
+        "--ctx-size", $ContextSize,
+        "--gpu-layers", $GpuLayerArg,
+        "--reasoning-budget", $ReasoningBudget
+    )
+    if (-not [string]::IsNullOrWhiteSpace($ResolvedChatTemplateFile)) {
+        $ServerArgs += @("--chat-template-file", $ResolvedChatTemplateFile)
+    }
+    $ServerArgs += $args
+
+    & $ResolvedLlamaServerPath @ServerArgs
     exit $LASTEXITCODE
 }
 finally {
