@@ -17,8 +17,8 @@ $Instruction = if ($env:G1_OBJECT_SEARCH_INSTRUCTION) {
 } else {
     "Find the bright red cube in the warehouse and stop when you reach it."
 }
-$DemoObjectX = if ($env:G1_OBJECT_SEARCH_DEMO_OBJECT_X) { $env:G1_OBJECT_SEARCH_DEMO_OBJECT_X } else { "2.0" }
-$DemoObjectY = if ($env:G1_OBJECT_SEARCH_DEMO_OBJECT_Y) { $env:G1_OBJECT_SEARCH_DEMO_OBJECT_Y } else { "0.0" }
+$DemoObjectX = if ($env:G1_OBJECT_SEARCH_DEMO_OBJECT_X) { $env:G1_OBJECT_SEARCH_DEMO_OBJECT_X } else { "5.0" }
+$DemoObjectY = if ($env:G1_OBJECT_SEARCH_DEMO_OBJECT_Y) { $env:G1_OBJECT_SEARCH_DEMO_OBJECT_Y } else { "5.0" }
 $DemoObjectSize = if ($env:G1_OBJECT_SEARCH_DEMO_OBJECT_SIZE_M) {
     $env:G1_OBJECT_SEARCH_DEMO_OBJECT_SIZE_M
 } else {
