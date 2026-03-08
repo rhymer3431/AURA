@@ -92,6 +92,7 @@ def test_build_view_canvas_appends_depth_panel_when_enabled() -> None:
         source="unit_test",
         depth_image_m=depth,
         show_depth=True,
+        depth_min_m=0.0,
         depth_max_m=5.0,
     )
 

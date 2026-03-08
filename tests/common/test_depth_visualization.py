@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from common.depth_visualization import build_rgb_depth_panel, depth_to_heatmap_bgr, sanitize_depth_image
+from common.depth_visualization import build_rgb_depth_panel, compute_depth_display_range, depth_to_heatmap_bgr, sanitize_depth_image
 
 
 def test_sanitize_depth_image_marks_invalid_pixels() -> None:
@@ -49,3 +49,12 @@ def test_build_rgb_depth_panel_concatenates_rgb_and_depth_views() -> None:
     assert panel.shape == (2, 4, 3)
     assert tuple(int(v) for v in panel[0, 0]) == (0, 0, 255)
     assert np.any(panel[:, 2:, :] != 0)
+
+
+def test_compute_depth_display_range_uses_valid_percentiles() -> None:
+    depth = np.asarray([[0.0, 1.0, 2.0], [3.0, 8.0, 12.0]], dtype=np.float32)
+
+    display_min, display_max = compute_depth_display_range(depth, default_max_m=5.0, min_percentile=10.0, max_percentile=90.0)
+
+    assert 0.0 <= display_min < display_max
+    assert display_max <= 12.0

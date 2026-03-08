@@ -7,7 +7,7 @@ import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
 from common.cv2_compat import cv2
-from common.depth_visualization import build_rgb_depth_panel
+from common.depth_visualization import build_rgb_depth_panel, compute_depth_display_range
 from ipc.shm_ring import SharedMemoryRing
 from ipc.zmq_bus import ZmqBus
 from runtime.g1_bridge_args import (
@@ -32,6 +32,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--agent-id", type=str, default="g1_viewer")
     parser.add_argument("--show-depth", action="store_true")
     parser.add_argument("--depth-max-m", type=float, default=5.0)
+    parser.add_argument("--depth-fixed-range", action="store_true")
+    parser.add_argument("--depth-min-percentile", type=float, default=2.0)
+    parser.add_argument("--depth-max-percentile", type=float, default=98.0)
     return parser
 
 
@@ -166,6 +169,7 @@ def _build_view_canvas(
     source: str,
     depth_image_m: np.ndarray | None = None,
     show_depth: bool = False,
+    depth_min_m: float = 0.0,
     depth_max_m: float = 5.0,
 ) -> np.ndarray:
     rgb_canvas = _draw_overlay(
@@ -177,13 +181,18 @@ def _build_view_canvas(
     if not show_depth or depth_image_m is None:
         return rgb_canvas
 
-    panel = build_rgb_depth_panel(rgb_canvas[..., ::-1], np.asarray(depth_image_m, dtype=np.float32), float(depth_max_m))
+    panel = build_rgb_depth_panel(
+        rgb_canvas[..., ::-1],
+        np.asarray(depth_image_m, dtype=np.float32),
+        float(depth_max_m),
+        depth_min_m=float(depth_min_m),
+    )
     font = getattr(cv2, "FONT_HERSHEY_SIMPLEX", 0)
     line_type = getattr(cv2, "LINE_AA", 16)
     depth_label_x = max(int(rgb_canvas.shape[1]) + 10, 10)
     cv2.putText(
         panel,
-        f"depth 0.0..{float(depth_max_m):.1f}m",
+        f"depth {float(depth_min_m):.1f}..{float(depth_max_m):.1f}m",
         (depth_label_x, 22),
         font,
         0.6,
@@ -273,6 +282,15 @@ def main(argv: list[str] | None = None) -> int:
                     f"source={frame_header.source} detections={detection_count}{depth_note}"
                 )
             else:
+                depth_min_m = 0.0
+                depth_max_m = float(args.depth_max_m)
+                if bool(args.show_depth) and batch.depth_image_m is not None and not bool(args.depth_fixed_range):
+                    depth_min_m, depth_max_m = compute_depth_display_range(
+                        batch.depth_image_m,
+                        default_max_m=float(args.depth_max_m),
+                        min_percentile=float(args.depth_min_percentile),
+                        max_percentile=float(args.depth_max_percentile),
+                    )
                 canvas = _build_view_canvas(
                     batch.rgb_image,
                     overlay,
@@ -280,7 +298,8 @@ def main(argv: list[str] | None = None) -> int:
                     source=str(frame_header.source),
                     depth_image_m=batch.depth_image_m,
                     show_depth=bool(args.show_depth),
-                    depth_max_m=float(args.depth_max_m),
+                    depth_min_m=float(depth_min_m),
+                    depth_max_m=float(depth_max_m),
                 )
                 try:
                     cv2.imshow("G1 View", canvas)

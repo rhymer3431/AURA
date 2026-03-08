@@ -365,7 +365,7 @@ class D455SensorAdapter:
             )
             return rgb, None, meta
 
-        depth = self._sanitize_depth(depth, self.cfg.depth_max_m)
+        depth = self._sanitize_depth(depth, self.cfg.depth_max_m, clip_to_max=False)
         if depth.shape[:2] != rgb.shape[:2]:
             depth = cv2.resize(depth, (rgb.shape[1], rgb.shape[0]), interpolation=cv2.INTER_NEAREST)
             fallback_used = True
@@ -657,10 +657,12 @@ class D455SensorAdapter:
         return None
 
     @staticmethod
-    def _sanitize_depth(depth_m: np.ndarray, depth_max_m: float) -> np.ndarray:
+    def _sanitize_depth(depth_m: np.ndarray, depth_max_m: float, *, clip_to_max: bool = True) -> np.ndarray:
         depth = np.asarray(depth_m, dtype=np.float32)
         depth = np.nan_to_num(depth, nan=float(depth_max_m), posinf=float(depth_max_m), neginf=0.0)
-        depth = np.clip(depth, 0.0, float(depth_max_m))
+        depth = np.maximum(depth, 0.0)
+        if clip_to_max:
+            depth = np.minimum(depth, float(depth_max_m))
         return depth
 
     @staticmethod

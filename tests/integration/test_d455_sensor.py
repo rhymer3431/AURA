@@ -88,3 +88,18 @@ def test_capture_rgbd_with_meta_does_not_fallback_to_env_depth_when_rgb_exists()
     assert captured_depth is None
     assert meta["depth_source"] == "missing"
     assert meta["note"] == "Depth capture unavailable."
+
+
+def test_capture_rgbd_with_meta_preserves_camera_depth_beyond_depth_max() -> None:
+    sensor = D455SensorAdapter(D455SensorAdapterConfig(depth_max_m=5.0))
+    rgb = np.zeros((8, 8, 3), dtype=np.uint8)
+    raw_depth = np.full((8, 8), 9.0, dtype=np.float32)
+
+    sensor._capture_rgb = lambda: rgb  # noqa: SLF001
+    sensor._capture_depth_from_camera = lambda: (raw_depth, "replicator_distance_to_camera_rgb")  # noqa: SLF001
+
+    _, captured_depth, meta = sensor.capture_rgbd_with_meta(None)
+
+    assert captured_depth is not None
+    assert float(np.max(captured_depth)) == 9.0
+    assert float(meta["depth_max_m"]) == 9.0
