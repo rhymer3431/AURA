@@ -10,7 +10,7 @@ from .stub_or_onnx_fallback import ColorSegFallbackConfig, ColorSegFallbackDetec
 from .trt_yoloe import TensorRtYoloeDetector
 from .ultralytics_yolo import UltralyticsYoloDetector
 
-DEFAULT_ULTRALYTICS_MODEL_NAME = "yoloe-26s-seg-pf.pt"
+DEFAULT_ULTRALYTICS_MODEL_NAME = "yoloe-26s-seg-pf.engine"
 
 
 @dataclass(frozen=True)

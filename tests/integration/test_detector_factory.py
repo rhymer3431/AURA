@@ -58,7 +58,7 @@ def test_detector_factory_treats_non_engine_path_as_model_alias(tmp_path: Path) 
     assert selection.report.selected_reason == "model_missing"
 
 
-def test_default_model_path_uses_reference_yolo_pt_candidate_when_present(tmp_path: Path) -> None:
+def test_default_model_path_uses_reference_yolo_engine_candidate_when_present(tmp_path: Path) -> None:
     repo_root = tmp_path / "isaac-aura"
     sibling_project = tmp_path / "isaac"
     repo_root.mkdir()
@@ -67,3 +67,17 @@ def test_default_model_path_uses_reference_yolo_pt_candidate_when_present(tmp_pa
     model_path.write_text("stub", encoding="utf-8")
 
     assert default_model_path(repo_root=repo_root) == str(model_path.resolve())
+
+
+def test_default_model_path_prefers_repo_artifact_engine_before_sibling_candidate(tmp_path: Path) -> None:
+    repo_root = tmp_path / "isaac-aura"
+    artifacts_dir = repo_root / "artifacts" / "models"
+    sibling_project = tmp_path / "isaac"
+    artifacts_dir.mkdir(parents=True)
+    sibling_project.mkdir()
+    repo_model_path = artifacts_dir / DEFAULT_ULTRALYTICS_MODEL_NAME
+    sibling_model_path = sibling_project / DEFAULT_ULTRALYTICS_MODEL_NAME
+    repo_model_path.write_text("repo", encoding="utf-8")
+    sibling_model_path.write_text("sibling", encoding="utf-8")
+
+    assert default_model_path(repo_root=repo_root) == str(repo_model_path.resolve())
