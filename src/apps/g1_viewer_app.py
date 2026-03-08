@@ -32,14 +32,39 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _format_gui_error(exc: Exception) -> str:
+    return (
+        "OpenCV GUI support is unavailable in the viewer Python environment. "
+        "Use a desktop OpenCV build such as `opencv-python`, not `opencv-python-headless`, "
+        "or run the viewer with `--no-gui`. "
+        f"detail={type(exc).__name__}: {exc}"
+    )
+
+
 def _require_gui_support() -> None:
     missing = [
         name
-        for name in ("imshow", "waitKey", "destroyAllWindows", "rectangle", "putText")
+        for name in ("imshow", "waitKey", "rectangle", "putText")
         if not hasattr(cv2, name)
     ]
     if missing:
         raise RuntimeError(f"OpenCV GUI support is required for viewer mode, missing: {', '.join(missing)}")
+    named_window = getattr(cv2, "namedWindow", None)
+    destroy_window = getattr(cv2, "destroyWindow", None)
+    if not callable(named_window) or not callable(destroy_window):
+        raise RuntimeError(
+            "OpenCV HighGUI window support is unavailable in the viewer Python environment. "
+            "Install a desktop OpenCV build or run with `--no-gui`."
+        )
+    probe_name = "__g1_view_probe__"
+    probe_image = np.zeros((1, 1, 3), dtype=np.uint8)
+    try:
+        named_window(probe_name)
+        cv2.imshow(probe_name, probe_image)
+        cv2.waitKey(1)
+        destroy_window(probe_name)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(_format_gui_error(exc)) from exc
 
 
 def _attach_shm(args: argparse.Namespace) -> SharedMemoryRing | None:
@@ -112,6 +137,16 @@ def _draw_overlay(frame_bgr: np.ndarray, overlay: dict[str, object], *, frame_id
     return canvas
 
 
+def _close_windows_safely() -> None:
+    destroy_all = getattr(cv2, "destroyAllWindows", None)
+    if not callable(destroy_all):
+        return
+    try:
+        destroy_all()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[G1_VIEWER] skipped OpenCV window teardown: {_format_gui_error(exc)}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     if not args.no_gui:
@@ -175,8 +210,11 @@ def main(argv: list[str] | None = None) -> int:
                     frame_id=int(frame_header.frame_id),
                     source=str(frame_header.source),
                 )
-                cv2.imshow("G1 View", canvas)
-                key = cv2.waitKey(1) & 0xFF
+                try:
+                    cv2.imshow("G1 View", canvas)
+                    key = cv2.waitKey(1) & 0xFF
+                except Exception as exc:  # noqa: BLE001
+                    raise RuntimeError(_format_gui_error(exc)) from exc
                 if key in (27, ord("q")):
                     break
 
@@ -186,8 +224,8 @@ def main(argv: list[str] | None = None) -> int:
         if shm_ring is not None:
             shm_ring.close()
         bus.close()
-        if not args.no_gui and hasattr(cv2, "destroyAllWindows"):
-            cv2.destroyAllWindows()
+        if not args.no_gui:
+            _close_windows_safely()
 
     return 0
 
