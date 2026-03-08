@@ -9,6 +9,13 @@ from common.geometry import quat_wxyz_to_rot_matrix
 from .pipeline import PerceptionFrameResult
 
 
+def _rounded_xyz(values: tuple[float, float, float] | np.ndarray | list[float]) -> list[float] | None:
+    arr = np.asarray(values, dtype=np.float32).reshape(-1)
+    if arr.shape[0] < 3 or not np.all(np.isfinite(arr[:3])):
+        return None
+    return [round(float(arr[0]), 4), round(float(arr[1]), 4), round(float(arr[2]), 4)]
+
+
 def _project_world_to_pixel(
     point_world: np.ndarray,
     *,
@@ -57,6 +64,12 @@ def build_viewer_overlay_payload(
         depth_value = metadata.get("depth_m")
         if isinstance(depth_value, (int, float)):
             entry["depth_m"] = round(float(depth_value), 4)
+        world_pose_xyz = _rounded_xyz(projected.world_pose_xyz)
+        if world_pose_xyz is not None:
+            entry["world_pose_xyz"] = world_pose_xyz
+        approach_yaw = metadata.get("approach_yaw_rad")
+        if isinstance(approach_yaw, (int, float)):
+            entry["approach_yaw_rad"] = round(float(approach_yaw), 6)
         projected_by_track[track_id] = entry
 
     overlay_detections: list[dict[str, object]] = []
@@ -105,6 +118,45 @@ def build_viewer_overlay_payload(
                     value = planner_overlay.get(key)
                     if isinstance(value, (int, float)) and int(value) >= 0:
                         payload[key] = int(value)
+    active_command_overlay = metadata.get("active_command_overlay")
+    if isinstance(active_command_overlay, dict):
+        active_target: dict[str, object] = {}
+        for key in ("action_type", "target_mode", "target_class", "target_track_id", "pose_source"):
+            value = active_command_overlay.get(key)
+            if isinstance(value, str) and value != "":
+                active_target[key] = value
+        for key in ("approach_yaw_rad", "track_age_sec", "depth_m"):
+            value = active_command_overlay.get(key)
+            if isinstance(value, (int, float)):
+                active_target[key] = round(float(value), 6)
+        for key in ("raw_target_pose_xyz", "filtered_target_pose_xyz", "nav_goal_pose_xyz"):
+            value = active_command_overlay.get(key)
+            rounded_xyz = _rounded_xyz(value) if value is not None else None
+            if rounded_xyz is not None:
+                active_target[key] = rounded_xyz
+        if (
+            camera_intrinsic is not None
+            and camera_pose_xyz is not None
+            and camera_quat_wxyz is not None
+        ):
+            for pose_key, pixel_key in (
+                ("raw_target_pose_xyz", "raw_target_pixel"),
+                ("filtered_target_pose_xyz", "filtered_target_pixel"),
+                ("nav_goal_pose_xyz", "nav_goal_pixel"),
+            ):
+                value = active_command_overlay.get(pose_key)
+                if value is None:
+                    continue
+                pixel = _project_world_to_pixel(
+                    np.asarray(value, dtype=np.float32),
+                    camera_pose_xyz=camera_pose_xyz,
+                    camera_quat_wxyz=camera_quat_wxyz,
+                    camera_intrinsic=np.asarray(camera_intrinsic, dtype=np.float32),
+                )
+                if pixel is not None:
+                    active_target[pixel_key] = pixel
+        if active_target:
+            payload["active_target"] = active_target
     return payload
 
 

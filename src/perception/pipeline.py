@@ -133,6 +133,7 @@ class PerceptionPipeline:
             dx = float(detection2d.world_pose_xyz[0]) - float(robot_pose[0])
             dy = float(detection2d.world_pose_xyz[1]) - float(robot_pose[1])
             absolute_yaw = float(np.arctan2(dy, dx))
+            detection2d.metadata["approach_yaw_rad"] = absolute_yaw
             if isinstance(robot_yaw, (int, float)):
                 detection2d.metadata["bearing_yaw_rad"] = float(wrap_to_pi(absolute_yaw - float(robot_yaw)))
             else:

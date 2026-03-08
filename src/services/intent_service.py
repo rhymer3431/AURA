@@ -28,8 +28,14 @@ class IntentService:
         text = str(command_text).strip()
         lowered = text.lower()
         target_json = dict(target_json or {})
+        target_mode = str(target_json.get("target_mode", "")).strip().lower()
         target_class = self._extract_target_class(lowered, target_json)
         target_track_id = str(target_json.get("target_track_id", "")).strip()
+
+        if target_mode == "follow_person":
+            return ParsedIntent(name="follow", target_class="person", target_track_id=target_track_id)
+        if target_mode == "goto_visible_object":
+            return ParsedIntent(name="goto_visible_object", target_class=target_class, target_track_id=target_track_id)
 
         if any(token in lowered for token in ("따라와", "따라", "follow")):
             return ParsedIntent(name="follow", target_class="person", target_track_id=target_track_id)

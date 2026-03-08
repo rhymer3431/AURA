@@ -8,6 +8,7 @@ class BehaviorState(str, Enum):
     IDLE = "Idle"
     ATTEND_CALLER = "AttendCaller"
     FOLLOW_TARGET = "FollowTarget"
+    APPROACH_VISIBLE_TARGET = "ApproachVisibleTarget"
     GO_TO_REMEMBERED_OBJECT = "GoToRememberedObject"
     LOCAL_SEARCH = "LocalSearch"
     RECOVER_LOST_TARGET = "RecoverLostTarget"

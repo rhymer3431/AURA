@@ -28,7 +28,7 @@ def test_speaker_event_binds_to_best_matching_person() -> None:
                 pose=(1.0, 0.2, 0.0),
                 timestamp=1.1,
                 confidence=0.95,
-                metadata={"bearing_yaw_rad": 0.12, "appearance_signature": "blue"},
+                metadata={"bearing_yaw_rad": 0.12, "appearance_signature": "blue", "depth_m": 1.02},
             ),
             ObsObject(
                 class_name="person",
@@ -36,7 +36,7 @@ def test_speaker_event_binds_to_best_matching_person() -> None:
                 pose=(1.0, 2.0, 0.0),
                 timestamp=1.1,
                 confidence=0.95,
-                metadata={"bearing_yaw_rad": 1.2, "appearance_signature": "red"},
+                metadata={"bearing_yaw_rad": 1.2, "appearance_signature": "red", "depth_m": 2.24},
             ),
         ]
     )
@@ -59,7 +59,7 @@ def test_follow_target_reacquires_with_reid_after_track_change() -> None:
                 pose=(1.0, 0.0, 0.0),
                 timestamp=2.0,
                 confidence=0.9,
-                metadata={"appearance_signature": "blue", "bearing_yaw_rad": 0.0},
+                metadata={"appearance_signature": "blue", "bearing_yaw_rad": 0.0, "depth_m": 1.0},
             )
         ]
     )
@@ -74,7 +74,7 @@ def test_follow_target_reacquires_with_reid_after_track_change() -> None:
                 pose=(1.2, 0.1, 0.0),
                 timestamp=2.3,
                 confidence=0.9,
-                metadata={"appearance_signature": "blue", "bearing_yaw_rad": 0.05},
+                metadata={"appearance_signature": "blue", "bearing_yaw_rad": 0.05, "depth_m": 1.2042},
             )
         ]
     )

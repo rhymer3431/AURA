@@ -13,6 +13,7 @@ from perception.speaker_events import SpeakerEvent
 from .attention_service import AttentionService
 from .follow_service import FollowService
 from .intent_service import IntentService, ParsedIntent
+from .live_target_service import LiveTargetService
 from .memory_service import MemoryService
 from .object_search_service import ObjectSearchService
 
@@ -31,10 +32,12 @@ class TaskOrchestrator:
         self.subgoal_planner = SubgoalPlanner()
         self.person_tracker = PersonTracker()
         self.attention_service = AttentionService(memory_service.temporal_store)
+        self.live_target_service = LiveTargetService()
         self.follow_service = FollowService(
             memory_service.temporal_store,
             self.person_tracker,
             self.subgoal_planner,
+            self.live_target_service,
             memory_service.semantic_store,
         )
         self.object_search_service = ObjectSearchService(memory_service, self.subgoal_planner)
@@ -43,6 +46,7 @@ class TaskOrchestrator:
         self._active_request: TaskRequest | None = None
         self._active_intent: ParsedIntent | None = None
         self._active_episode_id = ""
+        self._visible_target_search_active = False
 
     @property
     def state(self) -> BehaviorState:
@@ -51,6 +55,7 @@ class TaskOrchestrator:
     def submit_task(self, request: TaskRequest) -> None:
         self._active_request = request
         self._active_intent = self.intent_service.parse(request.command_text, target_json=request.target_json)
+        self._visible_target_search_active = False
         self._active_episode_id = self.memory_service.start_episode(
             command_text=request.command_text,
             intent=self._active_intent.name,
@@ -78,12 +83,31 @@ class TaskOrchestrator:
                 person_id=self.follow_service.target_person_id,
                 track_id=self.follow_service.target_track_id,
             )
+            self.live_target_service.activate_target(
+                target_mode="follow_person",
+                target_class="person",
+                target_track_id=self.follow_service.target_track_id,
+                standoff_distance_m=self._float_target_option(request.target_json, "standoff_distance_m"),
+                loss_timeout_sec=self._float_target_option(request.target_json, "loss_timeout_sec"),
+            )
             self.fsm.transition(BehaviorState.FOLLOW_TARGET, "follow_request")
+        elif self._active_intent.name == "goto_visible_object":
+            self.live_target_service.activate_target(
+                target_mode="goto_visible_object",
+                target_class=self._active_intent.target_class,
+                target_track_id=str(request.target_json.get("target_track_id", "")),
+                standoff_distance_m=self._float_target_option(request.target_json, "standoff_distance_m"),
+                loss_timeout_sec=self._float_target_option(request.target_json, "loss_timeout_sec"),
+            )
+            self.fsm.transition(BehaviorState.APPROACH_VISIBLE_TARGET, "visible_object_request")
         elif self._active_intent.name == "goto_remembered_object":
+            self.live_target_service.clear_target()
             self.fsm.transition(BehaviorState.GO_TO_REMEMBERED_OBJECT, "memory_recall_request")
         elif self._active_intent.name == "attend_caller":
+            self.live_target_service.clear_target()
             self.fsm.transition(BehaviorState.ATTEND_CALLER, "attend_request")
         else:
+            self.live_target_service.clear_target()
             self.fsm.transition(BehaviorState.LOCAL_SEARCH, "default_local_search")
 
     def on_speaker_event(self, event: SpeakerEvent) -> None:
@@ -118,6 +142,9 @@ class TaskOrchestrator:
             person_tracks,
             now=max((float(track.last_seen) for track in person_tracks), default=0.0),
         )
+        self.live_target_service.ingest_observations(observation_list)
+        if self.fsm.state == BehaviorState.FOLLOW_TARGET and self.follow_service.target_track_id != "":
+            self.live_target_service.bind_active_track(self.follow_service.target_track_id)
 
     def step(
         self,
@@ -143,11 +170,63 @@ class TaskOrchestrator:
                 self.follow_service.mark_target_lost(now=now)
                 self.fsm.transition(BehaviorState.RECOVER_LOST_TARGET, action_status.reason or "follow_failed")
             else:
-                command = self.follow_service.build_command(task_id=request.task_id if request is not None else "")
+                command = self.follow_service.build_command(
+                    task_id=request.task_id if request is not None else "",
+                    robot_pose_xyz=robot_pose,
+                    now=now,
+                )
                 if command is not None:
                     return command
                 self.follow_service.mark_target_lost(now=now)
                 self.fsm.transition(BehaviorState.RECOVER_LOST_TARGET, "target_unavailable")
+
+        if self.fsm.state == BehaviorState.APPROACH_VISIBLE_TARGET:
+            task_id = request.task_id if request is not None else ""
+            if action_status is not None and action_status.state == "succeeded":
+                self.memory_service.finish_episode(success=True)
+                self.fsm.transition(BehaviorState.IDLE, "visible_target_reached")
+                return self.subgoal_planner.stop(task_id=task_id, reason="visible_target_reached")
+
+            visible_snapshot = None
+            if robot_pose is not None:
+                visible_snapshot = self.live_target_service.resolve_target(
+                    robot_pose_xyz=robot_pose,
+                    now=now,
+                )
+            if visible_snapshot is not None and visible_snapshot.within_loss_timeout:
+                self._visible_target_search_active = False
+                return self.subgoal_planner.nav_to_pose(
+                    target_pose_xyz=visible_snapshot.nav_goal_pose_xyz,
+                    task_id=task_id,
+                    metadata=visible_snapshot.command_metadata(),
+                )
+
+            stale_snapshot = None
+            if robot_pose is not None:
+                stale_snapshot = self.live_target_service.resolve_target(
+                    robot_pose_xyz=robot_pose,
+                    now=now,
+                    allow_stale=True,
+                )
+            if stale_snapshot is not None:
+                if self._visible_target_search_active and action_status is not None and action_status.state in {"failed", "succeeded"}:
+                    self.memory_service.finish_episode(success=False, failure_reason="visible_target_lost")
+                    self.fsm.transition(BehaviorState.IDLE, "visible_target_search_exhausted")
+                    return self.subgoal_planner.stop(task_id=task_id, reason="visible_target_lost")
+                self._visible_target_search_active = True
+                metadata = stale_snapshot.command_metadata()
+                metadata["recovery"] = "visible_target_local_search"
+                metadata["search_origin_pose_xyz"] = list(stale_snapshot.filtered_target_pose_xyz)
+                metadata["target_visible"] = False
+                return self.subgoal_planner.local_search(
+                    task_id=task_id,
+                    target_pose_xyz=stale_snapshot.filtered_target_pose_xyz,
+                    metadata=metadata,
+                )
+
+            self.memory_service.finish_episode(success=False, failure_reason="visible_target_missing")
+            self.fsm.transition(BehaviorState.IDLE, "visible_target_missing")
+            return self.subgoal_planner.stop(task_id=task_id, reason="visible_target_missing")
 
         if self.fsm.state == BehaviorState.RECOVER_LOST_TARGET:
             command = self.recovery.recover_follow_target(
@@ -216,4 +295,19 @@ class TaskOrchestrator:
         self._active_episode_id = ""
         self.object_search_service.clear()
         self.follow_service.clear_target()
+        self.live_target_service.clear_target()
+        self._visible_target_search_active = False
         self.fsm.transition(BehaviorState.IDLE, reason)
+
+    @staticmethod
+    def _float_target_option(target_json: dict[str, object], key: str) -> float | None:
+        value = target_json.get(key)
+        if value is None:
+            return None
+        try:
+            normalized = float(value)
+        except (TypeError, ValueError):
+            return None
+        if normalized <= 0.0:
+            return None
+        return normalized

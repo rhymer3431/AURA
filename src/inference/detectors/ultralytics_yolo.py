@@ -141,6 +141,8 @@ class UltralyticsYoloDetector(DetectorBackend):
                 self._report.errors.append("TensorRT engine cannot run on CPU. Use a CUDA device.")
                 self._report.selected_reason = "engine_requires_cuda"
                 return
+            if not self._probe_tensorrt_engine(model_path):
+                return
 
         self.capture_device = resolve_capture_device(self.infer_device, cuda_available)
         self.tensor_device = torch.device(self.capture_device if is_cuda_device(self.capture_device) else "cpu")
@@ -165,6 +167,43 @@ class UltralyticsYoloDetector(DetectorBackend):
         self._model_names = self._normalize_names(getattr(self.model, "names", {}))
         self._report.ready_for_inference = True
         self._report.selected_reason = "ultralytics_backend_ready"
+
+    def _probe_tensorrt_engine(self, model_path: Path) -> bool:
+        try:
+            import tensorrt as trt
+
+            self._report.tensorrt_import_ok = True
+        except Exception as exc:  # noqa: BLE001
+            self._report.errors.append(f"TensorRT import failed: {type(exc).__name__}: {exc}")
+            self._report.selected_reason = "tensorrt_import_failed"
+            return False
+
+        runtime = None
+        try:
+            logger = trt.Logger(trt.Logger.ERROR)
+            runtime = trt.Runtime(logger)
+            with open(model_path, "rb") as file_obj:
+                engine = runtime.deserialize_cuda_engine(file_obj.read())
+        except Exception as exc:  # noqa: BLE001
+            message = f"TensorRT engine preflight failed: {type(exc).__name__}: {exc}"
+            self._report.errors.append(message)
+            self._report.selected_reason = "engine_incompatible"
+            lowered = message.lower()
+            if "serialization" in lowered or "platform" in lowered or "mismatch" in lowered:
+                self._report.serialization_mismatch = True
+            return False
+        finally:
+            del runtime
+
+        if engine is None:
+            self._report.errors.append("TensorRT engine preflight failed: deserialize returned None.")
+            self._report.selected_reason = "engine_incompatible"
+            self._report.serialization_mismatch = True
+            return False
+
+        self._report.deserialize_ok = True
+        self._report.binding_metadata_ok = True
+        return True
 
     def _preprocess_rgb(self, rgb_image: np.ndarray) -> torch.Tensor:
         rgb_tensor = torch.from_numpy(np.asarray(rgb_image, dtype=np.uint8)).to(

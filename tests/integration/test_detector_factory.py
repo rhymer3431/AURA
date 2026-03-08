@@ -15,6 +15,7 @@ from inference.detectors.factory import (
     default_model_path,
     select_detector_backend,
 )
+from inference.detectors.ultralytics_yolo import UltralyticsYoloDetector
 
 
 def test_detector_factory_falls_back_cleanly_when_model_path_is_missing() -> None:
@@ -69,3 +70,25 @@ def test_default_model_path_prefers_repo_artifact_engine_before_sibling_candidat
     sibling_model_path.write_text("sibling", encoding="utf-8")
 
     assert default_model_path(repo_root=repo_root) == str(repo_model_path.resolve())
+
+
+def test_detector_factory_falls_back_when_tensorrt_preflight_fails(tmp_path: Path, monkeypatch) -> None:
+    engine_path = tmp_path / "fake.engine"
+    engine_path.write_bytes(b"not_a_real_engine")
+
+    def _fake_probe(self, model_path: Path) -> bool:  # noqa: ANN001
+        _ = model_path
+        self._report.tensorrt_import_ok = True
+        self._report.serialization_mismatch = True
+        self._report.errors.append("TensorRT engine preflight failed: deserialize returned None.")
+        self._report.selected_reason = "engine_incompatible"
+        return False
+
+    monkeypatch.setattr("inference.detectors.ultralytics_yolo.torch.cuda.is_available", lambda: True)
+    monkeypatch.setattr(UltralyticsYoloDetector, "_probe_tensorrt_engine", _fake_probe)
+
+    selection = select_detector_backend(DetectorFactoryConfig(model_path=str(engine_path), fallback_label="apple"))
+
+    assert selection.backend.info.backend_name == "color_seg_fallback"
+    assert selection.report.selected_backend == "color_seg_fallback"
+    assert selection.report.selected_reason == "engine_incompatible"

@@ -113,6 +113,7 @@ class NavDPCommandSource:
                     metadata={
                         **dict(observation.sensor_meta),
                         "planner_overlay": planner_overlay_state,
+                        "active_command_overlay": self._command_overlay_metadata(),
                     },
                 ),
                 robot_pose_xyz=robot_pose,
@@ -193,6 +194,32 @@ class NavDPCommandSource:
         if self._mode == "interactive":
             self.planning_session.ensure_navdp_service_ready(context="interactive startup")
             self._manual_command = self._build_planner_managed_command(task_id="interactive", source="g1_bridge_interactive")
+
+    def _command_overlay_metadata(self) -> dict[str, object]:
+        command = self._active_command or self._manual_command
+        if command is None:
+            return {}
+        metadata = dict(command.metadata)
+        overlay: dict[str, object] = {"action_type": str(command.action_type)}
+        for key in (
+            "target_mode",
+            "target_class",
+            "target_track_id",
+            "pose_source",
+            "raw_target_pose_xyz",
+            "filtered_target_pose_xyz",
+            "nav_goal_pose_xyz",
+            "approach_yaw_rad",
+            "track_age_sec",
+            "depth_m",
+        ):
+            if key in metadata:
+                overlay[key] = metadata[key]
+        if command.target_track_id != "" and "target_track_id" not in overlay:
+            overlay["target_track_id"] = str(command.target_track_id)
+        if command.target_pose_xyz is not None and "nav_goal_pose_xyz" not in overlay:
+            overlay["nav_goal_pose_xyz"] = list(command.target_pose_xyz)
+        return overlay
 
     def _resolve_action_command(self, *, robot_pose: tuple[float, float, float]) -> ActionCommand | None:
         if self._manual_command is not None:

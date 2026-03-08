@@ -35,6 +35,7 @@ def test_task_orchestrator_attend_and_follow_state_transitions() -> None:
                 pose=(1.0, 0.0, 0.0),
                 timestamp=2.0,
                 confidence=0.9,
+                metadata={"depth_m": 1.0},
             )
         ]
     )
@@ -90,3 +91,46 @@ def test_task_orchestrator_memory_recall_transitions_to_local_search() -> None:
     assert orchestrator.state == BehaviorState.LOCAL_SEARCH
     assert local_search_command is not None
     assert local_search_command.action_type == "LOCAL_SEARCH"
+
+
+def test_task_orchestrator_visible_object_target_flows_to_nav_and_local_search_fallback() -> None:
+    memory_service = MemoryService()
+    orchestrator = TaskOrchestrator(memory_service)
+    orchestrator.on_observations(
+        [
+            ObsObject(
+                class_name="apple",
+                track_id="apple_live",
+                pose=(3.0, 0.0, 0.4),
+                timestamp=1.0,
+                confidence=0.95,
+                metadata={"depth_m": 3.0},
+            )
+        ]
+    )
+    request = TaskRequest(
+        command_text="보이는 사과로 가",
+        target_json={"target_mode": "goto_visible_object", "target_class": "apple"},
+    )
+    orchestrator.submit_task(request)
+
+    nav_command = orchestrator.step(now=1.1, robot_pose=(0.0, 0.0, 0.0))
+    search_command = orchestrator.step(now=2.7, robot_pose=(0.0, 0.0, 0.0))
+    stop_command = orchestrator.step(
+        now=2.8,
+        robot_pose=(0.0, 0.0, 0.0),
+        action_status=ActionStatus(command_id=search_command.command_id if search_command else "", state="failed", reason="not_found"),
+    )
+
+    assert orchestrator.state == BehaviorState.IDLE
+    assert nav_command is not None
+    assert nav_command.action_type == "NAV_TO_POSE"
+    assert nav_command.metadata["target_mode"] == "goto_visible_object"
+    assert nav_command.metadata["pose_source"] == "filtered_track"
+    assert nav_command.target_pose_xyz is not None
+    assert round(float(nav_command.target_pose_xyz[0]), 4) == 2.1
+    assert search_command is not None
+    assert search_command.action_type == "LOCAL_SEARCH"
+    assert search_command.metadata["recovery"] == "visible_target_local_search"
+    assert stop_command is not None
+    assert stop_command.action_type == "STOP"

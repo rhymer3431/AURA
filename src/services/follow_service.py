@@ -5,6 +5,8 @@ from memory.semantic_store import SemanticMemoryStore
 from memory.temporal_store import TemporalMemoryStore
 from perception.person_tracker import PersonTracker, PersonTrack
 
+from .live_target_service import LiveTargetService
+
 
 class FollowService:
     def __init__(
@@ -12,11 +14,13 @@ class FollowService:
         temporal_store: TemporalMemoryStore,
         person_tracker: PersonTracker,
         subgoal_planner: SubgoalPlanner,
+        live_target_service: LiveTargetService,
         semantic_store: SemanticMemoryStore | None = None,
     ) -> None:
         self._temporal = temporal_store
         self._tracker = person_tracker
         self._subgoal_planner = subgoal_planner
+        self._live_target = live_target_service
         self._semantic = semantic_store
         self._target_track_id = ""
         self._target_person_id = ""
@@ -34,6 +38,8 @@ class FollowService:
         self._target_person_id = str(person_id)
         if self._target_person_id == "" and self._target_track_id != "":
             self._target_person_id = self._tracker.person_id_for_track(self._target_track_id)
+        if self._target_track_id != "":
+            self._live_target.bind_active_track(self._target_track_id)
 
     def clear_target(self) -> None:
         self._target_track_id = ""
@@ -70,17 +76,44 @@ class FollowService:
                     payload=dict(track.score_breakdown),
                 )
 
-    def build_command(self, *, task_id: str = ""):
+    def build_command(
+        self,
+        *,
+        task_id: str = "",
+        robot_pose_xyz: tuple[float, float, float] | None = None,
+        now: float | None = None,
+    ):
         track = self._resolve_target_track()
         if track is None:
             return None
         semantic_hints = self.recovery_semantic_hints()
+        target_pose_xyz = track.last_pose
+        metadata: dict[str, object] = {
+            "semantic_hints": semantic_hints,
+            "target_mode": "follow_person",
+            "pose_source": "person_track_fallback",
+            "raw_target_pose_xyz": list(track.last_pose),
+            "nav_goal_pose_xyz": list(track.last_pose),
+            "track_age_sec": 0.0 if now is None else max(float(now) - float(track.last_seen), 0.0),
+        }
+        if robot_pose_xyz is not None and now is not None:
+            snapshot = self._live_target.resolve_target(
+                robot_pose_xyz=robot_pose_xyz,
+                now=float(now),
+                target_mode="follow_person",
+                target_class="person",
+                target_track_id=track.track_id,
+                preferred_track_id=track.track_id,
+            )
+            if snapshot is not None:
+                target_pose_xyz = snapshot.nav_goal_pose_xyz
+                metadata.update(snapshot.command_metadata())
         return self._subgoal_planner.follow_target(
             target_track_id=track.track_id,
             target_person_id=track.person_id,
-            target_pose_xyz=track.last_pose,
+            target_pose_xyz=target_pose_xyz,
             task_id=task_id,
-            metadata={"semantic_hints": semantic_hints},
+            metadata=metadata,
         )
 
     def mark_target_lost(self, *, now: float) -> None:

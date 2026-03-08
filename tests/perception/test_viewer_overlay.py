@@ -89,6 +89,7 @@ def test_build_viewer_overlay_payload_is_json_safe_and_stable() -> None:
                 "bbox_xyxy": [10, 12, 40, 56],
                 "track_id": "apple_0001",
                 "depth_m": 1.2346,
+                "world_pose_xyz": [1.0, 2.0, 0.5],
             },
             {
                 "class_name": "person",
@@ -136,3 +137,42 @@ def test_build_viewer_overlay_payload_projects_planner_trajectory_to_pixels() ->
     assert payload["plan_version"] == 7
     assert payload["goal_version"] == 3
     assert payload["traj_version"] == 5
+
+
+def test_build_viewer_overlay_payload_includes_active_target_debug() -> None:
+    frame_result = PerceptionFrameResult(
+        detections=[],
+        tracked_detections=[],
+        projected_detections=[],
+        observations=[],
+        speaker_events=[],
+        metadata={
+            "detector": "stub",
+            "detector_selected_reason": "unit_test",
+            "active_command_overlay": {
+                "action_type": "NAV_TO_POSE",
+                "target_mode": "goto_visible_object",
+                "target_class": "apple",
+                "target_track_id": "apple_0001",
+                "pose_source": "filtered_track",
+                "raw_target_pose_xyz": [0.0, 0.0, 2.0],
+                "filtered_target_pose_xyz": [0.5, 0.0, 2.0],
+                "nav_goal_pose_xyz": [1.0, 0.0, 2.0],
+                "approach_yaw_rad": 0.0,
+                "track_age_sec": 0.12,
+            },
+        },
+    )
+
+    payload = build_viewer_overlay_payload(
+        frame_result,
+        camera_intrinsic=np.asarray([[100.0, 0.0, 50.0], [0.0, 100.0, 50.0], [0.0, 0.0, 1.0]], dtype=np.float32),
+        camera_pose_xyz=(0.0, 0.0, 0.0),
+        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
+    )
+
+    assert payload["active_target"]["action_type"] == "NAV_TO_POSE"
+    assert payload["active_target"]["target_mode"] == "goto_visible_object"
+    assert payload["active_target"]["raw_target_pixel"] == [50, 50]
+    assert payload["active_target"]["filtered_target_pixel"] == [75, 50]
+    assert payload["active_target"]["nav_goal_pixel"] == [100, 50]
