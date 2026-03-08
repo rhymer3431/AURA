@@ -14,6 +14,8 @@ _EXPORTS = {
     "isaac_bridge_editor_attach": ("apps.isaac_bridge_editor_app", "attach_current_stage"),
     "editor_smoke_main": ("apps.editor_smoke_entry", "main"),
     "editor_smoke_run": ("apps.editor_smoke_entry", "run_editor_smoke"),
+    "editor_depth_viewer_main": ("apps.editor_depth_viewer_entry", "main"),
+    "editor_depth_viewer_run": ("apps.editor_depth_viewer_entry", "run_depth_viewer"),
     "live_smoke_main": ("apps.live_smoke_app", "main"),
     "local_stack_main": ("apps.local_stack_app", "main"),
     "memory_agent_main": ("apps.memory_agent_app", "main"),
