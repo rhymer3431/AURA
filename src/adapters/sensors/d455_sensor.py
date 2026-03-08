@@ -13,7 +13,6 @@ DEFAULT_G1_DEPTH_CAMERA_SUFFIX_CANDIDATES = (
     f"{DEFAULT_G1_CAMERA_BASE_SUFFIX}/Camera_OmniVision_OV9782_Depth",
     f"{DEFAULT_G1_CAMERA_BASE_SUFFIX}/Camera_Realsense_Depth",
     f"{DEFAULT_G1_CAMERA_BASE_SUFFIX}/Camera_Depth",
-    f"{DEFAULT_G1_CAMERA_BASE_SUFFIX}/Camera_Pseudo_Depth",
 )
 DEFAULT_G1_PRIM_CANDIDATES = (
     "/World/envs/env_0/Robot",
@@ -190,10 +189,7 @@ class D455SensorAdapter:
             return True, msg
         if depth_candidate is None:
             self._fallback_reason = "D455 depth camera prim not found"
-            msg = "D455 depth camera prim unavailable; using env depth fallback."
-            if self.cfg.strict_d455:
-                return False, f"{msg} strict_d455=true requires D455 RGB+Depth prims."
-            # Keep RGB prim and continue with best-effort mode.
+            msg = "D455 depth camera prim unavailable; using RGB camera distance_to_camera annotator."
 
         self.rgb_prim_path = rgb_candidate
         self.depth_prim_path = depth_candidate
@@ -236,12 +232,6 @@ class D455SensorAdapter:
             for _ in range(4):
                 simulation_app.update()
             self._intrinsic = self._read_intrinsic(self._rgb_camera, self.cfg.image_width, self.cfg.image_height)
-            if self.cfg.strict_d455 and self._depth_camera is None:
-                self._fallback_reason = "D455 depth camera prim missing after initialization."
-                return (
-                    False,
-                    "D455 depth camera prim missing after initialization; strict_d455=true requires live D455 RGB-D.",
-                )
             return (
                 True,
                 "D455 camera initialized: "
@@ -344,12 +334,8 @@ class D455SensorAdapter:
                     note="strict_d455=true requires D455 RGB+Depth every frame.",
                 )
                 return None, None, meta
-        elif depth is None or rgb is None:
+        elif rgb is None:
             depth_from_env = self._capture_depth_from_env(env)
-            if depth is None and depth_from_env is not None:
-                depth = depth_from_env
-                depth_source = "env_depth_sensor"
-                fallback_used = True
             if rgb is None and depth_from_env is not None:
                 depth_for_rgb = self._sanitize_depth(depth_from_env, self.cfg.depth_max_m)
                 rgb = self._depth_to_pseudo_rgb(depth_for_rgb, self.cfg.depth_max_m)
@@ -464,7 +450,6 @@ class D455SensorAdapter:
             "Camera_OmniVision_OV9782_Depth",
             "Camera_Realsense_Depth",
             "Camera_Depth",
-            "Camera_Pseudo_Depth",
         }
         try:
             iterator = stage.Traverse()
@@ -566,11 +551,11 @@ class D455SensorAdapter:
             return None
         return depth_arr
 
-    def _extract_depth_from_camera(self, camera) -> np.ndarray | None:
+    def _extract_distance_to_camera_annotator(self, camera) -> np.ndarray | None:
         if camera is None:
             return None
 
-        for method_name in ("get_depth", "get_distance_to_image_plane", "get_depth_image"):
+        for method_name in ("get_distance_to_camera",):
             method = getattr(camera, method_name, None)
             if method is None:
                 continue
@@ -586,16 +571,8 @@ class D455SensorAdapter:
             try:
                 frame = current_frame_fn()
                 if isinstance(frame, dict):
-                    for key in (
-                        "distance_to_image_plane",
-                        "distance_to_camera",
-                        "depth",
-                        "depthLinear",
-                        "depth_linear",
-                    ):
-                        if key not in frame:
-                            continue
-                        candidate = self._normalize_depth_candidate(frame.get(key))
+                    if "distance_to_camera" in frame:
+                        candidate = self._normalize_depth_candidate(frame.get("distance_to_camera"))
                         if candidate is not None:
                             return candidate
             except Exception:  # noqa: BLE001
@@ -641,13 +618,13 @@ class D455SensorAdapter:
             return None, None
 
     def _capture_depth_from_camera(self) -> tuple[np.ndarray | None, str]:
-        depth = self._extract_depth_from_camera(self._depth_camera)
+        depth = self._extract_distance_to_camera_annotator(self._rgb_camera)
         if depth is not None:
-            return depth, "d455_depth_camera"
+            return depth, "replicator_distance_to_camera_rgb"
 
-        depth = self._extract_depth_from_camera(self._rgb_camera)
+        depth = self._extract_distance_to_camera_annotator(self._depth_camera)
         if depth is not None:
-            return depth, "d455_rgb_camera_depth"
+            return depth, "replicator_distance_to_camera_depth"
         return None, "missing"
 
     @staticmethod
@@ -655,7 +632,6 @@ class D455SensorAdapter:
         if camera is None:
             return
         for method_name in (
-            "add_distance_to_image_plane_to_frame",
             "add_distance_to_camera_to_frame",
         ):
             method = getattr(camera, method_name, None)
