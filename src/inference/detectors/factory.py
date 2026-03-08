@@ -10,6 +10,8 @@ from .stub_or_onnx_fallback import ColorSegFallbackConfig, ColorSegFallbackDetec
 from .trt_yoloe import TensorRtYoloeDetector
 from .ultralytics_yolo import UltralyticsYoloDetector
 
+DEFAULT_ULTRALYTICS_MODEL_NAME = "yoloe-26s-seg-pf.pt"
+
 
 @dataclass(frozen=True)
 class DetectorFactoryConfig:
@@ -27,10 +29,21 @@ def default_engine_path() -> str:
     return str(Path(__file__).resolve().parents[3] / "artifacts" / "models" / "yoloe-26s-seg-pf.engine")
 
 
-def default_model_path() -> str:
+def default_model_candidates(repo_root: Path | None = None) -> list[Path]:
+    root = repo_root or Path(__file__).resolve().parents[3]
+    return [
+        root / "artifacts" / "models" / DEFAULT_ULTRALYTICS_MODEL_NAME,
+        root.parent / "isaac" / DEFAULT_ULTRALYTICS_MODEL_NAME,
+    ]
+
+
+def default_model_path(repo_root: Path | None = None) -> str:
     env_override = str(os.environ.get("ISAAC_AURA_YOLO_MODEL", "")).strip()
     if env_override != "":
         return str(Path(env_override).expanduser())
+    for candidate in default_model_candidates(repo_root):
+        if candidate.is_file():
+            return str(candidate.resolve())
     return ""
 
 
