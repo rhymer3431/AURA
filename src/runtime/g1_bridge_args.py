@@ -95,6 +95,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--viewer-shm-name", dest="viewer_shm_name", type=str, default=DEFAULT_VIEWER_SHM_NAME)
     parser.add_argument("--viewer-shm-slot-size", dest="viewer_shm_slot_size", type=int, default=DEFAULT_VIEWER_SHM_SLOT_SIZE)
     parser.add_argument("--viewer-shm-capacity", dest="viewer_shm_capacity", type=int, default=DEFAULT_VIEWER_SHM_CAPACITY)
+    parser.add_argument("--show-depth", dest="show_depth", action="store_true")
     add_subgoal_executor_args(parser)
     return parser
 

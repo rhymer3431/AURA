@@ -64,3 +64,36 @@ def test_draw_overlay_renders_trajectory_polyline() -> None:
 
     assert tuple(int(v) for v in canvas[80, 80]) != (0, 0, 0)
     assert tuple(int(v) for v in canvas[96, 112]) != (0, 0, 0)
+
+
+def test_build_view_canvas_keeps_rgb_only_by_default() -> None:
+    rgb = np.zeros((32, 48, 3), dtype=np.uint8)
+    overlay = {"detector_backend": "stub", "detections": [], "trajectory_pixels": []}
+
+    canvas = g1_viewer_app._build_view_canvas(
+        rgb,
+        overlay,
+        frame_id=1,
+        source="unit_test",
+    )
+
+    assert canvas.shape == (32, 48, 3)
+
+
+def test_build_view_canvas_appends_depth_panel_when_enabled() -> None:
+    rgb = np.zeros((32, 48, 3), dtype=np.uint8)
+    depth = np.full((32, 48), 1.5, dtype=np.float32)
+    overlay = {"detector_backend": "stub", "detections": [], "trajectory_pixels": []}
+
+    canvas = g1_viewer_app._build_view_canvas(
+        rgb,
+        overlay,
+        frame_id=1,
+        source="unit_test",
+        depth_image_m=depth,
+        show_depth=True,
+        depth_max_m=5.0,
+    )
+
+    assert canvas.shape == (32, 96, 3)
+    assert np.any(canvas[:, 48:, :] != 0)

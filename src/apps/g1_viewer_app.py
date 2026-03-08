@@ -7,6 +7,7 @@ import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
 from common.cv2_compat import cv2
+from common.depth_visualization import build_rgb_depth_panel
 from ipc.shm_ring import SharedMemoryRing
 from ipc.zmq_bus import ZmqBus
 from runtime.g1_bridge_args import (
@@ -29,6 +30,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-frames", type=int, default=0)
     parser.add_argument("--no-gui", action="store_true")
     parser.add_argument("--agent-id", type=str, default="g1_viewer")
+    parser.add_argument("--show-depth", action="store_true")
+    parser.add_argument("--depth-max-m", type=float, default=5.0)
     return parser
 
 
@@ -155,6 +158,42 @@ def _draw_overlay(frame_bgr: np.ndarray, overlay: dict[str, object], *, frame_id
     return canvas
 
 
+def _build_view_canvas(
+    rgb_image: np.ndarray,
+    overlay: dict[str, object],
+    *,
+    frame_id: int,
+    source: str,
+    depth_image_m: np.ndarray | None = None,
+    show_depth: bool = False,
+    depth_max_m: float = 5.0,
+) -> np.ndarray:
+    rgb_canvas = _draw_overlay(
+        _to_bgr(rgb_image),
+        overlay,
+        frame_id=frame_id,
+        source=source,
+    )
+    if not show_depth or depth_image_m is None:
+        return rgb_canvas
+
+    panel = build_rgb_depth_panel(rgb_canvas[..., ::-1], np.asarray(depth_image_m, dtype=np.float32), float(depth_max_m))
+    font = getattr(cv2, "FONT_HERSHEY_SIMPLEX", 0)
+    line_type = getattr(cv2, "LINE_AA", 16)
+    depth_label_x = max(int(rgb_canvas.shape[1]) + 10, 10)
+    cv2.putText(
+        panel,
+        f"depth 0.0..{float(depth_max_m):.1f}m",
+        (depth_label_x, 22),
+        font,
+        0.6,
+        (0, 255, 255),
+        2,
+        line_type,
+    )
+    return panel
+
+
 def _close_windows_safely() -> None:
     destroy_all = getattr(cv2, "destroyAllWindows", None)
     if not callable(destroy_all):
@@ -216,17 +255,32 @@ def main(argv: list[str] | None = None) -> int:
             if args.no_gui:
                 detections = overlay.get("detections", [])
                 detection_count = len(detections) if isinstance(detections, list) else 0
+                depth_note = ""
+                if bool(args.show_depth) and batch.depth_image_m is not None:
+                    depth = np.asarray(batch.depth_image_m, dtype=np.float32)
+                    valid = np.isfinite(depth) & (depth > 0.0)
+                    if np.any(valid):
+                        depth_valid = depth[valid]
+                        depth_note = (
+                            f" depth=[{float(np.min(depth_valid)):.3f},{float(np.max(depth_valid)):.3f}]"
+                            f" nonzero={int(depth_valid.size)}"
+                        )
+                    else:
+                        depth_note = " depth=unavailable"
                 print(
                     "[G1_VIEWER] "
                     f"frame_id={frame_header.frame_id} shape={batch.rgb_image.shape} "
-                    f"source={frame_header.source} detections={detection_count}"
+                    f"source={frame_header.source} detections={detection_count}{depth_note}"
                 )
             else:
-                canvas = _draw_overlay(
-                    _to_bgr(batch.rgb_image),
+                canvas = _build_view_canvas(
+                    batch.rgb_image,
                     overlay,
                     frame_id=int(frame_header.frame_id),
                     source=str(frame_header.source),
+                    depth_image_m=batch.depth_image_m,
+                    show_depth=bool(args.show_depth),
+                    depth_max_m=float(args.depth_max_m),
                 )
                 try:
                     cv2.imshow("G1 View", canvas)

@@ -138,6 +138,8 @@ $EffectiveViewerTelemetryEndpoint = Get-LaunchArgValue -InputArgs $args -Names @
 $EffectiveViewerShmName = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-name") -DefaultValue $ViewerShmName
 $EffectiveViewerShmSlotSize = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-slot-size") -DefaultValue $ViewerShmSlotSize
 $EffectiveViewerShmCapacity = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-capacity") -DefaultValue $ViewerShmCapacity
+$EffectiveDepthMaxM = Get-LaunchArgValue -InputArgs $args -Names @("--depth-max-m") -DefaultValue "5.0"
+$ShowDepthView = Test-LaunchArgPresent -InputArgs $args -Names @("--show-depth")
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
     Write-Host "[G1 PointGoal] Isaac python launcher not found: `"$IsaacPython`""
@@ -196,6 +198,7 @@ Write-Host "[G1 PointGoal]   interactive: .\\run_g1_pointgoal.ps1 --planner-mode
 Write-Host "[G1 PointGoal]   pointgoal  : .\\run_g1_pointgoal.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
 Write-Host "[G1 PointGoal]   dual       : .\\run_g1_pointgoal.ps1 --planner-mode dual --instruction `"Navigate to the target and stop.`""
 Write-Host "[G1 PointGoal]   g1_view    : .\\run_g1_pointgoal.ps1 --planner-mode dual --launch-mode g1_view --instruction `"Find the bright red cube.`""
+Write-Host "[G1 PointGoal]   g1_view+d  : .\\run_g1_pointgoal.ps1 --planner-mode dual --launch-mode g1_view --show-depth"
 
 $LaunchArgs = @(
     "-m", $EntryModule,
@@ -245,8 +248,12 @@ try {
             "--telemetry-endpoint", $EffectiveViewerTelemetryEndpoint,
             "--shm-name", $EffectiveViewerShmName,
             "--shm-slot-size", $EffectiveViewerShmSlotSize,
-            "--shm-capacity", $EffectiveViewerShmCapacity
+            "--shm-capacity", $EffectiveViewerShmCapacity,
+            "--depth-max-m", $EffectiveDepthMaxM
         )
+        if ($ShowDepthView) {
+            $ViewerArgs += @("--show-depth")
+        }
         $ViewerProcess = Start-BackgroundPowerShell -ScriptPath $ViewerScript -Name "G1Viewer" -ScriptArgs $ViewerArgs
     }
     & $IsaacPython @LaunchArgs @args
