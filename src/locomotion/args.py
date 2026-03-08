@@ -18,8 +18,8 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
         type=str,
         default=None,
         help=(
-            "Path to ONNX policy file. Defaults to policy.onnx in this repo root, "
-            "with fallbacks to known exported policy locations."
+            "Path to a locomotion policy file. Supports ONNX (`.onnx`) and TensorRT engines (`.engine`). "
+            "Defaults to the exported ONNX policy in this repo root, with fallbacks to known export locations."
         ),
     )
     parser.add_argument(
@@ -98,7 +98,7 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
         type=str,
         choices=("auto", "cuda", "cpu"),
         default="auto",
-        help="ONNX Runtime provider preference.",
+        help="Execution device preference. TensorRT engines require CUDA; ONNX policies use ONNX Runtime providers.",
     )
     parser.add_argument(
         "--physics_dt",
@@ -136,7 +136,7 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
 def build_arg_parser(description: str | None = None) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=description
-        or "Play a deployed G1 ONNX locomotion policy in Isaac Sim standalone mode with console cmd_vel control.",
+        or "Play a deployed G1 locomotion policy in Isaac Sim standalone mode with console cmd_vel control.",
         parents=[BOOTSTRAP_PARSER],
     )
     return add_runtime_args(parser)

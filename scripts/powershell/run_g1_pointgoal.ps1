@@ -11,6 +11,7 @@ $DefaultIsaacPython = "C:\isaac-sim\python.bat"
 $IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
 
 $DefaultPolicyCandidates = @(
+    (Join-Path $RepoDir "artifacts\models\g1_policy_fp32.engine"),
     (Join-Path $RepoDir "artifacts\models\policy.onnx"),
     (Join-Path $RepoDir "policy.onnx")
 )
@@ -145,7 +146,7 @@ if (-not (Test-Path -LiteralPath $IsaacPython)) {
 }
 
 if ((-not $HasPolicyOverride) -and (-not (Test-Path -LiteralPath $PolicyPath))) {
-    Write-Host "[G1 PointGoal] ONNX policy not found: `"$PolicyPath`""
+    Write-Host "[G1 PointGoal] policy file not found: `"$PolicyPath`""
     exit 1
 }
 

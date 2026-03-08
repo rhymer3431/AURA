@@ -47,7 +47,7 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run G1 NavDP navigation through the ONNX locomotion bridge in Isaac Sim.",
+        description="Run G1 NavDP navigation through the locomotion policy bridge in Isaac Sim.",
         parents=[BOOTSTRAP_PARSER],
     )
     add_runtime_args(parser)
