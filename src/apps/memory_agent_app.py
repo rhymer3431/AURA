@@ -23,6 +23,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--scene", type=str, default="")
     parser.add_argument("--loopback", action="store_true")
     parser.add_argument("--detector-engine-path", type=str, default="")
+    parser.add_argument("--detector-model-path", type=str, default="")
+    parser.add_argument("--detector-device", type=str, default="")
     parser.add_argument("--frame-source", type=str, choices=("auto", "live", "synthetic"), default="auto")
     parser.add_argument("--strict-live", action="store_true")
     parser.add_argument("--serve", action="store_true")

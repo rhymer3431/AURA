@@ -18,6 +18,8 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
     parser.add_argument("--depth-max-m", dest="depth_max_m", type=float, default=5.0)
     parser.add_argument("--memory-db-path", dest="memory_db_path", type=str, default="state/memory/memory.sqlite")
     parser.add_argument("--detector-engine-path", dest="detector_engine_path", type=str, default="")
+    parser.add_argument("--detector-model-path", dest="detector_model_path", type=str, default="")
+    parser.add_argument("--detector-device", dest="detector_device", type=str, default="")
     parser.add_argument("--navdp-backend", dest="navdp_backend", type=str, choices=("auto", "policy", "heuristic"), default="auto")
     parser.add_argument("--navdp-checkpoint", dest="navdp_checkpoint", type=str, default="")
     parser.add_argument("--navdp-device", dest="navdp_device", type=str, default="cpu")

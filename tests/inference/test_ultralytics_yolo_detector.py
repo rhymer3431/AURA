@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import numpy as np
+import torch
+
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from inference.detectors.ultralytics_yolo import UltralyticsYoloDetector
+
+
+class _DummyBoxes:
+    def __init__(self) -> None:
+        self.xyxy = torch.tensor([[64.0, 64.0, 320.0, 320.0]], dtype=torch.float32)
+        self.conf = torch.tensor([0.9], dtype=torch.float32)
+        self.cls = torch.tensor([0.0], dtype=torch.float32)
+
+
+class _DummyMasks:
+    def __init__(self) -> None:
+        self.data = torch.tensor([[[0.0, 1.0], [0.0, 1.0]]], dtype=torch.float32)
+
+
+class _DummyResult:
+    def __init__(self) -> None:
+        self.boxes = _DummyBoxes()
+        self.masks = _DummyMasks()
+        self.names = {0: "apple"}
+
+
+class _DummyModel:
+    def __init__(self, path: str) -> None:
+        self.path = path
+        self.names = {0: "apple"}
+        self.last_source_shape: tuple[int, ...] | None = None
+
+    def predict(self, *, source, conf, iou, max_det, device, verbose):  # noqa: ANN001
+        _ = conf, iou, max_det, device, verbose
+        self.last_source_shape = tuple(int(v) for v in source.shape)
+        return [_DummyResult()]
+
+
+def test_ultralytics_detector_decodes_scaled_boxes_and_masks(tmp_path: Path) -> None:
+    model_path = tmp_path / "dummy.pt"
+    model_path.write_text("stub", encoding="utf-8")
+    detector = UltralyticsYoloDetector(
+        str(model_path),
+        imgsz=640,
+        device="cpu",
+        yolo_cls=_DummyModel,
+    )
+
+    rgb = np.zeros((96, 192, 3), dtype=np.uint8)
+    results = detector.detect(rgb, timestamp=1.23, metadata={"target_class_hint": "apple"})
+
+    assert detector.ready is True
+    assert detector.model is not None
+    assert detector.model.last_source_shape == (1, 3, 640, 640)
+    assert len(results) == 1
+    assert results[0].class_name == "apple"
+    assert results[0].bbox_xyxy == (19, 10, 96, 48)
+    assert results[0].mask is not None
+    assert results[0].mask.shape == (96, 192)
+    assert results[0].centroid_xy is not None
+    assert results[0].metadata["backend"] == "ultralytics_yolo"
+
+
+def test_ultralytics_detector_reports_missing_model(tmp_path: Path) -> None:
+    detector = UltralyticsYoloDetector(str(tmp_path / "missing.pt"), device="cpu", yolo_cls=_DummyModel)
+
+    assert detector.ready is False
+    assert detector.probe().selected_reason == "model_missing"
+    assert detector.info.warning != ""

@@ -17,6 +17,8 @@ from services.task_orchestrator import TaskOrchestrator
 class SupervisorConfig:
     memory_db_path: str = "state/memory/memory.sqlite"
     detector_engine_path: str = ""
+    detector_model_path: str = ""
+    detector_device: str = ""
 
 
 @dataclass(frozen=True)
@@ -44,7 +46,11 @@ class Supervisor:
         self.memory_service = memory_service or MemoryService(db_path=self.config.memory_db_path)
         self.orchestrator = orchestrator or TaskOrchestrator(self.memory_service)
         self.perception_pipeline = perception_pipeline or PerceptionPipeline(
-            detector_config=DetectorFactoryConfig(engine_path=self.config.detector_engine_path)
+            detector_config=DetectorFactoryConfig(
+                engine_path=self.config.detector_engine_path,
+                model_path=self.config.detector_model_path,
+                device=self.config.detector_device,
+            )
         )
         self.bridge = IsaacBridgeAdapter(self.bus, IsaacBridgeAdapterConfig(), shm_ring=shm_ring)
 

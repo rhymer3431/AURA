@@ -16,6 +16,8 @@ class BindingInfo:
 class DetectorRuntimeReport:
     backend_name: str
     engine_path: str = ""
+    device: str = ""
+    model_format: str = ""
     engine_exists: bool = False
     tensorrt_import_ok: bool = False
     deserialize_ok: bool = False
@@ -33,6 +35,8 @@ class DetectorRuntimeReport:
         return {
             "backend_name": self.backend_name,
             "engine_path": self.engine_path,
+            "device": self.device,
+            "model_format": self.model_format,
             "engine_exists": self.engine_exists,
             "tensorrt_import_ok": self.tensorrt_import_ok,
             "deserialize_ok": self.deserialize_ok,

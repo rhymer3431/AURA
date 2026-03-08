@@ -35,6 +35,8 @@ class TensorRtYoloeDetector(DetectorBackend):
         self._report = DetectorRuntimeReport(
             backend_name="tensorrt_yoloe",
             engine_path=self.engine_path,
+            device="cuda",
+            model_format=Path(self.engine_path).suffix.lower(),
             selected_backend="tensorrt_yoloe",
         )
         self._probe()

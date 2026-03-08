@@ -27,3 +27,25 @@ def test_detector_factory_returns_structured_runtime_report() -> None:
     assert selection.report.selected_reason != ""
     if selection.report.selected_backend == "color_seg_fallback":
         assert selection.report.ready_for_inference is False
+
+
+def test_detector_factory_uses_explicit_model_path_before_trt_and_falls_back_cleanly(tmp_path: Path) -> None:
+    missing_model = tmp_path / "missing.pt"
+
+    selection = select_detector_backend(DetectorFactoryConfig(model_path=str(missing_model), fallback_label="apple"))
+
+    assert selection.backend.info.backend_name == "color_seg_fallback"
+    assert selection.report.backend_name == "ultralytics_yolo"
+    assert selection.report.selected_backend == "color_seg_fallback"
+    assert selection.report.selected_reason == "model_missing"
+
+
+def test_detector_factory_treats_non_engine_path_as_model_alias(tmp_path: Path) -> None:
+    missing_model = tmp_path / "alias.pt"
+
+    selection = select_detector_backend(DetectorFactoryConfig(engine_path=str(missing_model), fallback_label="apple"))
+
+    assert selection.backend.info.backend_name == "color_seg_fallback"
+    assert selection.report.backend_name == "ultralytics_yolo"
+    assert selection.report.engine_path == str(missing_model)
+    assert selection.report.selected_reason == "model_missing"

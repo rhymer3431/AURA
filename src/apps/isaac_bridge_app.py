@@ -106,6 +106,8 @@ def run_lightweight_bridge(
                 config=SupervisorConfig(
                     memory_db_path=args.memory_db_path,
                     detector_engine_path=args.detector_engine_path,
+                    detector_model_path=args.detector_model_path,
+                    detector_device=args.detector_device,
                 ),
             )
             bridge.publish_task_request(TaskRequest(command_text=str(args.command)))
