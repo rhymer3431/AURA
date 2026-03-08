@@ -1,11 +1,9 @@
 {
-  "run_g1_pointgoal.ps1": {
+  "run_pipeline.ps1": {
     "env_vars": [
-      "G1_POINTGOAL_DUAL_SERVER_URL",
       "G1_POINTGOAL_FORCE_RUNTIME_CAMERA",
       "G1_POINTGOAL_GOAL_X",
       "G1_POINTGOAL_GOAL_Y",
-      "G1_POINTGOAL_INSTRUCTION",
       "G1_POINTGOAL_PLANNER_MODE",
       "G1_POINTGOAL_POLICY",
       "G1_POINTGOAL_ROBOT_USD",
@@ -14,7 +12,11 @@
       "ISAAC_SIM_PYTHON",
       "PYTHONPATH"
     ],
-    "line_count": 158
+    "line_count": 274
+  },
+  "run_g1_pointgoal.ps1": {
+    "env_vars": [],
+    "line_count": 12
   },
   "run_g1_pointgoal_kujiale_0004.ps1": {
     "env_vars": [

@@ -20,6 +20,7 @@
 │       ├── legacy/
 │       ├── run_g1_object_search_demo.ps1
 │       ├── run_g1_pointgoal.ps1
+│       ├── run_pipeline.ps1
 │       ├── run_isaac_bridge.ps1
 │       ├── run_local_stack.ps1
 │       ├── run_live_smoke.ps1

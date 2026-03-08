@@ -73,7 +73,8 @@ g1_play/          # compatibility only
 
 | Surface | Canonical Target |
 | --- | --- |
-| `scripts/powershell/run_g1_pointgoal.ps1` | `python -m runtime.g1_bridge` |
+| `scripts/powershell/run_pipeline.ps1` | `python -m runtime.g1_bridge` |
+| `scripts/powershell/run_g1_pointgoal.ps1` | compatibility wrapper to `scripts/powershell/run_pipeline.ps1` |
 | `scripts/powershell/run_navdp_server.ps1` | `python -m apps.navdp_server_app` |
 | `scripts/powershell/run_vlm_dual_server.ps1` | `python -m apps.dual_server_app` |
 | `play_g1_keyboard_onnx.py` | `locomotion.entrypoint.main` |
