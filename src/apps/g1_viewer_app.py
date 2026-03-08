@@ -44,7 +44,7 @@ def _format_gui_error(exc: Exception) -> str:
 def _require_gui_support() -> None:
     missing = [
         name
-        for name in ("imshow", "waitKey", "rectangle", "putText")
+        for name in ("imshow", "waitKey", "rectangle", "putText", "polylines", "circle")
         if not hasattr(cv2, name)
     ]
     if missing:
@@ -105,6 +105,9 @@ def _draw_overlay(frame_bgr: np.ndarray, overlay: dict[str, object], *, frame_id
     detections = overlay.get("detections", [])
     if not isinstance(detections, list):
         detections = []
+    trajectory_pixels = overlay.get("trajectory_pixels", [])
+    if not isinstance(trajectory_pixels, list):
+        trajectory_pixels = []
     font = getattr(cv2, "FONT_HERSHEY_SIMPLEX", 0)
     line_type = getattr(cv2, "LINE_AA", 16)
 
@@ -127,11 +130,26 @@ def _draw_overlay(frame_bgr: np.ndarray, overlay: dict[str, object], *, frame_id
         label_y = y0 - 8 if y0 > 20 else y0 + 18
         cv2.putText(canvas, label, (x0, label_y), font, 0.5, color, 1, line_type)
 
+    polyline_points: list[tuple[int, int]] = []
+    for point in trajectory_pixels:
+        if not isinstance(point, list) or len(point) != 2:
+            continue
+        polyline_points.append((int(point[0]), int(point[1])))
+    if polyline_points:
+        trajectory_array = np.asarray(polyline_points, dtype=np.int32).reshape(-1, 1, 2)
+        trajectory_color = (0, 200, 255)
+        if trajectory_array.shape[0] >= 2:
+            cv2.polylines(canvas, [trajectory_array], False, trajectory_color, 2, line_type)
+        for index, point in enumerate(polyline_points):
+            radius = 4 if index == len(polyline_points) - 1 else 2
+            cv2.circle(canvas, point, radius, trajectory_color, -1, line_type)
+
     hud = (
         f"frame={int(frame_id)} "
         f"source={source} "
         f"backend={str(overlay.get('detector_backend', ''))} "
-        f"detections={len(detections)}"
+        f"detections={len(detections)} "
+        f"traj={len(polyline_points)}"
     )
     cv2.putText(canvas, hud, (10, 22), font, 0.6, (0, 255, 255), 2, line_type)
     return canvas

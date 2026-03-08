@@ -99,3 +99,40 @@ def test_build_viewer_overlay_payload_is_json_safe_and_stable() -> None:
         ],
     }
     assert json.loads(json.dumps(payload)) == payload
+
+
+def test_build_viewer_overlay_payload_projects_planner_trajectory_to_pixels() -> None:
+    frame_result = PerceptionFrameResult(
+        detections=[],
+        tracked_detections=[],
+        projected_detections=[],
+        observations=[],
+        speaker_events=[],
+        metadata={
+            "detector": "stub",
+            "detector_selected_reason": "unit_test",
+            "planner_overlay": {
+                "trajectory_world": [
+                    [0.0, 0.0, 2.0],
+                    [0.5, 0.0, 2.0],
+                    [1.0, 0.0, 2.0],
+                ],
+                "plan_version": 7,
+                "goal_version": 3,
+                "traj_version": 5,
+            },
+        },
+    )
+
+    payload = build_viewer_overlay_payload(
+        frame_result,
+        camera_intrinsic=np.asarray([[100.0, 0.0, 50.0], [0.0, 100.0, 50.0], [0.0, 0.0, 1.0]], dtype=np.float32),
+        camera_pose_xyz=(0.0, 0.0, 0.0),
+        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
+    )
+
+    assert payload["trajectory_pixels"] == [[50, 50], [75, 50], [100, 50]]
+    assert payload["trajectory_point_count"] == 3
+    assert payload["plan_version"] == 7
+    assert payload["goal_version"] == 3
+    assert payload["traj_version"] == 5

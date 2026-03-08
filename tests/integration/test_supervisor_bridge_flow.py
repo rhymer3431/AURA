@@ -41,6 +41,11 @@ class _FakePlanningSession:
         self._plan_version = -1
         self.started_instructions: list[str] = []
         self.health_checks: list[str] = []
+        self._viewer_trajectory_world = [
+            [0.0, 0.0, 2.0],
+            [0.4, 0.0, 2.0],
+            [0.8, 0.0, 2.0],
+        ]
 
     def initialize(self, simulation_app, stage) -> None:  # noqa: ANN001
         _ = simulation_app, stage
@@ -83,6 +88,14 @@ class _FakePlanningSession:
 
     def start_dual_task(self, instruction: str) -> None:
         self.started_instructions.append(str(instruction))
+
+    def viewer_overlay_state(self) -> dict[str, object]:
+        return {
+            "trajectory_world": list(self._viewer_trajectory_world),
+            "plan_version": 4,
+            "goal_version": 2,
+            "traj_version": 3,
+        }
 
     def shutdown(self) -> None:
         return None
@@ -233,6 +246,10 @@ def test_g1_view_mode_publishes_overlay_metadata_over_zmq_and_shm() -> None:
         assert overlay["detections"]
         assert overlay["detections"][0]["class_name"] == "apple"
         assert overlay["detections"][0]["bbox_xyxy"] == [28, 24, 67, 71]
+        assert overlay["trajectory_pixels"] == [[48, 48], [96, 48], [144, 48]]
+        assert overlay["plan_version"] == 4
+        assert overlay["goal_version"] == 2
+        assert overlay["traj_version"] == 3
 
         batch = IsaacBridgeAdapter(viewer_io.bus, shm_ring=viewer_io.shm_ring).reconstruct_batch(observed_header)
         assert batch.rgb_image is not None

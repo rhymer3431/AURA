@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -19,6 +20,8 @@ class _Cv2ProbeFailure:
         self.waitKey = lambda *_args, **_kwargs: 0
         self.rectangle = lambda *_args, **_kwargs: None
         self.putText = lambda *_args, **_kwargs: None
+        self.polylines = lambda *_args, **_kwargs: None
+        self.circle = lambda *_args, **_kwargs: None
         self.namedWindow = self._named_window
         self.destroyWindow = lambda *_args, **_kwargs: None
 
@@ -47,3 +50,17 @@ def test_close_windows_safely_swallows_destroy_errors(monkeypatch: pytest.Monkey
 
     captured = capsys.readouterr()
     assert "skipped OpenCV window teardown" in captured.out
+
+
+def test_draw_overlay_renders_trajectory_polyline() -> None:
+    frame = np.zeros((128, 128, 3), dtype=np.uint8)
+    overlay = {
+        "detector_backend": "stub",
+        "detections": [],
+        "trajectory_pixels": [[80, 80], [96, 80], [112, 96]],
+    }
+
+    canvas = g1_viewer_app._draw_overlay(frame, overlay, frame_id=3, source="unit_test")
+
+    assert tuple(int(v) for v in canvas[80, 80]) != (0, 0, 0)
+    assert tuple(int(v) for v in canvas[96, 112]) != (0, 0, 0)

@@ -858,6 +858,21 @@ class PlanningSession:
             interactive_instruction=interactive_instruction,
         )
 
+    def viewer_overlay_state(self) -> dict[str, object]:
+        state: dict[str, object] = {
+            "trajectory_world": np.asarray(self._last_trajectory, dtype=np.float32).tolist(),
+            "plan_version": int(self._last_plan_version),
+        }
+        if self.mode in {"dual", "interactive"}:
+            state["goal_version"] = int(self._last_goal_version)
+            state["traj_version"] = int(self._last_traj_version)
+            state["stale_sec"] = float(self._last_server_stale_sec)
+        if self.mode == "interactive":
+            state["interactive_phase"] = str(self._interactive_state)
+            state["interactive_command_id"] = int(self._interactive_active_command_id)
+            state["interactive_instruction"] = str(self._interactive_active_instruction)
+        return state
+
     def _default_navdp_client_factory(self, intrinsic: np.ndarray, args: argparse.Namespace) -> InProcessNavDPClient:
         return create_inprocess_navdp_client(
             intrinsic=intrinsic,

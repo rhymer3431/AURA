@@ -92,6 +92,12 @@ class NavDPCommandSource:
 
         observation = self.planning_session.capture_observation(frame_idx)
         if observation is not None:
+            planner_overlay_state: dict[str, object] = {}
+            planner_overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
+            if callable(planner_overlay_getter):
+                raw_overlay_state = planner_overlay_getter()
+                if isinstance(raw_overlay_state, dict):
+                    planner_overlay_state = dict(raw_overlay_state)
             batch = IsaacObservationBatch(
                 frame_header=FrameHeader(
                     frame_id=int(observation.frame_id),
@@ -104,7 +110,10 @@ class NavDPCommandSource:
                     robot_pose_xyz=robot_pose,
                     robot_yaw_rad=float(robot_yaw),
                     sim_time_s=float(time.time()),
-                    metadata=dict(observation.sensor_meta),
+                    metadata={
+                        **dict(observation.sensor_meta),
+                        "planner_overlay": planner_overlay_state,
+                    },
                 ),
                 robot_pose_xyz=robot_pose,
                 robot_yaw_rad=float(robot_yaw),

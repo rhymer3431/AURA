@@ -100,7 +100,12 @@ class Supervisor:
             batch.frame_header,
             metadata={
                 **dict(batch.frame_header.metadata),
-                "viewer_overlay": build_viewer_overlay_payload(frame_result),
+                "viewer_overlay": build_viewer_overlay_payload(
+                    frame_result,
+                    camera_intrinsic=intrinsic,
+                    camera_pose_xyz=batch.frame_header.camera_pose_xyz,
+                    camera_quat_wxyz=batch.frame_header.camera_quat_wxyz,
+                ),
             },
         )
         enriched = IsaacObservationBatch(
