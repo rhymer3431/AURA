@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib
 import sys
 from pathlib import Path
 
@@ -16,6 +17,24 @@ from inference.trackers.simple_tracker import TrackedDetection
 from perception.depth_projection import ProjectedDetection
 from perception.pipeline import PerceptionFrameResult
 from perception.viewer_overlay import build_viewer_overlay_payload
+
+
+def test_importing_speaker_events_does_not_eager_import_detector_backends() -> None:
+    for module_name in [
+        "perception",
+        "perception.speaker_events",
+        "perception.pipeline",
+        "inference.detectors",
+        "inference.detectors.factory",
+        "inference.detectors.ultralytics_yolo",
+    ]:
+        sys.modules.pop(module_name, None)
+
+    module = importlib.import_module("perception.speaker_events")
+
+    assert hasattr(module, "SpeakerEvent")
+    assert "perception.pipeline" not in sys.modules
+    assert "inference.detectors.ultralytics_yolo" not in sys.modules
 
 
 def test_build_viewer_overlay_payload_is_json_safe_and_stable() -> None:
