@@ -24,8 +24,8 @@ DEFAULT_G1_PRIM_CANDIDATES = (
 @dataclass
 class D455SensorAdapterConfig:
     use_d455: bool = True
-    image_width: int = 640
-    image_height: int = 640
+    image_width: int = 448
+    image_height: int = 448
     depth_max_m: float = 5.0
     strict_d455: bool = False
     force_runtime_mount: bool = False
