@@ -19,6 +19,13 @@ def _args() -> Namespace:
         traj_stale_timeout_sec=1.5,
         cmd_accel_limit=1.0,
         cmd_yaw_accel_limit=1.5,
+        obstacle_defense_enabled=True,
+        obstacle_stop_distance_m=0.45,
+        obstacle_turn_distance_m=0.70,
+        obstacle_side_bias_m=0.10,
+        obstacle_min_valid_fraction=0.05,
+        obstacle_min_turn_wz=0.35,
+        obstacle_forward_trigger_mps=0.05,
     )
 
 
@@ -35,6 +42,18 @@ def _observation() -> ExecutionObservation:
         frame_id=1,
         rgb=np.zeros((8, 8, 3), dtype=np.uint8),
         depth=np.ones((8, 8), dtype=np.float32),
+        sensor_meta={},
+        cam_pos=np.asarray([0.0, 0.0, 1.2], dtype=np.float32),
+        cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        intrinsic=np.eye(3, dtype=np.float32),
+    )
+
+
+def _observation_with_depth(depth: np.ndarray) -> ExecutionObservation:
+    return ExecutionObservation(
+        frame_id=1,
+        rgb=np.zeros((depth.shape[0], depth.shape[1], 3), dtype=np.uint8),
+        depth=np.asarray(depth, dtype=np.float32),
         sensor_meta={},
         cam_pos=np.asarray([0.0, 0.0, 1.2], dtype=np.float32),
         cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
@@ -165,3 +184,58 @@ def test_planner_managed_yaw_delta_reaches_target() -> None:
     assert first.status.state == "running"
     assert second.status is not None
     assert second.status.state == "succeeded"
+
+
+def test_obstacle_defense_turns_toward_clearer_side() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
+        plan_version=5,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    depth = np.full((18, 18), 1.2, dtype=np.float32)
+    depth[:, 7:11] = 0.25
+    depth[:, 11:15] = 2.0
+
+    result = executor.step(
+        frame_idx=1,
+        observation=_observation_with_depth(depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert abs(float(result.command_vector[0])) < 1.0e-4
+    assert float(result.command_vector[2]) < 0.0
+    assert result.status is not None
+    assert result.status.metadata["obstacle_defense"] is True
+    assert result.status.metadata["obstacle_defense_mode"] == "turn_in_place"
+
+
+def test_obstacle_defense_stops_when_both_sides_are_blocked() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
+        plan_version=6,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    depth = np.full((18, 18), 0.20, dtype=np.float32)
+
+    result = executor.step(
+        frame_idx=1,
+        observation=_observation_with_depth(depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert np.allclose(result.command_vector, np.zeros(3, dtype=np.float32))
+    assert result.status is not None
+    assert result.status.metadata["obstacle_defense"] is True
+    assert result.status.metadata["obstacle_defense_mode"] == "stop"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -18,6 +18,24 @@ class CommandEvaluation:
     goal_distance_m: float
     yaw_error_rad: float
     reached_goal: bool
+
+
+@dataclass(frozen=True)
+class ObstacleDefenseConfig:
+    enabled: bool = True
+    stop_distance_m: float = 0.45
+    turn_distance_m: float = 0.70
+    side_bias_m: float = 0.10
+    min_valid_fraction: float = 0.05
+    min_turn_wz: float = 0.35
+    forward_trigger_mps: float = 0.05
+
+
+@dataclass(frozen=True)
+class ObstacleDefenseResult:
+    command: np.ndarray
+    triggered: bool
+    metadata: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -48,6 +66,15 @@ class SubgoalExecutor:
                 cmd_accel_limit=float(args.cmd_accel_limit),
                 cmd_yaw_accel_limit=float(args.cmd_yaw_accel_limit),
             )
+        )
+        self._obstacle_defense = ObstacleDefenseConfig(
+            enabled=bool(getattr(args, "obstacle_defense_enabled", True)),
+            stop_distance_m=float(getattr(args, "obstacle_stop_distance_m", 0.45)),
+            turn_distance_m=float(getattr(args, "obstacle_turn_distance_m", 0.70)),
+            side_bias_m=float(getattr(args, "obstacle_side_bias_m", 0.10)),
+            min_valid_fraction=float(getattr(args, "obstacle_min_valid_fraction", 0.05)),
+            min_turn_wz=float(getattr(args, "obstacle_min_turn_wz", 0.35)),
+            forward_trigger_mps=float(getattr(args, "obstacle_forward_trigger_mps", 0.05)),
         )
         self._last_applied_plan_version = -1
         self._planner_yaw_target_rad: float | None = None
@@ -118,6 +145,8 @@ class SubgoalExecutor:
                 force_stop=evaluation.force_stop,
             )
             self._command = tracker_result.command
+        defense = self._apply_obstacle_defense(observation, self._command)
+        self._command = defense.command
 
         status = self.build_status(
             action_command=action_command,
@@ -125,6 +154,8 @@ class SubgoalExecutor:
             robot_pose=tuple(float(v) for v in np.asarray(robot_pos_world, dtype=np.float32).reshape(-1)[:3]),
             evaluation=evaluation,
         )
+        if status is not None and defense.triggered:
+            status = replace(status, metadata={**dict(status.metadata), **defense.metadata})
         return SubgoalExecutionResult(
             command_vector=self._command.copy(),
             trajectory_update=update,
@@ -309,3 +340,86 @@ class SubgoalExecutor:
             return np.zeros(3, dtype=np.float32)
         wz = np.clip(1.5 * float(yaw_error), -float(self.args.cmd_max_wz), float(self.args.cmd_max_wz))
         return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)
+
+    def _apply_obstacle_defense(self, observation, command: np.ndarray) -> ObstacleDefenseResult:  # noqa: ANN001
+        if not bool(self._obstacle_defense.enabled) or observation is None:
+            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+
+        depth = np.asarray(getattr(observation, "depth", np.zeros((0, 0), dtype=np.float32)), dtype=np.float32)
+        if depth.ndim == 3 and depth.shape[-1] == 1:
+            depth = depth[..., 0]
+        if depth.ndim != 2 or depth.size == 0:
+            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+
+        row_start = min(max(int(depth.shape[0] * 0.35), 0), depth.shape[0] - 1)
+        row_stop = min(max(int(depth.shape[0] * 0.90), row_start + 1), depth.shape[0])
+        col_start = min(max(int(depth.shape[1] * 0.20), 0), depth.shape[1] - 1)
+        col_stop = min(max(int(depth.shape[1] * 0.80), col_start + 1), depth.shape[1])
+        roi = depth[row_start:row_stop, col_start:col_stop]
+        if roi.size == 0:
+            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+
+        valid_mask = np.isfinite(roi) & (roi > 0.05)
+        valid_count = int(np.count_nonzero(valid_mask))
+        min_valid_count = max(int(roi.size * float(self._obstacle_defense.min_valid_fraction)), 4)
+        if valid_count < min_valid_count:
+            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+
+        left_roi, center_roi, right_roi = np.array_split(roi, 3, axis=1)
+        left_clearance = self._depth_band_clearance(left_roi)
+        center_clearance = self._depth_band_clearance(center_roi)
+        right_clearance = self._depth_band_clearance(right_roi)
+
+        base_command = np.asarray(command, dtype=np.float32).copy()
+        moving_forward = float(base_command[0]) > float(self._obstacle_defense.forward_trigger_mps)
+        if not moving_forward and float(center_clearance) >= float(self._obstacle_defense.stop_distance_m):
+            return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
+
+        turn_sign = self._clearer_side_turn_sign(left_clearance, right_clearance)
+        max_wz = max(float(getattr(self.args, "cmd_max_wz", 0.8)), 1.0e-3)
+        turn_wz = 0.0
+        if turn_sign != 0:
+            turn_wz = float(turn_sign) * min(max_wz, max(float(self._obstacle_defense.min_turn_wz), abs(float(base_command[2]))))
+
+        metadata = {
+            "obstacle_defense": True,
+            "obstacle_left_clearance_m": round(left_clearance, 4),
+            "obstacle_center_clearance_m": round(center_clearance, 4),
+            "obstacle_right_clearance_m": round(right_clearance, 4),
+        }
+
+        if float(center_clearance) < float(self._obstacle_defense.stop_distance_m):
+            metadata["obstacle_defense_mode"] = "stop" if turn_wz == 0.0 else "turn_in_place"
+            return ObstacleDefenseResult(
+                command=np.asarray([0.0, 0.0, turn_wz], dtype=np.float32),
+                triggered=True,
+                metadata=metadata,
+            )
+
+        if moving_forward and float(center_clearance) < float(self._obstacle_defense.turn_distance_m):
+            metadata["obstacle_defense_mode"] = "slow_turn" if turn_wz != 0.0 else "hold"
+            return ObstacleDefenseResult(
+                command=np.asarray([0.0, 0.0, turn_wz], dtype=np.float32),
+                triggered=True,
+                metadata=metadata,
+            )
+
+        return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
+
+    @staticmethod
+    def _depth_band_clearance(depth_band: np.ndarray) -> float:
+        band = np.asarray(depth_band, dtype=np.float32)
+        if band.ndim != 2 or band.size == 0:
+            return float("inf")
+        valid = band[np.isfinite(band) & (band > 0.05)]
+        if valid.size == 0:
+            return float("inf")
+        return float(np.percentile(valid, 20.0))
+
+    def _clearer_side_turn_sign(self, left_clearance: float, right_clearance: float) -> int:
+        bias = float(self._obstacle_defense.side_bias_m)
+        if right_clearance > left_clearance + bias:
+            return -1
+        if left_clearance > right_clearance + bias:
+            return 1
+        return 0
