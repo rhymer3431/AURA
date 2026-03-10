@@ -31,7 +31,10 @@ $RobotUsd = if ($env:G1_POINTGOAL_ROBOT_USD) {
 } else {
     $DefaultRobotUsd
 }
-$SceneUsd = if ($env:G1_POINTGOAL_SCENE_USD) { $env:G1_POINTGOAL_SCENE_USD } else { "/Isaac/Environments/Simple_Warehouse/warehouse.usd" }
+$DefaultSceneEnvUrl = "/Isaac/Environments/Simple_Warehouse/warehouse.usd"
+$DefaultInteriorAgentSceneUsd = Join-Path $RepoDir "datasets\InteriorAgent\kujiale_0004\kujiale_0004_navila_sanitized.usda"
+$ScenePreset = if ($env:G1_POINTGOAL_SCENE_PRESET) { $env:G1_POINTGOAL_SCENE_PRESET } else { "warehouse" }
+$SceneUsd = if ($env:G1_POINTGOAL_SCENE_USD) { $env:G1_POINTGOAL_SCENE_USD } else { "" }
 $PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "interactive" }
 $GoalX = if ($env:G1_POINTGOAL_GOAL_X) { $env:G1_POINTGOAL_GOAL_X } else { "2.0" }
 $GoalY = if ($env:G1_POINTGOAL_GOAL_Y) { $env:G1_POINTGOAL_GOAL_Y } else { "0.0" }
@@ -97,6 +100,105 @@ function Get-LaunchArgValue {
     return $resolved
 }
 
+function Remove-LaunchArgs {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$InputArgs,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Names
+    )
+
+    $filtered = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $InputArgs.Length; $i++) {
+        $launchArg = $InputArgs[$i]
+        $matched = $false
+        foreach ($name in $Names) {
+            if ($launchArg -eq $name) {
+                $matched = $true
+                if (($i + 1) -lt $InputArgs.Length) {
+                    $i += 1
+                }
+                break
+            }
+            if ($launchArg.StartsWith("$name=")) {
+                $matched = $true
+                break
+            }
+        }
+        if (-not $matched) {
+            $filtered.Add($launchArg)
+        }
+    }
+    return $filtered.ToArray()
+}
+
+function Resolve-SceneSelection {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SelectedPreset,
+        [Parameter(Mandatory = $true)]
+        [string]$InteriorAgentSceneUsd,
+        [Parameter(Mandatory = $true)]
+        [string]$WarehouseEnvUrl
+    )
+
+    $normalized = ("" + $SelectedPreset).Trim().ToLowerInvariant()
+    switch ($normalized) {
+        "" {
+            return @{
+                Preset = "warehouse"
+                SceneUsd = ""
+                EnvUrl = $WarehouseEnvUrl
+                Description = "Isaac Simple_Warehouse"
+            }
+        }
+        "warehouse" {
+            return @{
+                Preset = "warehouse"
+                SceneUsd = ""
+                EnvUrl = $WarehouseEnvUrl
+                Description = "Isaac Simple_Warehouse"
+            }
+        }
+        "interioragent" {
+            return @{
+                Preset = "interioragent"
+                SceneUsd = $InteriorAgentSceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent"
+            }
+        }
+        "interior" {
+            return @{
+                Preset = "interioragent"
+                SceneUsd = $InteriorAgentSceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent"
+            }
+        }
+        "datasets\\interioragent" {
+            return @{
+                Preset = "interioragent"
+                SceneUsd = $InteriorAgentSceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent"
+            }
+        }
+        "datasets/interioragent" {
+            return @{
+                Preset = "interioragent"
+                SceneUsd = $InteriorAgentSceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent"
+            }
+        }
+        default {
+            throw "unsupported scene preset: $SelectedPreset. Supported values: warehouse, interioragent"
+        }
+    }
+}
+
 function Start-BackgroundPowerShell {
     param(
         [Parameter(Mandatory = $true)]
@@ -126,6 +228,8 @@ function Start-BackgroundPowerShell {
 $HasPolicyOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--policy")
 $HasRobotOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--robot_usd", "--robot-usd", "--usd-path")
 $HasSceneOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--scene-usd", "--scene_usd", "--env-url")
+$ForwardArgs = Remove-LaunchArgs -InputArgs $args -Names @("--scene-preset", "--scene")
+$EffectiveScenePreset = Get-LaunchArgValue -InputArgs $args -Names @("--scene-preset", "--scene") -DefaultValue $ScenePreset
 $EffectiveLaunchMode = Get-LaunchArgValue -InputArgs $args -Names @("--launch-mode") -DefaultValue $LaunchMode
 $EffectivePlannerMode = Get-LaunchArgValue -InputArgs $args -Names @("--planner-mode") -DefaultValue $PlannerMode
 $EffectiveViewerControlEndpoint = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-control-endpoint") -DefaultValue $ViewerControlEndpoint
@@ -135,6 +239,15 @@ $EffectiveViewerShmSlotSize = Get-LaunchArgValue -InputArgs $args -Names @("--vi
 $EffectiveViewerShmCapacity = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-capacity") -DefaultValue $ViewerShmCapacity
 $EffectiveDepthMaxM = Get-LaunchArgValue -InputArgs $args -Names @("--depth-max-m") -DefaultValue "5.0"
 $ShowDepthView = Test-LaunchArgPresent -InputArgs $args -Names @("--show-depth")
+
+$ResolvedScene = Resolve-SceneSelection `
+    -SelectedPreset $EffectiveScenePreset `
+    -InteriorAgentSceneUsd $DefaultInteriorAgentSceneUsd `
+    -WarehouseEnvUrl $DefaultSceneEnvUrl
+
+$DefaultSceneUsd = [string]$ResolvedScene.SceneUsd
+$DefaultEnvUrl = [string]$ResolvedScene.EnvUrl
+$EffectiveSceneDescription = [string]$ResolvedScene.Description
 
 if ($EffectivePlannerMode -notin @("interactive", "pointgoal")) {
     Write-Host "[Pipeline] unsupported planner-mode=$EffectivePlannerMode"
@@ -158,15 +271,17 @@ if ((-not $HasRobotOverride) -and (-not (Test-Path -LiteralPath $RobotUsd))) {
     exit 1
 }
 
-if (
-    (-not $HasSceneOverride) -and
-    -not [string]::IsNullOrWhiteSpace($SceneUsd) -and
-    ($SceneUsd -match '^[A-Za-z]:[\\/]') -and
-    (-not (Test-Path -LiteralPath $SceneUsd))
-) {
-    Write-Host "[Pipeline] Scene USD not found: `"$SceneUsd`""
-    Write-Host "[Pipeline] Set G1_POINTGOAL_SCENE_USD or pass --scene-usd/--env-url explicitly."
-    exit 1
+if (-not $HasSceneOverride) {
+    if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
+        if (-not (Test-Path -LiteralPath $SceneUsd)) {
+            Write-Host "[Pipeline] Scene USD not found: `"$SceneUsd`""
+            Write-Host "[Pipeline] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent, or pass --scene-usd/--env-url explicitly."
+            exit 1
+        }
+    } elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd) -and (-not (Test-Path -LiteralPath $DefaultSceneUsd))) {
+        Write-Host "[Pipeline] Scene preset path not found for ${EffectiveScenePreset}: `"$DefaultSceneUsd`""
+        exit 1
+    }
 }
 
 Write-Host "[Pipeline] Starting runtime.g1_bridge"
@@ -174,10 +289,16 @@ Write-Host "[Pipeline] python=`"$IsaacPython`""
 Write-Host "[Pipeline] module=`"$EntryModule`""
 Write-Host "[Pipeline] default policy=`"$PolicyPath`""
 Write-Host "[Pipeline] default robot-usd=`"$RobotUsd`""
-if ([string]::IsNullOrWhiteSpace($SceneUsd)) {
-    Write-Host "[Pipeline] default scene-usd=<flat ground only>"
-} else {
+Write-Host "[Pipeline] default scene-preset=$ScenePreset"
+Write-Host "[Pipeline] effective scene-preset=$EffectiveScenePreset"
+if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
     Write-Host "[Pipeline] default scene-usd=`"$SceneUsd`""
+} elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd)) {
+    Write-Host "[Pipeline] default scene-usd=`"$DefaultSceneUsd`" ($EffectiveSceneDescription)"
+} elseif (-not [string]::IsNullOrWhiteSpace($DefaultEnvUrl)) {
+    Write-Host "[Pipeline] default env-url=`"$DefaultEnvUrl`" ($EffectiveSceneDescription)"
+} else {
+    Write-Host "[Pipeline] default scene-usd=<flat ground only>"
 }
 Write-Host "[Pipeline] default planner-mode=$PlannerMode"
 Write-Host "[Pipeline] effective planner-mode=$EffectivePlannerMode"
@@ -195,6 +316,8 @@ Write-Host "[Pipeline] default force-runtime-camera=$ForceRuntimeCamera"
 Write-Host "[Pipeline] user args override defaults when repeated."
 Write-Host "[Pipeline] examples:"
 Write-Host "[Pipeline]   interactive: .\\run_pipeline.ps1 --planner-mode interactive --launch-mode gui"
+Write-Host "[Pipeline]   warehouse  : .\\run_pipeline.ps1 --scene-preset warehouse --planner-mode interactive"
+Write-Host "[Pipeline]   interior   : .\\run_pipeline.ps1 --scene-preset interioragent --planner-mode interactive"
 Write-Host "[Pipeline]   pointgoal  : .\\run_pipeline.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
 Write-Host "[Pipeline]   pointgoal+v: .\\run_pipeline.ps1 --planner-mode pointgoal --launch-mode g1_view --goal-x 2.0 --goal-y 0.0"
 Write-Host "[Pipeline]   interac+d  : .\\run_pipeline.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"
@@ -218,8 +341,12 @@ if (-not [string]::IsNullOrWhiteSpace($EffectiveLaunchMode)) {
     $LaunchArgs += @("--launch-mode", $EffectiveLaunchMode)
 }
 
-if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
-    $LaunchArgs += @("--env-url", $SceneUsd)
+if (-not $HasSceneOverride -and -not [string]::IsNullOrWhiteSpace($SceneUsd)) {
+    $LaunchArgs += @("--scene-usd", $SceneUsd)
+} elseif (-not $HasSceneOverride -and -not [string]::IsNullOrWhiteSpace($DefaultSceneUsd)) {
+    $LaunchArgs += @("--scene-usd", $DefaultSceneUsd)
+} elseif (-not $HasSceneOverride -and -not [string]::IsNullOrWhiteSpace($DefaultEnvUrl)) {
+    $LaunchArgs += @("--env-url", $DefaultEnvUrl)
 }
 
 if ($ForceRuntimeCamera -notin @("0", "false", "False", "FALSE", "no", "No", "NO")) {
@@ -253,7 +380,7 @@ try {
         }
         $ViewerProcess = Start-BackgroundPowerShell -ScriptPath $ViewerScript -Name "G1Viewer" -ScriptArgs $ViewerArgs
     }
-    & $IsaacPython @LaunchArgs @args
+    & $IsaacPython @LaunchArgs @ForwardArgs
     exit $LASTEXITCODE
 }
 finally {
