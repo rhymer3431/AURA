@@ -6,8 +6,6 @@ param(
     [string]$MmprojPath = "artifacts/models/InternVLA-N1-System2.mmproj-Q8_0.gguf",
     [string]$ChatTemplateFile = "scripts/powershell/internvla_system2_chat_template.jinja",
     [string]$LlamaServer = "llama-server",
-    [string]$HFRepo = "mradermacher/InternVLA-N1-System2-GGUF",
-    [string]$HFMMProjFile = "InternVLA-N1-System2.mmproj-Q8_0.gguf",
     [int]$ContextSize = 8192,
     [string]$GpuLayers = "auto",
     [ValidateSet("on", "off")]
@@ -16,9 +14,7 @@ param(
     [int]$Parallel = 1,
     [int]$ThreadsHttp = 1,
     [int]$ImageMaxTokens = 0,
-    [int]$ReasoningBudget = 0,
-    [switch]$SkipMmprojDownload,
-    [switch]$ForceCudaRuntimeRefresh
+    [int]$ReasoningBudget = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,8 +28,6 @@ if (-not $PSBoundParameters.ContainsKey("ModelPath") -and $env:INTERNVLA_MODEL_P
 if (-not $PSBoundParameters.ContainsKey("MmprojPath") -and $env:INTERNVLA_MMPROJ_PATH) { $MmprojPath = $env:INTERNVLA_MMPROJ_PATH }
 if (-not $PSBoundParameters.ContainsKey("ChatTemplateFile") -and $env:INTERNVLA_CHAT_TEMPLATE_FILE) { $ChatTemplateFile = $env:INTERNVLA_CHAT_TEMPLATE_FILE }
 if (-not $PSBoundParameters.ContainsKey("LlamaServer") -and $env:LLAMA_SERVER_EXE) { $LlamaServer = $env:LLAMA_SERVER_EXE }
-if (-not $PSBoundParameters.ContainsKey("HFRepo") -and $env:INTERNVLA_HF_REPO) { $HFRepo = $env:INTERNVLA_HF_REPO }
-if (-not $PSBoundParameters.ContainsKey("HFMMProjFile") -and $env:INTERNVLA_HF_MMPROJ_FILE) { $HFMMProjFile = $env:INTERNVLA_HF_MMPROJ_FILE }
 if (-not $PSBoundParameters.ContainsKey("ContextSize") -and $env:INTERNVLA_CTX_SIZE) { $ContextSize = [int]$env:INTERNVLA_CTX_SIZE }
 if (-not $PSBoundParameters.ContainsKey("GpuLayers") -and $env:INTERNVLA_GPU_LAYERS) { $GpuLayers = $env:INTERNVLA_GPU_LAYERS }
 if (-not $PSBoundParameters.ContainsKey("PromptCache") -and $env:INTERNVLA_PROMPT_CACHE) { $PromptCache = $env:INTERNVLA_PROMPT_CACHE }
@@ -101,58 +95,6 @@ function Add-ProcessPathEntry([string]$PathEntry) {
     $env:PATH = "$PathEntry;$env:PATH"
 }
 
-function Get-CudaRuntimeZipPath([string]$BaseDir) {
-    $candidates = @(
-        (Join-Path $BaseDir "cudart-llama-bin-win-cuda-13.1-x64.zip"),
-        (Join-Path $BaseDir "cudart-llama-bin-win-cuda-13.1-x64.zip.tmp")
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path -LiteralPath $candidate) { return $candidate }
-    }
-    return Join-Path $BaseDir "cudart-llama-bin-win-cuda-13.1-x64.zip"
-}
-
-function Ensure-Cuda131Runtime([string]$BaseDir, [string]$ServerDir, [switch]$ForceRefresh) {
-    $requiredDlls = @("cublas64_13.dll", "cublasLt64_13.dll", "cudart64_13.dll")
-    $missingDlls = @(
-        $requiredDlls | Where-Object {
-            $dllPath = Join-Path $ServerDir $_
-            -not (Test-Path -LiteralPath $dllPath)
-        }
-    )
-
-    if (-not $ForceRefresh -and $missingDlls.Count -eq 0) { return }
-
-    $runtimeZip = Get-CudaRuntimeZipPath $BaseDir
-    $runtimeUrl = "https://github.com/ggml-org/llama.cpp/releases/download/b8191/cudart-llama-bin-win-cuda-13.1-x64.zip"
-
-    if ($ForceRefresh -or -not (Test-Path -LiteralPath $runtimeZip)) {
-        Write-Host "[InternVLA System2] downloading CUDA 13.1 runtime bundle"
-        Write-Host "[InternVLA System2] url=$runtimeUrl"
-        Invoke-WebRequest -Uri $runtimeUrl -OutFile $runtimeZip
-    }
-
-    $extractDir = Join-Path $BaseDir "_cudart_extract"
-    Remove-Item -Recurse -Force $extractDir -ErrorAction SilentlyContinue
-
-    try {
-        Expand-Archive -LiteralPath $runtimeZip -DestinationPath $extractDir -Force
-    } catch {
-        Write-Host "[InternVLA System2] CUDA runtime bundle is missing or invalid: `"$runtimeZip`""
-        Write-Host "[InternVLA System2] downloading a fresh runtime bundle and retrying"
-        Invoke-WebRequest -Uri $runtimeUrl -OutFile $runtimeZip
-        Expand-Archive -LiteralPath $runtimeZip -DestinationPath $extractDir -Force
-    }
-
-    foreach ($dllName in $requiredDlls) {
-        $sourcePath = Join-Path $extractDir $dllName
-        if (-not (Test-Path -LiteralPath $sourcePath)) {
-            throw "Required CUDA runtime DLL missing from bundle: $dllName"
-        }
-        Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $ServerDir $dllName) -Force
-    }
-}
-
 $ResolvedModelPath = Resolve-ProjectPath $ModelPath
 $ResolvedMmprojPath = Resolve-ProjectPath $MmprojPath
 $ResolvedChatTemplateFile = $null
@@ -176,22 +118,9 @@ if (-not (Test-Path -LiteralPath $ResolvedModelPath)) {
 }
 
 if (-not (Test-Path -LiteralPath $ResolvedMmprojPath)) {
-    if ($SkipMmprojDownload) {
-        Write-Host "[InternVLA System2] mmproj not found: `"$ResolvedMmprojPath`""
-        Write-Host "[InternVLA System2] Remove -SkipMmprojDownload to auto-download it."
-        exit 1
-    }
-
-    $mmprojDir = Split-Path -Parent $ResolvedMmprojPath
-    if (-not [string]::IsNullOrWhiteSpace($mmprojDir)) { New-Item -ItemType Directory -Path $mmprojDir -Force | Out-Null }
-    $downloadUrl = "https://huggingface.co/$($HFRepo)/resolve/main/$($HFMMProjFile)?download=true"
-    Write-Host "[InternVLA System2] downloading mmproj from: $downloadUrl"
-    try {
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $ResolvedMmprojPath
-    } catch {
-        Write-Host "[InternVLA System2] mmproj download failed: $($_.Exception.Message)"
-        exit 1
-    }
+    Write-Host "[InternVLA System2] mmproj not found: `"$ResolvedMmprojPath`""
+    Write-Host "[InternVLA System2] Set INTERNVLA_MMPROJ_PATH or pass -MmprojPath."
+    exit 1
 }
 
 if (-not [string]::IsNullOrWhiteSpace($ResolvedChatTemplateFile) -and -not (Test-Path -LiteralPath $ResolvedChatTemplateFile)) {
@@ -206,8 +135,20 @@ if ($null -eq $ResolvedLlamaServerPath -or -not (Test-Path -LiteralPath $Resolve
 }
 
 $ServerDir = Split-Path -Parent $ResolvedLlamaServerPath
-Ensure-Cuda131Runtime -BaseDir $RepoDir -ServerDir $ServerDir -ForceRefresh:$ForceCudaRuntimeRefresh
 Add-ProcessPathEntry $ServerDir
+
+$RequiredCudaRuntimeDlls = @("cublas64_13.dll", "cublasLt64_13.dll", "cudart64_13.dll")
+$MissingCudaRuntimeDlls = @(
+    $RequiredCudaRuntimeDlls | Where-Object {
+        $dllPath = Join-Path $ServerDir $_
+        -not (Test-Path -LiteralPath $dllPath)
+    }
+)
+if ($MissingCudaRuntimeDlls.Count -gt 0) {
+    Write-Host "[InternVLA System2] required CUDA runtime DLLs not found near llama-server: $($MissingCudaRuntimeDlls -join ', ')"
+    Write-Host "[InternVLA System2] Place the CUDA 13.1 runtime DLLs next to llama-server before running this script."
+    exit 1
+}
 
 if (-not (Test-LlamaGpuBackend $ResolvedLlamaServerPath)) {
     Write-Host "[InternVLA System2] llama-server GPU backend not found near: `"$ResolvedLlamaServerPath`""
