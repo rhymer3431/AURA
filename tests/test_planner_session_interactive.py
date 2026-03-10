@@ -45,6 +45,14 @@ def _planner_managed_command(task_id: str = "interactive") -> ActionCommand:
     )
 
 
+def _planner_control(mode: str = "trajectory", *, yaw_delta_rad: float | None = None, reason: str = "") -> dict[str, object]:
+    return {
+        "mode": mode,
+        "yaw_delta_rad": yaw_delta_rad,
+        "reason": reason,
+    }
+
+
 def _observation(session: PlanningSession, frame_id: int):
     return session.build_local_observation(
         frame_id=frame_id,
@@ -184,6 +192,7 @@ def test_interactive_command_switches_to_task_mode_and_resets_dual() -> None:
             traj_version=4,
             stale_sec=0.2,
             used_cached_traj=False,
+            planner_control=_planner_control(),
             debug={},
             latency_ms=4.0,
             successful_calls=1,
@@ -216,6 +225,7 @@ def test_interactive_completion_returns_to_roaming() -> None:
             traj_version=2,
             stale_sec=0.1,
             used_cached_traj=False,
+            planner_control=_planner_control(),
             debug={},
             latency_ms=4.0,
             successful_calls=1,
@@ -231,6 +241,7 @@ def test_interactive_completion_returns_to_roaming() -> None:
             traj_version=3,
             stale_sec=0.0,
             used_cached_traj=False,
+            planner_control=_planner_control("stop", reason="STOP"),
             debug={},
             latency_ms=4.0,
             successful_calls=2,
@@ -282,6 +293,7 @@ def test_interactive_new_instruction_preempts_active_task() -> None:
             traj_version=1,
             stale_sec=0.1,
             used_cached_traj=False,
+            planner_control=_planner_control(),
             debug={},
             latency_ms=4.0,
             successful_calls=1,
@@ -297,6 +309,7 @@ def test_interactive_new_instruction_preempts_active_task() -> None:
             traj_version=2,
             stale_sec=0.1,
             used_cached_traj=False,
+            planner_control=_planner_control(),
             debug={},
             latency_ms=4.0,
             successful_calls=1,
@@ -331,6 +344,7 @@ def test_interactive_cancel_returns_to_roaming() -> None:
             traj_version=1,
             stale_sec=0.1,
             used_cached_traj=False,
+            planner_control=_planner_control(),
             debug={},
             latency_ms=4.0,
             successful_calls=1,
@@ -371,6 +385,7 @@ def test_dual_mode_uses_dual_server_for_trajectory_generation() -> None:
             traj_version=7,
             stale_sec=0.1,
             used_cached_traj=False,
+            planner_control=_planner_control(),
             debug={},
             latency_ms=3.5,
             successful_calls=1,
@@ -393,3 +408,46 @@ def test_dual_mode_uses_dual_server_for_trajectory_generation() -> None:
     assert update.goal_version == 5
     assert update.traj_version == 7
     assert update.trajectory_world.shape == (2, 3)
+
+
+def test_dual_mode_exposes_planner_managed_yaw_control() -> None:
+    session = PlanningSession(_args(planner_mode="dual", instruction="turn toward the dock"))
+    session._intrinsic = np.eye(3, dtype=np.float32)
+    session.navdp_client = _FakeNavDPClient()
+    session.pointgoal_planner = _FakePlanner()
+    session.nogoal_planner = _FakePlanner()
+    session.dual_planner = _FakePlanner()
+    dual_client = _FakeDualClient()
+    session._dual_client = dual_client
+    session.dual_planner.outputs = [
+        DualPlannerOutput(
+            plan_version=0,
+            source_frame_id=1,
+            trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            stop=False,
+            goal_version=6,
+            traj_version=7,
+            stale_sec=-1.0,
+            used_cached_traj=False,
+            planner_control=_planner_control("yaw_delta", yaw_delta_rad=float(np.pi / 6.0), reason="←"),
+            debug={},
+            latency_ms=3.5,
+            successful_calls=1,
+            failed_calls=0,
+            last_error="",
+        )
+    ]
+    session.dual_planner.status = (1, 0, "", 3.5)
+
+    session.start_dual_task("turn toward the dock")
+    update = session.plan_with_observation(
+        _observation(session, 1),
+        action_command=_planner_managed_command(task_id="dual"),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert update.trajectory_world.shape == (0, 3)
+    assert update.planner_control_mode == "yaw_delta"
+    assert update.planner_yaw_delta_rad == float(np.pi / 6.0)

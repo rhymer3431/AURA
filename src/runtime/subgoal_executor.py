@@ -50,6 +50,7 @@ class SubgoalExecutor:
             )
         )
         self._last_applied_plan_version = -1
+        self._planner_yaw_target_rad: float | None = None
         self._command = np.zeros(3, dtype=np.float32)
 
     @property
@@ -83,6 +84,19 @@ class SubgoalExecutor:
             robot_yaw=float(robot_yaw),
             robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
         )
+        now = time.monotonic()
+        if update.plan_version > self._last_applied_plan_version:
+            if update.planner_control_mode in {None, "trajectory"}:
+                self._tracker.set_trajectory(update.trajectory_world, plan_version=int(update.plan_version), timestamp=now)
+                self._planner_yaw_target_rad = None
+            else:
+                self._tracker.clear(timestamp=now)
+                if update.planner_control_mode == "yaw_delta" and update.planner_yaw_delta_rad is not None:
+                    self._planner_yaw_target_rad = wrap_to_pi(float(robot_yaw) + float(update.planner_yaw_delta_rad))
+                else:
+                    self._planner_yaw_target_rad = None
+            self._last_applied_plan_version = int(update.plan_version)
+
         evaluation = self.evaluate_action(
             action_command=action_command,
             trajectory_update=update,
@@ -90,13 +104,12 @@ class SubgoalExecutor:
             robot_yaw=float(robot_yaw),
         )
 
-        now = time.monotonic()
-        if update.plan_version > self._last_applied_plan_version:
-            self._tracker.set_trajectory(update.trajectory_world, plan_version=int(update.plan_version), timestamp=now)
-            self._last_applied_plan_version = int(update.plan_version)
-
         if action_command is not None and action_command.action_type == "LOOK_AT":
             self._command = self._look_at_command(action_command, float(robot_yaw))
+        elif update.planner_control_mode == "yaw_delta":
+            self._command = self._planner_yaw_command(float(robot_yaw))
+        elif update.planner_control_mode in {"stop", "wait"}:
+            self._command = np.zeros(3, dtype=np.float32)
         else:
             tracker_result = self._tracker.compute_command(
                 np.asarray(robot_pos_world, dtype=np.float32),
@@ -146,7 +159,7 @@ class SubgoalExecutor:
                 success=True,
                 robot_pose_xyz=robot_pose,
                 distance_remaining_m=max(float(evaluation.goal_distance_m), 0.0),
-                metadata={"action_type": action_command.action_type},
+                metadata={"action_type": action_command.action_type, "planner_managed": planner_managed},
             )
         if planner_managed and bool(trajectory_update.stop) and trajectory_update.stats.last_error == "":
             return ActionStatus(
@@ -200,6 +213,19 @@ class SubgoalExecutor:
         if action_command is None:
             return CommandEvaluation(force_stop=True, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=False)
         if bool(action_command.metadata.get("planner_managed", False)):
+            planner_mode = trajectory_update.planner_control_mode if trajectory_update is not None else None
+            if planner_mode == "yaw_delta":
+                yaw_target = float(self._planner_yaw_target_rad if self._planner_yaw_target_rad is not None else robot_yaw)
+                yaw_error = wrap_to_pi(yaw_target - robot_yaw)
+                reached_goal = abs(float(yaw_error)) < 0.05
+                return CommandEvaluation(
+                    force_stop=bool(reached_goal),
+                    goal_distance_m=-1.0,
+                    yaw_error_rad=float(yaw_error),
+                    reached_goal=bool(reached_goal),
+                )
+            if planner_mode == "wait":
+                return CommandEvaluation(force_stop=True, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=False)
             planner_stop = bool(trajectory_update.stop) if trajectory_update is not None else False
             return CommandEvaluation(force_stop=planner_stop, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=planner_stop)
         if action_command.action_type == "STOP":
@@ -273,5 +299,13 @@ class SubgoalExecutor:
     def _look_at_command(self, action_command: ActionCommand, robot_yaw: float) -> np.ndarray:
         yaw_target = float(action_command.look_at_yaw_rad if action_command.look_at_yaw_rad is not None else robot_yaw)
         yaw_error = wrap_to_pi(yaw_target - robot_yaw)
+        wz = np.clip(1.5 * float(yaw_error), -float(self.args.cmd_max_wz), float(self.args.cmd_max_wz))
+        return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)
+
+    def _planner_yaw_command(self, robot_yaw: float) -> np.ndarray:
+        yaw_target = float(self._planner_yaw_target_rad if self._planner_yaw_target_rad is not None else robot_yaw)
+        yaw_error = wrap_to_pi(yaw_target - robot_yaw)
+        if abs(float(yaw_error)) < 0.05:
+            return np.zeros(3, dtype=np.float32)
         wz = np.clip(1.5 * float(yaw_error), -float(self.args.cmd_max_wz), float(self.args.cmd_max_wz))
         return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)

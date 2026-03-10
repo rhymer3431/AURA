@@ -104,3 +104,64 @@ def test_planner_managed_error_maps_to_failure() -> None:
     assert result.status is not None
     assert result.status.state == "failed"
     assert result.status.reason == "dual_step failed"
+
+
+def test_planner_managed_wait_holds_position() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.zeros((0, 3), dtype=np.float32),
+        plan_version=3,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+        planner_control_mode="wait",
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+
+    result = executor.step(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert np.allclose(result.command_vector, np.zeros(3, dtype=np.float32))
+    assert result.status is not None
+    assert result.status.state == "running"
+
+
+def test_planner_managed_yaw_delta_reaches_target() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.zeros((0, 3), dtype=np.float32),
+        plan_version=4,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+        planner_control_mode="yaw_delta",
+        planner_yaw_delta_rad=float(np.pi / 6.0),
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+
+    first = executor.step(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    second = executor.step(
+        frame_idx=2,
+        observation=_observation(),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=float(np.pi / 6.0),
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert first.command_vector[2] > 0.0
+    assert first.status is not None
+    assert first.status.state == "running"
+    assert second.status is not None
+    assert second.status.state == "succeeded"

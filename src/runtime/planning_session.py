@@ -72,6 +72,8 @@ class TrajectoryUpdate:
     goal_local_xy: np.ndarray | None = None
     action_command: ActionCommand | None = None
     stop: bool = False
+    planner_control_mode: str | None = None
+    planner_yaw_delta_rad: float | None = None
     stale_sec: float = -1.0
     goal_version: int = -1
     traj_version: int = -1
@@ -108,6 +110,10 @@ class PlanningSession:
         self._last_plan_version = -1
         self._last_trajectory = np.zeros((0, 3), dtype=np.float32)
         self._last_goal_local_xy = np.zeros(2, dtype=np.float32)
+        self._last_planner_control_mode: str | None = None
+        self._last_planner_yaw_delta_rad: float | None = None
+        self._last_planner_control_reason = ""
+        self._last_used_cached_traj = False
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
@@ -233,6 +239,7 @@ class PlanningSession:
         self.dual_planner.reset_state()
         self._last_plan_version = -1
         self._last_trajectory = np.zeros((0, 3), dtype=np.float32)
+        self._reset_planner_control_state()
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
@@ -461,6 +468,7 @@ class PlanningSession:
                 stop=True,
                 sensor_meta=dict(observation.sensor_meta),
             )
+        force_s2 = bool(self._last_trajectory.shape[0] == 0 and self._last_planner_control_mode != "yaw_delta")
         should_plan = self._last_trajectory.shape[0] == 0 or (
             observation.frame_id % max(int(getattr(self.args, "dual_request_gap_frames", 1)), 1) == 0
         )
@@ -474,7 +482,7 @@ class PlanningSession:
                     cam_pos=observation.cam_pos,
                     cam_quat=observation.cam_quat,
                     events={
-                        "force_s2": bool(self._last_trajectory.shape[0] == 0),
+                        "force_s2": force_s2,
                         "stuck": False,
                         "collision_risk": False,
                     },
@@ -482,11 +490,11 @@ class PlanningSession:
             )
 
         plan = self.dual_planner.consume_latest(last_seen_version=self._last_plan_version)
-        plan_stop = False
+        plan_stop = bool(self._last_planner_control_mode == "stop")
         if plan is not None:
             self._last_dual_response_ts = time.perf_counter()
             self._accept_dual_plan(plan)
-            plan_stop = bool(plan.stop)
+            plan_stop = bool(self._last_planner_control_mode == "stop")
 
         success_calls, failed_calls, last_error, planner_latency_ms = self.dual_planner.snapshot_status()
         self._stats = PlannerStats(
@@ -556,6 +564,7 @@ class PlanningSession:
             )
             self._interactive_log("ROAM", f"{reason} -> {error}")
             self._interactive_clear_active_task()
+            self._reset_planner_control_state()
             self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
             return False
 
@@ -567,6 +576,7 @@ class PlanningSession:
         self._interactive_last_dual_plan_version = -1
         self._interactive_last_dual_failed_calls = 0
         self._interactive_clear_active_task()
+        self._reset_planner_control_state()
         self._interactive_state = "roaming"
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
@@ -593,6 +603,7 @@ class PlanningSession:
         self.dual_planner.reset_state()
         self._interactive_last_dual_plan_version = -1
         self._interactive_last_dual_failed_calls = 0
+        self._reset_planner_control_state()
 
         try:
             self._dual_reset(instruction, prefix="[G1_INTERACTIVE][TASK]")
@@ -666,6 +677,7 @@ class PlanningSession:
     def _update_interactive_task(self, observation: ExecutionObservation) -> bool:
         if self.dual_planner is None:
             raise RuntimeError("interactive dual planner is not initialized")
+        force_s2 = bool(self._last_trajectory.shape[0] == 0 and self._last_planner_control_mode != "yaw_delta")
         should_plan = self._last_trajectory.shape[0] == 0 or (
             observation.frame_id % max(int(getattr(self.args, "dual_request_gap_frames", 1)), 1) == 0
         )
@@ -679,7 +691,7 @@ class PlanningSession:
                     cam_pos=observation.cam_pos,
                     cam_quat=observation.cam_quat,
                     events={
-                        "force_s2": bool(self._last_trajectory.shape[0] == 0),
+                        "force_s2": force_s2,
                         "stuck": False,
                         "collision_risk": False,
                     },
@@ -690,7 +702,8 @@ class PlanningSession:
         if plan is not None:
             self._interactive_last_dual_plan_version = int(plan.plan_version)
             self._last_dual_response_ts = time.perf_counter()
-            if bool(plan.stop):
+            planner_control = dict(plan.planner_control) if isinstance(plan.planner_control, dict) else {}
+            if str(planner_control.get("mode", "trajectory")).strip().lower() == "stop" or bool(plan.stop):
                 self._interactive_log(
                     "TASK",
                     "command_id={} completed goal_v={} traj_v={}".format(
@@ -753,6 +766,7 @@ class PlanningSession:
             source_frame_id = int(latest.source_frame_id)
         else:
             source_frame_id = int(frame_id)
+        self._reset_planner_control_state()
         self._stats = PlannerStats(
             successful_calls=int(success),
             failed_calls=int(failed),
@@ -791,11 +805,28 @@ class PlanningSession:
         )
 
     def _accept_dual_plan(self, plan, *, interactive: bool = False) -> None:
-        if interactive:
-            self._emit_interactive_trajectory(plan.trajectory_world)
+        planner_control = dict(plan.planner_control) if isinstance(plan.planner_control, dict) else {}
+        planner_mode = str(planner_control.get("mode", "trajectory")).strip().lower() or "trajectory"
+        planner_yaw_delta = planner_control.get("yaw_delta_rad")
+        if planner_yaw_delta is not None:
+            planner_yaw_delta = float(planner_yaw_delta)
+        planner_reason = str(planner_control.get("reason", ""))
+        if planner_mode == "trajectory":
+            if interactive:
+                self._emit_interactive_trajectory(plan.trajectory_world)
+            else:
+                self._last_plan_version = int(plan.plan_version)
+                self._last_trajectory = np.asarray(plan.trajectory_world, dtype=np.float32).copy()
         else:
-            self._last_plan_version = int(plan.plan_version)
-            self._last_trajectory = np.asarray(plan.trajectory_world, dtype=np.float32).copy()
+            if interactive:
+                self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
+            else:
+                self._last_plan_version = int(plan.plan_version)
+                self._last_trajectory = np.zeros((0, 3), dtype=np.float32)
+        self._last_planner_control_mode = planner_mode
+        self._last_planner_yaw_delta_rad = planner_yaw_delta
+        self._last_planner_control_reason = planner_reason
+        self._last_used_cached_traj = bool(plan.used_cached_traj if planner_mode == "trajectory" else False)
         self._last_server_stale_sec = float(plan.stale_sec)
         self._last_goal_version = int(plan.goal_version)
         self._last_traj_version = int(plan.traj_version)
@@ -822,6 +853,12 @@ class PlanningSession:
     def _interactive_log(self, phase: str, message: str) -> None:
         print(f"[G1_INTERACTIVE][{phase}] {message}")
 
+    def _reset_planner_control_state(self) -> None:
+        self._last_planner_control_mode = None
+        self._last_planner_yaw_delta_rad = None
+        self._last_planner_control_reason = ""
+        self._last_used_cached_traj = False
+
     def _build_update(
         self,
         *,
@@ -845,13 +882,12 @@ class PlanningSession:
             goal_local_xy=self._last_goal_local_xy.copy() if self.mode == "pointgoal" else None,
             action_command=action_command,
             stop=bool(stop),
+            planner_control_mode=self._last_planner_control_mode,
+            planner_yaw_delta_rad=self._last_planner_yaw_delta_rad,
             stale_sec=float(self._last_server_stale_sec),
             goal_version=int(self._last_goal_version),
             traj_version=int(self._last_traj_version),
-            used_cached_traj=bool(
-                (self.mode == "dual" and self._last_trajectory.shape[0] > 0)
-                or (self.mode == "interactive" and self._interactive_state == "task_active" and self._last_trajectory.shape[0] > 0)
-            ),
+            used_cached_traj=bool(self._last_used_cached_traj),
             sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
             interactive_phase=interactive_phase,
             interactive_command_id=interactive_command_id,
@@ -867,6 +903,9 @@ class PlanningSession:
             state["goal_version"] = int(self._last_goal_version)
             state["traj_version"] = int(self._last_traj_version)
             state["stale_sec"] = float(self._last_server_stale_sec)
+            state["planner_control_mode"] = self._last_planner_control_mode
+            state["planner_yaw_delta_rad"] = self._last_planner_yaw_delta_rad
+            state["planner_control_reason"] = str(self._last_planner_control_reason)
         if self.mode == "interactive":
             state["interactive_phase"] = str(self._interactive_state)
             state["interactive_command_id"] = int(self._interactive_active_command_id)

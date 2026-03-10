@@ -37,6 +37,7 @@ class DualStepResponse:
     traj_version: int
     used_cached_traj: bool
     stale_sec: float
+    planner_control: dict[str, Any]
     debug: dict[str, Any]
 
 
@@ -168,6 +169,9 @@ class DualSystemClient:
                 debug = body.get("debug")
                 if not isinstance(debug, dict):
                     debug = {}
+                planner_control = body.get("planner_control")
+                if not isinstance(planner_control, dict):
+                    planner_control = {"mode": "trajectory", "yaw_delta_rad": None, "reason": ""}
                 return DualStepResponse(
                     trajectory_world=traj,
                     pixel_goal=pixel_goal,
@@ -176,6 +180,7 @@ class DualSystemClient:
                     traj_version=int(body.get("traj_version", -1)),
                     used_cached_traj=bool(body.get("used_cached_traj", True)),
                     stale_sec=float(body.get("stale_sec", -1.0)),
+                    planner_control=dict(planner_control),
                     debug=debug,
                 )
             except Exception as exc:  # noqa: BLE001

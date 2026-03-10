@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from argparse import Namespace
 from pathlib import Path
 
@@ -46,24 +47,26 @@ def test_initial_stop_is_suppressed_until_first_trajectory() -> None:
     orchestrator._finish_s2(
         S2Result(
             ok=True,
-            pixel_x=10,
-            pixel_y=20,
+            mode="stop",
             stop=True,
             reason="arrived",
             source="llm",
-            raw_text='{"pixel_x":10,"pixel_y":20,"stop":true,"reason":"arrived"}',
+            raw_text="STOP",
         ),
         finished_at=123.0,
         generation=0,
     )
 
     assert orchestrator.goal_cache is not None
+    assert orchestrator.goal_cache.mode == "wait"
     assert orchestrator.goal_cache.stop is False
     assert "suppressed" in orchestrator.goal_cache.reason
     assert orchestrator.s2_stop_suppressed_count == 1
     snapshot = orchestrator.debug_state()
     assert snapshot["stats"]["last_s2_requested_stop"] is True
     assert snapshot["stats"]["last_s2_effective_stop"] is False
+    assert snapshot["stats"]["last_s2_mode"] == "wait"
+    assert snapshot["stats"]["last_s2_needs_requery"] is True
 
 
 def test_stop_after_confirmed_trajectory_is_preserved() -> None:
@@ -80,18 +83,18 @@ def test_stop_after_confirmed_trajectory_is_preserved() -> None:
     orchestrator._finish_s2(
         S2Result(
             ok=True,
-            pixel_x=10,
-            pixel_y=20,
+            mode="stop",
             stop=True,
             reason="arrived",
             source="llm",
-            raw_text='{"pixel_x":10,"pixel_y":20,"stop":true,"reason":"arrived"}',
+            raw_text="STOP",
         ),
         finished_at=124.0,
         generation=0,
     )
 
     assert orchestrator.goal_cache is not None
+    assert orchestrator.goal_cache.mode == "stop"
     assert orchestrator.goal_cache.stop is True
     assert orchestrator.s2_stop_suppressed_count == 0
     snapshot = orchestrator.debug_state()
@@ -105,12 +108,13 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
     orchestrator._finish_s2(
         S2Result(
             ok=True,
+            mode="pixel_goal",
             pixel_x=11,
             pixel_y=22,
             stop=False,
             reason="forward",
             source="llm",
-            raw_text='{"pixel_x":11,"pixel_y":22,"stop":false,"reason":"forward"}',
+            raw_text="22, 11",
         ),
         finished_at=123.0,
         generation=0,
@@ -122,12 +126,13 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
     orchestrator._finish_s2(
         S2Result(
             ok=True,
+            mode="pixel_goal",
             pixel_x=11,
             pixel_y=22,
             stop=False,
             reason="forward again",
             source="llm",
-            raw_text='{"pixel_x":11,"pixel_y":22,"stop":false,"reason":"forward again"}',
+            raw_text="22, 11",
         ),
         finished_at=124.0,
         generation=0,
@@ -145,9 +150,11 @@ def test_step_skips_periodic_s2_until_first_trajectory() -> None:
     orchestrator.goal_version = 0
     orchestrator.traj_version = -1
     orchestrator.goal_cache = GoalCache(
+        mode="pixel_goal",
         pixel_x=10,
         pixel_y=20,
         stop=False,
+        yaw_delta_rad=None,
         reason="goal",
         version=0,
         updated_at=0.0,
@@ -180,12 +187,13 @@ def test_finish_s2_ignores_stale_generation_results() -> None:
     orchestrator._finish_s2(
         S2Result(
             ok=True,
+            mode="pixel_goal",
             pixel_x=9,
             pixel_y=19,
             stop=False,
             reason="stale",
             source="llm",
-            raw_text='{"pixel_x":9,"pixel_y":19,"stop":false,"reason":"stale"}',
+            raw_text="19, 9",
         ),
         finished_at=125.0,
         generation=0,
@@ -193,3 +201,37 @@ def test_finish_s2_ignores_stale_generation_results() -> None:
 
     assert orchestrator.goal_cache is None
     assert orchestrator.s2_calls == 0
+
+
+def test_step_returns_yaw_delta_without_launching_s1() -> None:
+    orchestrator = DualOrchestrator(_args())
+    orchestrator.initialized = True
+    orchestrator.goal_version = 0
+    orchestrator.goal_cache = GoalCache(
+        mode="yaw_delta",
+        pixel_x=None,
+        pixel_y=None,
+        stop=False,
+        yaw_delta_rad=float(np.pi / 6.0),
+        reason="←",
+        version=0,
+        updated_at=time.time(),
+        source="llm",
+    )
+    orchestrator._s1_worker = lambda *args, **kwargs: None  # type: ignore[method-assign]
+    orchestrator._s2_worker = lambda *args, **kwargs: None  # type: ignore[method-assign]
+
+    response = orchestrator.step(
+        image_bgr=np.zeros((8, 8, 3), dtype=np.uint8),
+        depth_m=np.ones((8, 8), dtype=np.float32),
+        step_id=2,
+        cam_pos=np.zeros(3, dtype=np.float32),
+        cam_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        sensor_meta={},
+        events={},
+    )
+
+    assert response["trajectory_world"] == []
+    assert response["planner_control"]["mode"] == "yaw_delta"
+    assert response["planner_control"]["yaw_delta_rad"] == float(np.pi / 6.0)
+    assert response["debug"]["called_s1"] is False

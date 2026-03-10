@@ -362,6 +362,7 @@ class DualPlannerOutput:
     traj_version: int
     stale_sec: float
     used_cached_traj: bool
+    planner_control: dict[str, Any]
     debug: dict[str, Any]
     latency_ms: float
     successful_calls: int
@@ -430,6 +431,7 @@ class AsyncDualPlanner:
                 traj_version=int(latest.traj_version),
                 stale_sec=float(latest.stale_sec),
                 used_cached_traj=bool(latest.used_cached_traj),
+                planner_control=dict(latest.planner_control),
                 debug=dict(latest.debug),
                 latency_ms=float(latest.latency_ms),
                 successful_calls=int(latest.successful_calls),
@@ -473,7 +475,18 @@ class AsyncDualPlanner:
                 trajectory_world = np.asarray(response.trajectory_world, dtype=np.float32)
                 if trajectory_world.ndim != 2 or trajectory_world.shape[1] < 2:
                     raise ValueError(f"dual_step returned invalid trajectory shape: {trajectory_world.shape}")
-                if not bool(response.stop) and trajectory_world.shape[0] == 0:
+                raw_planner_control = getattr(response, "planner_control", None)
+                planner_control = dict(raw_planner_control) if isinstance(raw_planner_control, dict) else {}
+                planner_control_mode = str(planner_control.get("mode", "trajectory")).strip().lower() or "trajectory"
+                if planner_control_mode not in {"trajectory", "yaw_delta", "stop", "wait"}:
+                    planner_control_mode = "trajectory"
+                planner_control["mode"] = planner_control_mode
+                if "reason" not in planner_control:
+                    planner_control["reason"] = ""
+                if "yaw_delta_rad" not in planner_control:
+                    planner_control["yaw_delta_rad"] = None
+                expects_trajectory = planner_control_mode == "trajectory"
+                if expects_trajectory and not bool(response.stop) and trajectory_world.shape[0] == 0:
                     wait_message = _summarize_dual_response_error(
                         goal_version=int(response.goal_version),
                         traj_version=int(response.traj_version),
@@ -510,6 +523,7 @@ class AsyncDualPlanner:
                         traj_version=int(response.traj_version),
                         stale_sec=float(response.stale_sec),
                         used_cached_traj=bool(response.used_cached_traj),
+                        planner_control=planner_control,
                         debug=dict(response.debug),
                         latency_ms=float(latency_ms),
                         successful_calls=int(self._successful_calls),

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import io
 import json
 import math
@@ -14,27 +13,13 @@ import requests
 
 from common.cv2_compat import cv2
 from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world
-
-S2_JSON_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "properties": {
-        "pixel_x": {"type": "integer"},
-        "pixel_y": {"type": "integer"},
-        "stop": {"type": "boolean"},
-        "reason": {"type": "string"},
-    },
-    "required": ["pixel_x", "pixel_y", "stop", "reason"],
-    "additionalProperties": False,
-}
-
-
-def build_vlm_endpoint(url: str) -> str:
-    raw = str(url).strip()
-    if raw == "":
-        return "http://127.0.0.1:8080/v1/chat/completions"
-    if raw.endswith("/v1/chat/completions"):
-        return raw
-    return raw.rstrip("/") + "/v1/chat/completions"
+from inference.vlm import (
+    System2Request,
+    System2Session,
+    System2SessionConfig,
+    System2SessionResult,
+    build_vlm_endpoint,
+)
 
 
 def parse_json_field(raw: str | None, fallback: Any) -> Any:
@@ -46,38 +31,13 @@ def parse_json_field(raw: str | None, fallback: Any) -> Any:
         return fallback
 
 
-def extract_json_object(text: str) -> dict[str, Any]:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("No JSON object found in VLM output.")
-    return json.loads(text[start : end + 1])
-
-
-def extract_chat_content(body: dict[str, Any]) -> str:
-    choices = body.get("choices")
-    if not isinstance(choices, list) or len(choices) == 0:
-        raise ValueError("VLM response missing choices.")
-    message = choices[0].get("message", {})
-    content = message.get("content", "")
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts: list[str] = []
-        for item in content:
-            if isinstance(item, dict):
-                maybe_text = item.get("text")
-                if isinstance(maybe_text, str):
-                    parts.append(maybe_text)
-        return "\n".join(parts)
-    raise ValueError("Unsupported VLM content format.")
-
-
 @dataclass
 class GoalCache:
-    pixel_x: int
-    pixel_y: int
+    mode: str
+    pixel_x: int | None
+    pixel_y: int | None
     stop: bool
+    yaw_delta_rad: float | None
     reason: str
     version: int
     updated_at: float
@@ -96,14 +56,18 @@ class TrajectoryCache:
 @dataclass
 class S2Result:
     ok: bool
-    pixel_x: int = 0
-    pixel_y: int = 0
+    mode: str = "wait"
+    pixel_x: int | None = None
+    pixel_y: int | None = None
     stop: bool = False
+    yaw_delta_rad: float | None = None
     reason: str = ""
     latency_ms: float = 0.0
     source: str = "none"
     error: str = ""
     raw_text: str = ""
+    history_frame_ids: tuple[int, ...] = ()
+    needs_requery: bool = False
 
 
 @dataclass
@@ -138,6 +102,20 @@ class DualOrchestrator:
         self.stop_threshold = float(args.stop_threshold)
         self.use_trajectory_z = bool(args.use_trajectory_z)
         self.debug_log = bool(args.debug_log)
+        self.system2_session = System2Session(
+            System2SessionConfig(
+                endpoint=self.vlm_endpoint,
+                model=self.vlm_model,
+                temperature=self.vlm_temperature,
+                top_k=self.vlm_top_k,
+                top_p=self.vlm_top_p,
+                min_p=self.vlm_min_p,
+                repeat_penalty=self.vlm_repeat_penalty,
+                timeout_sec=self.vlm_timeout_sec,
+                num_history=8,
+                mode="mock" if self.s2_mode == "mock" else "llm",
+            )
+        )
         self.initialized = False
         self.instruction = ""
         self.intrinsic: np.ndarray | None = None
@@ -164,6 +142,9 @@ class DualOrchestrator:
         self.last_s2_raw_text = ""
         self.last_s2_requested_stop = False
         self.last_s2_effective_stop = False
+        self.last_s2_mode = "wait"
+        self.last_s2_history_frame_ids: tuple[int, ...] = ()
+        self.last_s2_needs_requery = False
         self.s2_stop_suppressed_count = 0
         self._generation = 0
 
@@ -247,8 +228,12 @@ class DualOrchestrator:
             self.last_s2_raw_text = ""
             self.last_s2_requested_stop = False
             self.last_s2_effective_stop = False
+            self.last_s2_mode = "wait"
+            self.last_s2_history_frame_ids = ()
+            self.last_s2_needs_requery = False
             self.s2_stop_suppressed_count = 0
             self.initialized = True
+        self.system2_session.reset(instruction)
 
         self._debug(
             f"dual_reset navdp={self.navdp_url} s1={self.s1_period_sec:.3f}s "
@@ -257,110 +242,52 @@ class DualOrchestrator:
         )
         return True, {"algo": "dual", "state": self.debug_state()}
 
-    def _call_s2_mock(self, image_bgr: np.ndarray, events: dict[str, Any]) -> S2Result:
-        h, w = image_bgr.shape[:2]
-        collision_risk = bool(events.get("collision_risk", False))
-        stuck = bool(events.get("stuck", False))
-        if collision_risk:
-            pixel_x = int(0.25 * w)
-            pixel_y = int(0.70 * h)
-            reason = "mock_collision_avoid"
-        elif stuck:
-            pixel_x = int(0.75 * w)
-            pixel_y = int(0.65 * h)
-            reason = "mock_stuck_recover"
-        else:
-            pixel_x = int(0.50 * w)
-            pixel_y = int(0.70 * h)
-            reason = "mock_forward"
-        return S2Result(
-            ok=True,
-            pixel_x=int(np.clip(pixel_x, 0, max(w - 1, 0))),
-            pixel_y=int(np.clip(pixel_y, 0, max(h - 1, 0))),
-            stop=False,
-            reason=reason,
-            source="mock",
-            latency_ms=0.0,
-        )
+    def _prepare_s2_request(self, events: dict[str, Any]) -> System2Request:
+        return self.system2_session.prepare_request(events=events)
 
-    def _call_s2_vlm(self, image_bgr: np.ndarray, events: dict[str, Any]) -> S2Result:
-        start = time.perf_counter()
-        ok_jpg, jpg = cv2.imencode(".jpg", image_bgr)
-        if not ok_jpg:
-            return S2Result(ok=False, error="failed to encode image for VLM")
-        jpg_base64 = base64.b64encode(io.BytesIO(jpg).getvalue()).decode("ascii")
-        h, w = image_bgr.shape[:2]
-        prompt = (
-            "You are System2 of a navigation dual-system.\n"
-            "Return ONLY JSON object with fields: "
-            "{\"pixel_x\":int,\"pixel_y\":int,\"stop\":bool,\"reason\":string}.\n"
-            f"Image size: width={w}, height={h}.\n"
-            f"Instruction: {self.instruction}\n"
-            f"Events: {json.dumps(events, ensure_ascii=True)}.\n"
-            "Pick pixel near free-space direction. Clamp bounds.\n"
-            "Set stop=true ONLY if the robot has already reached the destination and should remain stopped now.\n"
-            "If any further navigation is needed, or if the scene is ambiguous, set stop=false."
-        )
-        payload = {
-            "model": self.vlm_model,
-            "temperature": float(self.vlm_temperature),
-            "top_k": int(self.vlm_top_k),
-            "top_p": float(self.vlm_top_p),
-            "min_p": float(self.vlm_min_p),
-            "repeat_penalty": float(self.vlm_repeat_penalty),
-            "max_tokens": 96,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"schema": S2_JSON_SCHEMA},
-            },
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Strictly output valid JSON only.",
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{jpg_base64}"}},
-                    ],
-                },
-            ],
-        }
-        try:
-            resp = requests.post(self.vlm_endpoint, json=payload, timeout=float(self.vlm_timeout_sec))
-            resp.raise_for_status()
-            body = resp.json()
-            text = extract_chat_content(body)
-            parsed = extract_json_object(text)
-            raw_x = int(parsed.get("pixel_x", parsed.get("x", w // 2)))
-            raw_y = int(parsed.get("pixel_y", parsed.get("y", int(0.7 * h))))
-            stop = bool(parsed.get("stop", False))
-            reason = str(parsed.get("reason", "llm"))
-            latency_ms = (time.perf_counter() - start) * 1000.0
-            return S2Result(
-                ok=True,
-                pixel_x=int(np.clip(raw_x, 0, max(w - 1, 0))),
-                pixel_y=int(np.clip(raw_y, 0, max(h - 1, 0))),
-                stop=stop,
-                reason=reason,
-                source="llm",
-                raw_text=text,
-                latency_ms=float(latency_ms),
-            )
-        except Exception as exc:  # noqa: BLE001
-            latency_ms = (time.perf_counter() - start) * 1000.0
+    def _normalize_system2_result(self, result: System2SessionResult) -> S2Result:
+        if not result.ok or result.decision is None:
             return S2Result(
                 ok=False,
-                error=f"{type(exc).__name__}: {exc}",
-                source="llm",
-                latency_ms=float(latency_ms),
+                error=str(result.error),
+                source=str(result.source),
+                latency_ms=float(result.latency_ms),
             )
 
-    def _call_s2(self, image_bgr: np.ndarray, events: dict[str, Any]) -> S2Result:
-        if self.s2_mode == "mock":
-            return self._call_s2_mock(image_bgr, events)
-        return self._call_s2_vlm(image_bgr, events)
+        decision = result.decision
+        pixel_x = None
+        pixel_y = None
+        stop = False
+        yaw_delta_rad = None
+        normalized_mode = str(decision.mode)
+        if decision.mode == "pixel_goal" and decision.pixel_goal is not None:
+            pixel_x = int(decision.pixel_goal[0])
+            pixel_y = int(decision.pixel_goal[1])
+        elif decision.mode == "stop":
+            stop = True
+        elif decision.mode == "yaw_left":
+            normalized_mode = "yaw_delta"
+            yaw_delta_rad = float(math.pi / 6.0)
+        elif decision.mode == "yaw_right":
+            normalized_mode = "yaw_delta"
+            yaw_delta_rad = float(-math.pi / 6.0)
+        else:
+            normalized_mode = "wait"
+
+        return S2Result(
+            ok=True,
+            mode=normalized_mode,
+            pixel_x=pixel_x,
+            pixel_y=pixel_y,
+            stop=bool(stop),
+            yaw_delta_rad=yaw_delta_rad,
+            reason=str(decision.reason),
+            latency_ms=float(result.latency_ms),
+            source=str(result.source),
+            raw_text=str(decision.raw_text),
+            history_frame_ids=tuple(decision.history_frame_ids),
+            needs_requery=bool(decision.needs_requery),
+        )
 
     def _call_s1(
         self,
@@ -431,18 +358,38 @@ class DualOrchestrator:
             self.s2_calls += 1
             self.last_s2_ts = float(finished_at)
             if result.ok:
-                requested_stop = bool(result.stop)
+                requested_stop = bool(result.stop or result.mode == "stop")
                 stop_suppressed = requested_stop and self.traj_version < 0
+                effective_mode = str(result.mode)
                 effective_stop = requested_stop and not stop_suppressed
+                effective_yaw_delta = result.yaw_delta_rad
+                effective_pixel_x = result.pixel_x
+                effective_pixel_y = result.pixel_y
+                effective_needs_requery = bool(result.needs_requery)
                 reason = str(result.reason)
                 if stop_suppressed:
                     self.s2_stop_suppressed_count += 1
+                    effective_mode = "wait"
+                    effective_stop = False
+                    effective_yaw_delta = None
+                    effective_pixel_x = None
+                    effective_pixel_y = None
+                    effective_needs_requery = True
                     reason = reason + " [initial stop suppressed until first confirmed trajectory]"
                 same_goal_as_current = (
                     self.goal_cache is not None
-                    and int(self.goal_cache.pixel_x) == int(result.pixel_x)
-                    and int(self.goal_cache.pixel_y) == int(result.pixel_y)
+                    and str(self.goal_cache.mode) == str(effective_mode)
+                    and self.goal_cache.pixel_x == effective_pixel_x
+                    and self.goal_cache.pixel_y == effective_pixel_y
                     and bool(self.goal_cache.stop) == bool(effective_stop)
+                    and (
+                        (self.goal_cache.yaw_delta_rad is None and effective_yaw_delta is None)
+                        or (
+                            self.goal_cache.yaw_delta_rad is not None
+                            and effective_yaw_delta is not None
+                            and math.isclose(float(self.goal_cache.yaw_delta_rad), float(effective_yaw_delta), abs_tol=1.0e-6)
+                        )
+                    )
                 )
                 if same_goal_as_current and self.goal_cache is not None:
                     goal_version = int(self.goal_cache.version)
@@ -450,9 +397,11 @@ class DualOrchestrator:
                     self.goal_version += 1
                     goal_version = int(self.goal_version)
                 self.goal_cache = GoalCache(
-                    pixel_x=int(result.pixel_x),
-                    pixel_y=int(result.pixel_y),
+                    mode=str(effective_mode),
+                    pixel_x=None if effective_pixel_x is None else int(effective_pixel_x),
+                    pixel_y=None if effective_pixel_y is None else int(effective_pixel_y),
                     stop=bool(effective_stop),
+                    yaw_delta_rad=None if effective_yaw_delta is None else float(effective_yaw_delta),
                     reason=reason,
                     version=goal_version,
                     updated_at=float(finished_at),
@@ -464,8 +413,11 @@ class DualOrchestrator:
                 self.last_s2_raw_text = str(result.raw_text)
                 self.last_s2_requested_stop = bool(requested_stop)
                 self.last_s2_effective_stop = bool(effective_stop)
+                self.last_s2_mode = str(effective_mode)
+                self.last_s2_history_frame_ids = tuple(result.history_frame_ids)
+                self.last_s2_needs_requery = bool(effective_needs_requery)
                 self.s2_retry_after_ts = 0.0
-                self.force_s2_pending = False
+                self.force_s2_pending = bool(effective_needs_requery)
             else:
                 self.s2_fail += 1
                 self.last_s2_error = str(result.error)
@@ -473,14 +425,20 @@ class DualOrchestrator:
                 self.last_s2_raw_text = str(result.raw_text)
                 self.last_s2_requested_stop = False
                 self.last_s2_effective_stop = False
+                self.last_s2_mode = "wait"
+                self.last_s2_history_frame_ids = ()
+                self.last_s2_needs_requery = False
                 base_delay = max(1.0, min(4.0, float(self.s2_period_sec)))
                 delay = min(float(self.s2_failure_backoff_max_sec), base_delay * (2 ** max(self.s2_fail - 1, 0)))
                 self.s2_retry_after_ts = float(finished_at) + delay
                 self.force_s2_pending = True
 
-    def _s2_worker(self, image_bgr: np.ndarray, events: dict[str, Any], generation: int) -> None:
+    def _s2_worker(self, request: System2Request, generation: int) -> None:
         try:
-            result = self._call_s2(image_bgr=image_bgr, events=events)
+            session_result = self.system2_session.execute_request(request)
+            if session_result.ok:
+                self.system2_session.record_result(session_result)
+            result = self._normalize_system2_result(session_result)
         except Exception as exc:  # noqa: BLE001
             result = S2Result(ok=False, error=f"{type(exc).__name__}: {exc}", source="worker")
         self._finish_s2(result=result, finished_at=time.time(), generation=int(generation))
@@ -565,9 +523,11 @@ class DualOrchestrator:
                 "goal_cache": None
                 if goal is None
                 else {
+                    "mode": goal.mode,
                     "pixel_x": goal.pixel_x,
                     "pixel_y": goal.pixel_y,
                     "stop": goal.stop,
+                    "yaw_delta_rad": goal.yaw_delta_rad,
                     "reason": goal.reason,
                     "version": goal.version,
                     "age_sec": goal_age,
@@ -595,6 +555,9 @@ class DualOrchestrator:
                     "last_s2_reason": self.last_s2_reason,
                     "last_s2_requested_stop": self.last_s2_requested_stop,
                     "last_s2_effective_stop": self.last_s2_effective_stop,
+                    "last_s2_mode": self.last_s2_mode,
+                    "last_s2_history_frame_ids": list(self.last_s2_history_frame_ids),
+                    "last_s2_needs_requery": self.last_s2_needs_requery,
                     "last_s2_raw_text": self.last_s2_raw_text[:400],
                     "s2_stop_suppressed_count": self.s2_stop_suppressed_count,
                     "s1_inflight": self.s1_inflight,
@@ -602,6 +565,7 @@ class DualOrchestrator:
                     "force_s2_pending": self.force_s2_pending,
                     "s2_retry_after_ts": self.s2_retry_after_ts,
                 },
+                "system2_session": self.system2_session.debug_state(),
             }
 
     def debug_state(self) -> dict[str, Any]:
@@ -618,9 +582,13 @@ class DualOrchestrator:
         sensor_meta: dict[str, Any],
         events: dict[str, Any],
     ) -> dict[str, Any]:
+        image = np.asarray(image_bgr, dtype=np.uint8)
+        depth = np.asarray(depth_m, dtype=np.float32)
+        self.system2_session.observe(int(step_id), image)
         now = time.time()
         launch_s2 = False
         launch_s1 = False
+        s2_request: System2Request | None = None
         s1_goal_version = -1
         s1_pixel_goal = (0, 0)
         generation = -1
@@ -639,7 +607,7 @@ class DualOrchestrator:
             goal_missing = goal is None
             goal_stale = (goal is not None) and ((now - goal.updated_at) > self.goal_ttl_sec)
             due_s2 = (now - self.last_s2_ts) >= self.s2_period_sec
-            awaiting_first_traj = goal is not None and traj is None and not goal.stop
+            awaiting_first_traj = goal is not None and traj is None and goal.mode == "pixel_goal" and not goal.stop
             backoff_active = now < self.s2_retry_after_ts
             should_s2 = force_s2 or goal_missing or goal_stale or due_s2
             if awaiting_first_traj and not force_s2:
@@ -653,11 +621,18 @@ class DualOrchestrator:
 
             goal = self.goal_cache
             traj = self.traj_cache
-            goal_changed = goal is not None and (traj is None or traj.goal_version != goal.version)
+            goal_is_pixel = (
+                goal is not None
+                and goal.mode == "pixel_goal"
+                and goal.pixel_x is not None
+                and goal.pixel_y is not None
+                and not goal.stop
+            )
+            goal_changed = bool(goal_is_pixel and (traj is None or traj.goal_version != goal.version))
             traj_missing = traj is None
             traj_stale = (traj is not None) and ((now - traj.updated_at) > self.traj_ttl_sec)
             due_s1 = (now - self.last_s1_ts) >= self.s1_period_sec
-            should_s1 = (goal is not None and not goal.stop) and (goal_changed or traj_missing or traj_stale or due_s1)
+            should_s1 = bool(goal_is_pixel and (goal_changed or traj_missing or traj_stale or due_s1))
             if should_s1 and not self.s1_inflight and goal is not None:
                 self.s1_inflight = True
                 launch_s1 = True
@@ -665,9 +640,20 @@ class DualOrchestrator:
                 s1_pixel_goal = (int(goal.pixel_x), int(goal.pixel_y))
 
         if launch_s2:
+            try:
+                s2_request = self._prepare_s2_request(dict(events))
+            except Exception as exc:  # noqa: BLE001
+                self._finish_s2(
+                    S2Result(ok=False, error=f"{type(exc).__name__}: {exc}", source="prepare_request"),
+                    finished_at=time.time(),
+                    generation=int(generation),
+                )
+                launch_s2 = False
+
+        if launch_s2:
             threading.Thread(
                 target=self._s2_worker,
-                args=(np.asarray(image_bgr, dtype=np.uint8).copy(), dict(events), int(generation)),
+                args=(s2_request, int(generation)),
                 name="dual-s2-worker",
                 daemon=True,
             ).start()
@@ -676,8 +662,8 @@ class DualOrchestrator:
             threading.Thread(
                 target=self._s1_worker,
                 args=(
-                    np.asarray(image_bgr, dtype=np.uint8).copy(),
-                    np.asarray(depth_m, dtype=np.float32).copy(),
+                    image.copy(),
+                    depth.copy(),
                     s1_pixel_goal,
                     dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
                     np.asarray(cam_pos, dtype=np.float32).copy(),
@@ -692,12 +678,28 @@ class DualOrchestrator:
         with self._lock:
             goal = self.goal_cache
             traj = self.traj_cache
+            planner_mode = "wait" if goal is None else "trajectory"
+            planner_yaw_delta_rad = None
+            planner_reason = ""
+            pixel_goal = None
             stop = bool(goal.stop) if goal is not None else False
             goal_version = int(goal.version) if goal is not None else -1
             traj_version = int(traj.version) if traj is not None else -1
-            pixel_goal = [int(goal.pixel_x), int(goal.pixel_y)] if goal is not None else None
+            if goal is not None:
+                planner_reason = str(goal.reason)
+                if goal.mode == "pixel_goal" and goal.pixel_x is not None and goal.pixel_y is not None:
+                    pixel_goal = [int(goal.pixel_x), int(goal.pixel_y)]
+                    planner_mode = "trajectory"
+                elif goal.mode == "yaw_delta":
+                    planner_mode = "yaw_delta"
+                    planner_yaw_delta_rad = None if goal.yaw_delta_rad is None else float(goal.yaw_delta_rad)
+                elif goal.mode == "stop":
+                    planner_mode = "stop"
+                else:
+                    planner_mode = "wait"
 
-            if traj is None:
+            used_cached_traj = False
+            if traj is None or planner_mode != "trajectory":
                 traj_age = float("inf")
                 trajectory_world = np.zeros((0, 3), dtype=np.float32)
             else:
@@ -706,6 +708,7 @@ class DualOrchestrator:
                     trajectory_world = np.zeros((0, 3), dtype=np.float32)
                 elif traj_age <= self.traj_max_stale_sec:
                     trajectory_world = traj.trajectory_world.copy()
+                    used_cached_traj = True
                 else:
                     trajectory_world = np.zeros((0, 3), dtype=np.float32)
                     self.force_s2_pending = True
@@ -719,6 +722,9 @@ class DualOrchestrator:
                 "s1_ok": None,
                 "s2_error": self.last_s2_error,
                 "s1_error": self.last_s1_error,
+                "planner_control_mode": planner_mode,
+                "planner_control_reason": planner_reason,
+                "planner_control_yaw_delta_rad": planner_yaw_delta_rad,
                 "s2_source": "",
                 "s2_latency_ms": 0.0,
                 "s1_latency_ms": 0.0,
@@ -746,7 +752,12 @@ class DualOrchestrator:
             "stop": stop,
             "goal_version": goal_version,
             "traj_version": traj_version,
-            "used_cached_traj": True,
+            "used_cached_traj": used_cached_traj,
             "stale_sec": float(stale_sec),
+            "planner_control": {
+                "mode": planner_mode,
+                "yaw_delta_rad": planner_yaw_delta_rad,
+                "reason": planner_reason,
+            },
             "debug": debug,
         }
