@@ -112,7 +112,8 @@ class DualOrchestrator:
                 min_p=self.vlm_min_p,
                 repeat_penalty=self.vlm_repeat_penalty,
                 timeout_sec=self.vlm_timeout_sec,
-                num_history=8,
+                num_history=int(getattr(args, "vlm_num_history", 8)),
+                max_images_per_request=int(getattr(args, "vlm_max_images_per_request", 3)),
                 mode="mock" if self.s2_mode == "mock" else "llm",
             )
         )

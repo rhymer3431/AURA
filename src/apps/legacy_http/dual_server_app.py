@@ -20,6 +20,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--vlm-top-p", type=float, default=0.95)
     parser.add_argument("--vlm-min-p", type=float, default=0.05)
     parser.add_argument("--vlm-repeat-penalty", type=float, default=1.1)
+    parser.add_argument("--vlm-num-history", type=int, default=8)
+    parser.add_argument("--vlm-max-images-per-request", type=int, default=3)
     parser.add_argument("--s2-mode", type=str, choices=("auto", "mock"), default="auto")
     parser.add_argument("--s1-period-sec", type=float, default=0.2)
     parser.add_argument("--s2-period-sec", type=float, default=1.0)

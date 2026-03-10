@@ -25,6 +25,8 @@ def _args() -> Namespace:
         vlm_top_p=0.95,
         vlm_min_p=0.05,
         vlm_repeat_penalty=1.1,
+        vlm_num_history=8,
+        vlm_max_images_per_request=3,
         s2_mode="auto",
         s1_period_sec=0.2,
         s2_period_sec=1.0,

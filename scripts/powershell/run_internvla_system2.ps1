@@ -10,6 +10,12 @@ param(
     [string]$HFMMProjFile = "InternVLA-N1-System2.mmproj-Q8_0.gguf",
     [int]$ContextSize = 8192,
     [string]$GpuLayers = "auto",
+    [ValidateSet("on", "off")]
+    [string]$PromptCache = "off",
+    [int]$CacheRamMiB = 0,
+    [int]$Parallel = 1,
+    [int]$ThreadsHttp = 1,
+    [int]$ImageMaxTokens = 0,
     [int]$ReasoningBudget = 0,
     [switch]$SkipMmprojDownload,
     [switch]$ForceCudaRuntimeRefresh
@@ -30,6 +36,11 @@ if (-not $PSBoundParameters.ContainsKey("HFRepo") -and $env:INTERNVLA_HF_REPO) {
 if (-not $PSBoundParameters.ContainsKey("HFMMProjFile") -and $env:INTERNVLA_HF_MMPROJ_FILE) { $HFMMProjFile = $env:INTERNVLA_HF_MMPROJ_FILE }
 if (-not $PSBoundParameters.ContainsKey("ContextSize") -and $env:INTERNVLA_CTX_SIZE) { $ContextSize = [int]$env:INTERNVLA_CTX_SIZE }
 if (-not $PSBoundParameters.ContainsKey("GpuLayers") -and $env:INTERNVLA_GPU_LAYERS) { $GpuLayers = $env:INTERNVLA_GPU_LAYERS }
+if (-not $PSBoundParameters.ContainsKey("PromptCache") -and $env:INTERNVLA_PROMPT_CACHE) { $PromptCache = $env:INTERNVLA_PROMPT_CACHE }
+if (-not $PSBoundParameters.ContainsKey("CacheRamMiB") -and $env:INTERNVLA_CACHE_RAM_MIB) { $CacheRamMiB = [int]$env:INTERNVLA_CACHE_RAM_MIB }
+if (-not $PSBoundParameters.ContainsKey("Parallel") -and $env:INTERNVLA_PARALLEL) { $Parallel = [int]$env:INTERNVLA_PARALLEL }
+if (-not $PSBoundParameters.ContainsKey("ThreadsHttp") -and $env:INTERNVLA_THREADS_HTTP) { $ThreadsHttp = [int]$env:INTERNVLA_THREADS_HTTP }
+if (-not $PSBoundParameters.ContainsKey("ImageMaxTokens") -and $env:INTERNVLA_IMAGE_MAX_TOKENS) { $ImageMaxTokens = [int]$env:INTERNVLA_IMAGE_MAX_TOKENS }
 if (-not $PSBoundParameters.ContainsKey("ReasoningBudget") -and $env:INTERNVLA_REASONING_BUDGET) { $ReasoningBudget = [int]$env:INTERNVLA_REASONING_BUDGET }
 
 function Resolve-ProjectPath([string]$InputPath) {
@@ -216,6 +227,10 @@ if ([string]::IsNullOrWhiteSpace($ResolvedChatTemplateFile)) {
 }
 Write-Host "[InternVLA System2] host=$ListenHost port=$Port"
 Write-Host "[InternVLA System2] reasoning-budget=$ReasoningBudget"
+Write-Host "[InternVLA System2] prompt-cache=$PromptCache cache-ram-mib=$CacheRamMiB parallel=$Parallel threads-http=$ThreadsHttp"
+if ($ImageMaxTokens -gt 0) {
+    Write-Host "[InternVLA System2] image-max-tokens=$ImageMaxTokens"
+}
 
 Push-Location $RepoDir
 try {
@@ -226,8 +241,19 @@ try {
         "--mmproj", $ResolvedMmprojPath,
         "--ctx-size", $ContextSize,
         "--gpu-layers", $GpuLayerArg,
+        "--cache-ram", $CacheRamMiB,
+        "--parallel", $Parallel,
+        "--threads-http", $ThreadsHttp,
         "--reasoning-budget", $ReasoningBudget
     )
+    if ($PromptCache -eq "on") {
+        $ServerArgs += @("--cache-prompt")
+    } else {
+        $ServerArgs += @("--no-cache-prompt")
+    }
+    if ($ImageMaxTokens -gt 0) {
+        $ServerArgs += @("--image-max-tokens", $ImageMaxTokens)
+    }
     if (-not [string]::IsNullOrWhiteSpace($ResolvedChatTemplateFile)) {
         $ServerArgs += @("--chat-template-file", $ResolvedChatTemplateFile)
     }

@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
+$RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\..\.."))
 $EntryModule = "apps.legacy_http.dual_server_app"
 $SrcDir = Join-Path $RepoDir "src"
 $PathSep = [System.IO.Path]::PathSeparator
@@ -19,6 +19,8 @@ $VLMTopK = if ($env:DUAL_VLM_TOP_K) { $env:DUAL_VLM_TOP_K } else { "40" }
 $VLMTopP = if ($env:DUAL_VLM_TOP_P) { $env:DUAL_VLM_TOP_P } else { "0.95" }
 $VLMMinP = if ($env:DUAL_VLM_MIN_P) { $env:DUAL_VLM_MIN_P } else { "0.05" }
 $VLMRepeatPenalty = if ($env:DUAL_VLM_REPEAT_PENALTY) { $env:DUAL_VLM_REPEAT_PENALTY } else { "1.1" }
+$VLMNumHistory = if ($env:DUAL_VLM_NUM_HISTORY) { $env:DUAL_VLM_NUM_HISTORY } else { "8" }
+$VLMMaxImagesPerRequest = if ($env:DUAL_VLM_MAX_IMAGES_PER_REQUEST) { $env:DUAL_VLM_MAX_IMAGES_PER_REQUEST } else { "3" }
 $S2Mode = if ($env:DUAL_S2_MODE) { $env:DUAL_S2_MODE } else { "auto" }
 $VLMTimeoutSec = if ($env:DUAL_VLM_TIMEOUT_SEC) { $env:DUAL_VLM_TIMEOUT_SEC } else { "35" }
 $S2BackoffMaxSec = if ($env:DUAL_S2_BACKOFF_MAX_SEC) { $env:DUAL_S2_BACKOFF_MAX_SEC } else { "30" }
@@ -140,6 +142,7 @@ Write-Host "[VLM Dual Server] host=$ListenHost port=$Port"
 Write-Host "[VLM Dual Server] navdp-url=$NavDPUrl vlm-url=$VLMUrl vlm-model=$VLMModel s2-mode=$S2Mode"
 Write-Host "[VLM Dual Server] vlm-timeout-sec=$VLMTimeoutSec s2-backoff-max-sec=$S2BackoffMaxSec"
 Write-Host "[VLM Dual Server] vlm-sampling temp=$VLMTemperature top-k=$VLMTopK top-p=$VLMTopP min-p=$VLMMinP repeat-penalty=$VLMRepeatPenalty"
+Write-Host "[VLM Dual Server] vlm-history num-history=$VLMNumHistory max-images-per-request=$VLMMaxImagesPerRequest"
 
 Push-Location $RepoDir
 $PreviousPythonPath = $env:PYTHONPATH
@@ -149,7 +152,7 @@ if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = "$SrcDir$PathSep$PreviousPythonPath"
 }
 try {
-    & $CondaExe run --no-capture-output -n $CondaEnv python -m $EntryModule --host $ListenHost --port $Port --navdp-url $NavDPUrl --vlm-url $VLMUrl --vlm-model $VLMModel --vlm-temperature $VLMTemperature --vlm-top-k $VLMTopK --vlm-top-p $VLMTopP --vlm-min-p $VLMMinP --vlm-repeat-penalty $VLMRepeatPenalty --s2-mode $S2Mode --vlm-timeout-sec $VLMTimeoutSec --s2-failure-backoff-max-sec $S2BackoffMaxSec @args
+    & $CondaExe run --no-capture-output -n $CondaEnv python -m $EntryModule --host $ListenHost --port $Port --navdp-url $NavDPUrl --vlm-url $VLMUrl --vlm-model $VLMModel --vlm-temperature $VLMTemperature --vlm-top-k $VLMTopK --vlm-top-p $VLMTopP --vlm-min-p $VLMMinP --vlm-repeat-penalty $VLMRepeatPenalty --vlm-num-history $VLMNumHistory --vlm-max-images-per-request $VLMMaxImagesPerRequest --s2-mode $S2Mode --vlm-timeout-sec $VLMTimeoutSec --s2-failure-backoff-max-sec $S2BackoffMaxSec @args
     exit $LASTEXITCODE
 }
 finally {

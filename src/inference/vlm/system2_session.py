@@ -87,6 +87,7 @@ class System2SessionConfig:
     repeat_penalty: float = 1.1
     timeout_sec: float = 35.0
     num_history: int = 8
+    max_images_per_request: int = 3
     mode: Literal["llm", "mock"] = "llm"
 
 
@@ -204,7 +205,8 @@ class System2Session:
             if not self._frames:
                 raise RuntimeError("System2Session.observe() must be called before prepare_request().")
             current = self._frames[-1]
-            history = self._select_history_locked()
+            max_history_images = max(int(self.config.max_images_per_request) - 1, 0)
+            history = self._select_history_locked(max_history_images=max_history_images)
             history_frame_ids = tuple(frame.frame_id for frame in history)
 
         width = int(current.image_bgr.shape[1])
@@ -273,6 +275,10 @@ class System2Session:
         with self._lock:
             return {
                 "instruction": self._instruction,
+                "config": {
+                    "num_history": int(self.config.num_history),
+                    "max_images_per_request": int(self.config.max_images_per_request),
+                },
                 "observed_frames": [frame.frame_id for frame in self._frames],
                 "last_output": self._last_output,
                 "last_reason": self._last_reason,
@@ -281,11 +287,21 @@ class System2Session:
                 "last_needs_requery": self._last_needs_requery,
             }
 
-    def _select_history_locked(self) -> list[_ObservedFrame]:
+    def _select_history_locked(self, *, max_history_images: int | None = None) -> list[_ObservedFrame]:
         if len(self._frames) <= 1:
             return []
+        if max_history_images is not None and int(max_history_images) <= 0:
+            return []
         upper = len(self._frames) - 2
-        indices = np.unique(np.linspace(0, upper, self.config.num_history, dtype=np.int32)).tolist()
+        sample_count = min(int(self.config.num_history), upper + 1)
+        if max_history_images is not None:
+            sample_count = min(sample_count, int(max_history_images))
+        if sample_count <= 0:
+            return []
+        if sample_count == 1:
+            indices = [upper]
+        else:
+            indices = np.unique(np.linspace(0, upper, sample_count, dtype=np.int32)).tolist()
         return [self._frames[index] for index in indices]
 
     def _build_request_body(

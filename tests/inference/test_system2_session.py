@@ -64,6 +64,7 @@ def test_system2_session_resets_history_and_samples_frames() -> None:
             model="mock-model",
             mode="mock",
             num_history=8,
+            max_images_per_request=9,
         )
     )
     session.reset("find the loading dock")
@@ -91,6 +92,7 @@ def test_system2_session_records_raw_text_and_history_ids() -> None:
             model="mock-model",
             mode="mock",
             num_history=8,
+            max_images_per_request=9,
         )
     )
     session.reset("move to the center aisle")
@@ -107,3 +109,23 @@ def test_system2_session_records_raw_text_and_history_ids() -> None:
     assert debug_state["last_reason"] == "mock_forward"
     assert debug_state["last_history_frame_ids"] == [0, 1, 2]
     assert debug_state["last_decision_mode"] == "pixel_goal"
+
+
+def test_system2_session_caps_total_images_per_request() -> None:
+    session = System2Session(
+        System2SessionConfig(
+            endpoint="http://127.0.0.1:8080/v1/chat/completions",
+            model="mock-model",
+            mode="mock",
+            num_history=8,
+            max_images_per_request=3,
+        )
+    )
+    session.reset("find the dock")
+    for frame_id in range(10):
+        session.observe(frame_id, np.full((8, 8, 3), frame_id, dtype=np.uint8))
+
+    request = session.prepare_request()
+
+    assert request.frame_id == 9
+    assert request.history_frame_ids == (0, 8)
