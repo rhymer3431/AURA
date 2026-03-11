@@ -4,6 +4,7 @@ import sys
 import time
 from argparse import Namespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -12,6 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from memory.models import MemoryContextBundle, RetrievedMemoryLine, ScratchpadState
 from services.dual_orchestrator import DualOrchestrator, GoalCache, S2Result, TrajectoryCache
 
 
@@ -175,6 +177,7 @@ def test_step_skips_periodic_s2_until_first_trajectory() -> None:
         cam_pos=np.zeros(3, dtype=np.float32),
         cam_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
         sensor_meta={},
+        memory_context=None,
         events={},
     )
 
@@ -230,6 +233,7 @@ def test_step_returns_yaw_delta_without_launching_s1() -> None:
         cam_pos=np.zeros(3, dtype=np.float32),
         cam_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
         sensor_meta={},
+        memory_context=None,
         events={},
     )
 
@@ -237,3 +241,79 @@ def test_step_returns_yaw_delta_without_launching_s1() -> None:
     assert response["planner_control"]["mode"] == "yaw_delta"
     assert response["planner_control"]["yaw_delta_rad"] == float(np.pi / 6.0)
     assert response["debug"]["called_s1"] is False
+
+
+def test_step_routes_memory_context_only_to_s2() -> None:
+    orchestrator = DualOrchestrator(_args())
+    orchestrator.initialized = True
+    orchestrator.goal_version = 0
+    orchestrator.last_s1_ts = 0.0
+    orchestrator.last_s2_ts = 0.0
+    orchestrator.goal_cache = GoalCache(
+        mode="pixel_goal",
+        pixel_x=10,
+        pixel_y=20,
+        stop=False,
+        yaw_delta_rad=None,
+        reason="goal",
+        version=0,
+        updated_at=time.time(),
+        source="llm",
+    )
+    captured: dict[str, object] = {}
+    memory_context = MemoryContextBundle(
+        instruction="find apple",
+        scratchpad=ScratchpadState(
+            instruction="find apple",
+            planner_mode="interactive",
+            task_state="active",
+        ),
+        text_lines=[
+            RetrievedMemoryLine(
+                text="Apple seen in kitchen.",
+                score=3.0,
+                source_type="object_memory",
+                entity_id="apple_0001",
+            )
+        ],
+    )
+
+    def _fake_prepare(events, memory_bundle):  # noqa: ANN001
+        captured["events"] = dict(events)
+        captured["memory_context"] = memory_bundle
+        return SimpleNamespace(body={})
+
+    def _fake_s1_worker(  # noqa: ANN001
+        image_bgr,
+        depth_m,
+        pixel_goal,
+        sensor_meta,
+        cam_pos,
+        cam_quat_wxyz,
+        goal_version,
+        generation,
+    ):
+        _ = image_bgr, depth_m, pixel_goal, cam_pos, cam_quat_wxyz, goal_version, generation
+        captured["sensor_meta"] = dict(sensor_meta)
+
+    orchestrator._prepare_s2_request = _fake_prepare  # type: ignore[method-assign]
+    orchestrator._s2_worker = lambda request, generation: None  # type: ignore[method-assign]
+    orchestrator._s1_worker = _fake_s1_worker  # type: ignore[method-assign]
+
+    orchestrator.step(
+        image_bgr=np.zeros((8, 8, 3), dtype=np.uint8),
+        depth_m=np.ones((8, 8), dtype=np.float32),
+        step_id=3,
+        cam_pos=np.zeros(3, dtype=np.float32),
+        cam_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        sensor_meta={"frame_source": "camera"},
+        memory_context=memory_context,
+        events={"force_s2": True},
+    )
+
+    deadline = time.time() + 0.5
+    while "sensor_meta" not in captured and time.time() < deadline:
+        time.sleep(0.01)
+
+    assert captured["memory_context"] == memory_context
+    assert captured["sensor_meta"] == {"frame_source": "camera"}

@@ -9,6 +9,7 @@ import numpy as np
 import requests
 
 from common.cv2_compat import cv2
+from memory.models import MemoryContextBundle, memory_context_to_dict
 
 class DualSystemClientError(RuntimeError):
     """Raised when dual-server HTTP request fails."""
@@ -108,6 +109,7 @@ class DualSystemClient:
         cam_pos: np.ndarray,
         cam_quat_wxyz: np.ndarray,
         sensor_meta: dict[str, Any] | None = None,
+        memory_context: MemoryContextBundle | None = None,
         events: dict[str, Any] | None = None,
     ) -> DualStepResponse:
         rgb = np.asarray(rgb_image, dtype=np.uint8)
@@ -135,6 +137,7 @@ class DualSystemClient:
             "cam_pos": json.dumps(np.asarray(cam_pos, dtype=np.float32).reshape(-1).tolist()),
             "cam_quat_wxyz": json.dumps(np.asarray(cam_quat_wxyz, dtype=np.float32).reshape(-1).tolist()),
             "sensor_meta": json.dumps(sensor_payload),
+            "memory_context": json.dumps(memory_context_to_dict(memory_context)),
             "events": json.dumps(event_payload),
         }
         files = {

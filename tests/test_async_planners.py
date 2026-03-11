@@ -59,9 +59,10 @@ class _TransientWaitingDualClient:
         cam_pos,
         cam_quat_wxyz,
         sensor_meta=None,
+        memory_context=None,
         events=None,
     ):  # noqa: ANN001
-        _ = rgb_image, depth_image_m, step_id, cam_pos, cam_quat_wxyz, sensor_meta, events
+        _ = rgb_image, depth_image_m, step_id, cam_pos, cam_quat_wxyz, sensor_meta, memory_context, events
         return SimpleNamespace(
             trajectory_world=np.zeros((0, 3), dtype=np.float32),
             pixel_goal=None,
@@ -92,6 +93,7 @@ def test_async_dual_planner_treats_initial_empty_response_as_waiting():
                 sensor_meta={},
                 cam_pos=np.zeros(3, dtype=np.float32),
                 cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                memory_context=None,
                 events={},
             )
         )
@@ -124,9 +126,10 @@ class _YawOnlyDualClient:
         cam_pos,
         cam_quat_wxyz,
         sensor_meta=None,
+        memory_context=None,
         events=None,
     ):  # noqa: ANN001
-        _ = rgb_image, depth_image_m, step_id, cam_pos, cam_quat_wxyz, sensor_meta, events
+        _ = rgb_image, depth_image_m, step_id, cam_pos, cam_quat_wxyz, sensor_meta, memory_context, events
         return SimpleNamespace(
             trajectory_world=np.zeros((0, 3), dtype=np.float32),
             pixel_goal=None,
@@ -152,6 +155,7 @@ def test_async_dual_planner_accepts_non_trajectory_planner_control() -> None:
                 sensor_meta={},
                 cam_pos=np.zeros(3, dtype=np.float32),
                 cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+                memory_context=None,
                 events={},
             )
         )

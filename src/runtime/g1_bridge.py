@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 import threading
 import time
 import traceback
@@ -52,6 +53,8 @@ class NavDPCommandSource:
         self._pending_exit_reason = ""
         self._interactive_running = False
         self._interactive_input_thread: threading.Thread | None = None
+        self._last_interactive_phase = ""
+        self._last_interactive_command_id = -1
 
     @property
     def supervisor(self) -> Supervisor:
@@ -125,6 +128,13 @@ class NavDPCommandSource:
                 capture_report=dict(observation.sensor_meta),
             )
             self.supervisor.process_frame(batch, publish=self._launch_mode == "g1_view")
+            active_memory_instruction = self.planning_session.active_memory_instruction()
+            if active_memory_instruction != "":
+                memory_context = self.supervisor.memory_service.build_memory_context(
+                    instruction=active_memory_instruction,
+                    current_pose=tuple(float(v) for v in robot_pose[:3]),
+                )
+                observation = replace(observation, memory_context=memory_context)
 
         command = self._resolve_action_command(robot_pose=robot_pose)
         execution = self._executor.step(
@@ -139,6 +149,7 @@ class NavDPCommandSource:
         evaluation = execution.evaluation
         self._command = execution.command_vector
         self._pending_status = execution.status
+        self._sync_planner_scratchpad(update)
 
         if evaluation.reached_goal and self._mode == "pointgoal":
             self._arm_exit(0, f"goal reached at step={frame_idx} dist={evaluation.goal_distance_m:.3f}m")
@@ -189,6 +200,12 @@ class NavDPCommandSource:
                 self.planning_session.ensure_navdp_service_ready(context="dual startup")
                 self.planning_session.ensure_dual_service_ready(context="dual startup")
                 self.planning_session.start_dual_task(instruction)
+                self.supervisor.memory_service.set_planner_task(
+                    instruction=instruction,
+                    planner_mode="dual",
+                    task_state="active",
+                    task_id="dual",
+                )
                 self._manual_command = self._build_planner_managed_command(task_id="dual", source="g1_bridge_dual")
             return
         if self._mode == "interactive":
@@ -270,6 +287,10 @@ class NavDPCommandSource:
             if lowered == "/cancel":
                 cancelled = self.planning_session.cancel_interactive_task()
                 if cancelled:
+                    self.supervisor.memory_service.clear_planner_task(
+                        task_state="cancelled",
+                        reason="interactive task cancelled",
+                    )
                     print("[G1_INTERACTIVE][TASK] cancel requested")
                 else:
                     print("[G1_INTERACTIVE][ROAM] no active task to cancel")
@@ -285,6 +306,13 @@ class NavDPCommandSource:
                 self.planning_session.ensure_navdp_service_ready(context="interactive task")
                 self.planning_session.ensure_dual_service_ready(context="interactive task")
                 command_id = self.planning_session.submit_interactive_instruction(text)
+                self.supervisor.memory_service.set_planner_task(
+                    instruction=text,
+                    planner_mode="interactive",
+                    task_state="pending",
+                    task_id="interactive",
+                    command_id=int(command_id),
+                )
             except Exception as exc:  # noqa: BLE001
                 print(f"[G1_INTERACTIVE][TASK] rejected instruction={text!r} error={type(exc).__name__}: {exc}")
                 continue
@@ -340,6 +368,39 @@ class NavDPCommandSource:
                 "planner_mode": self._mode,
             },
         )
+
+    def _sync_planner_scratchpad(self, update: TrajectoryUpdate) -> None:
+        if self._mode == "interactive":
+            current_phase = str(update.interactive_phase or "")
+            current_command_id = int(update.interactive_command_id)
+            if current_phase == "task_active" and update.interactive_instruction.strip() != "":
+                if self._last_interactive_phase != "task_active" or self._last_interactive_command_id != current_command_id:
+                    self.supervisor.memory_service.set_planner_task(
+                        instruction=update.interactive_instruction,
+                        planner_mode="interactive",
+                        task_state="active",
+                        task_id="interactive",
+                        command_id=current_command_id,
+                    )
+            elif self._last_interactive_phase == "task_active" and current_phase == "roaming":
+                clear_state = "completed" if bool(update.stop) else "idle"
+                clear_reason = "interactive task complete" if bool(update.stop) else "interactive task cleared"
+                if update.stats.last_error != "":
+                    clear_state = "failed"
+                    clear_reason = str(update.stats.last_error)
+                self.supervisor.memory_service.clear_planner_task(
+                    task_state=clear_state,
+                    reason=clear_reason,
+                )
+            self._last_interactive_phase = current_phase
+            self._last_interactive_command_id = current_command_id
+            return
+
+        if self._mode == "dual" and bool(update.stop) and update.planner_control_mode == "stop":
+            self.supervisor.memory_service.clear_planner_task(
+                task_state="completed",
+                reason="dual task complete",
+            )
 
     def _log_step(
         self,

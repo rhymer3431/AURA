@@ -23,6 +23,7 @@ from control.async_planners import (
 )
 from inference.navdp import InProcessNavDPClient, create_inprocess_navdp_client
 from ipc.messages import ActionCommand
+from memory.models import MemoryContextBundle
 
 
 def _health_url(base_url: str) -> str:
@@ -61,6 +62,7 @@ class ExecutionObservation:
     cam_pos: np.ndarray
     cam_quat: np.ndarray
     intrinsic: np.ndarray
+    memory_context: MemoryContextBundle | None = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,13 @@ class PlanningSession:
     @property
     def stats(self) -> PlannerStats:
         return self._stats
+
+    def active_memory_instruction(self) -> str:
+        if self.mode == "dual":
+            return str(self._dual_instruction).strip()
+        if self.mode == "interactive" and self._interactive_state == "task_active":
+            return str(self._interactive_active_instruction).strip()
+        return ""
 
     def initialize(self, simulation_app, stage) -> None:
         self.sensor = self.sensor_factory(
@@ -393,6 +402,7 @@ class PlanningSession:
         camera_quat_wxyz: tuple[float, float, float, float] | np.ndarray,
         intrinsic: np.ndarray | None = None,
         sensor_meta: dict[str, Any] | None = None,
+        memory_context: MemoryContextBundle | None = None,
     ) -> ExecutionObservation:
         if intrinsic is None:
             intrinsic = self._default_intrinsic(rgb.shape[1], rgb.shape[0])
@@ -404,6 +414,7 @@ class PlanningSession:
             cam_pos=np.asarray(camera_pose_xyz, dtype=np.float32),
             cam_quat=np.asarray(camera_quat_wxyz, dtype=np.float32),
             intrinsic=np.asarray(intrinsic, dtype=np.float32),
+            memory_context=memory_context,
         )
 
     def _run_pointgoal(
@@ -481,6 +492,7 @@ class PlanningSession:
                     sensor_meta=dict(observation.sensor_meta),
                     cam_pos=observation.cam_pos,
                     cam_quat=observation.cam_quat,
+                    memory_context=observation.memory_context,
                     events={
                         "force_s2": force_s2,
                         "stuck": False,
@@ -690,6 +702,7 @@ class PlanningSession:
                     sensor_meta=dict(observation.sensor_meta),
                     cam_pos=observation.cam_pos,
                     cam_quat=observation.cam_quat,
+                    memory_context=observation.memory_context,
                     events={
                         "force_s2": force_s2,
                         "stuck": False,

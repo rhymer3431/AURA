@@ -123,7 +123,6 @@ class TaskOrchestrator:
         )
         speaker_yaw_hint = None if latest_speaker_event is None else float(latest_speaker_event.direction_yaw_rad)
         person_tracks = self.person_tracker.update(observation_list, speaker_yaw_hint=speaker_yaw_hint)
-        self.memory_service.observe_objects(observation_list)
         if person_tracks:
             bound_person_id = self.attention_service.bind_person(
                 person_tracks,

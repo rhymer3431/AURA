@@ -12,6 +12,7 @@ import numpy as np
 import requests
 
 from common.cv2_compat import cv2
+from memory.models import MemoryContextBundle
 
 DecisionMode = Literal["pixel_goal", "stop", "yaw_left", "yaw_right", "wait"]
 
@@ -198,7 +199,11 @@ class System2Session:
             else:
                 self._frames.append(_ObservedFrame(frame_id=int(frame_id), image_bgr=image.copy()))
 
-    def prepare_request(self, events: dict[str, Any] | None = None) -> System2Request:
+    def prepare_request(
+        self,
+        events: dict[str, Any] | None = None,
+        memory_context: MemoryContextBundle | None = None,
+    ) -> System2Request:
         with self._lock:
             if self._instruction == "":
                 raise RuntimeError("System2Session.reset() must be called with a non-empty instruction first.")
@@ -206,6 +211,8 @@ class System2Session:
                 raise RuntimeError("System2Session.observe() must be called before prepare_request().")
             current = self._frames[-1]
             max_history_images = max(int(self.config.max_images_per_request) - 1, 0)
+            if memory_context is not None:
+                max_history_images = min(max_history_images, 1)
             history = self._select_history_locked(max_history_images=max_history_images)
             history_frame_ids = tuple(frame.frame_id for frame in history)
 
@@ -215,6 +222,7 @@ class System2Session:
             instruction=self._instruction,
             current=current,
             history=history,
+            memory_context=memory_context,
             events=dict(events or {}),
         )
         return System2Request(
@@ -310,31 +318,65 @@ class System2Session:
         instruction: str,
         current: _ObservedFrame,
         history: list[_ObservedFrame],
+        memory_context: MemoryContextBundle | None,
         events: dict[str, Any],
     ) -> dict[str, Any]:
         width = int(current.image_bgr.shape[1])
         height = int(current.image_bgr.shape[0])
-        prompt = (
-            "You are an autonomous navigation assistant.\n"
-            f"Instruction: {instruction}\n"
-            f"Events: {events}\n"
-            f"Current image size: width={width}, height={height}.\n"
-            "The current image is already the waypoint-selection view for navigation.\n"
-            "Respond with exactly one of these formats:\n"
-            "- '<y>, <x>' for a waypoint in the current image\n"
-            "- 'STOP' if the task is complete now\n"
-            "- '←' to request a left turn before selecting a waypoint\n"
-            "- '→' to request a right turn before selecting a waypoint\n"
-            "- '↓' only if you need another frame before deciding\n"
-            "Do not output JSON."
+        prompt_lines = [
+            "You are an autonomous navigation assistant.",
+            f"Instruction: {instruction}",
+            f"Events: {events}",
+            f"Current image size: width={width}, height={height}.",
+            "The current image is already the waypoint-selection view for navigation.",
+        ]
+        scratchpad_lines = self._scratchpad_lines(memory_context)
+        if scratchpad_lines:
+            prompt_lines.append("Scratchpad:")
+            prompt_lines.extend(f"- {line}" for line in scratchpad_lines)
+        memory_lines = self._memory_lines(memory_context)
+        if memory_lines:
+            prompt_lines.append("Relevant memory:")
+            prompt_lines.extend(f"- {line}" for line in memory_lines)
+        else:
+            prompt_lines.append("Relevant memory:")
+            prompt_lines.append("- None")
+        prompt_lines.extend(
+            [
+                "Respond with exactly one of these formats:",
+                "- '<y>, <x>' for a waypoint in the current image",
+                "- 'STOP' if the task is complete now",
+                "- '←' to request a left turn before selecting a waypoint",
+                "- '→' to request a right turn before selecting a waypoint",
+                "- '↓' only if you need another frame before deciding",
+                "Do not output JSON.",
+            ]
         )
+        prompt = "\n".join(prompt_lines)
 
         user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         if history:
-            user_content.append({"type": "text", "text": "Historical observations in temporal order:"})
-            for index, frame in enumerate(history, start=1):
-                user_content.append({"type": "text", "text": f"History {index} (frame {frame.frame_id}):"})
+            user_content.append({"type": "text", "text": "Recent history observation:"})
+            for frame in history[-1:]:
+                user_content.append({"type": "text", "text": f"Recent history (frame {frame.frame_id}):"})
                 user_content.append({"type": "image_url", "image_url": {"url": self._encode_image(frame.image_bgr)}})
+        if memory_context is not None:
+            keyframes = [record for record in memory_context.keyframes if str(record.image_path).strip() != ""][:2]
+            if keyframes:
+                user_content.append({"type": "text", "text": "Retrieved memory keyframes:"})
+                for index, record in enumerate(keyframes, start=1):
+                    encoded = self._encode_image_path(record.image_path)
+                    if encoded == "":
+                        continue
+                    label = record.summary or f"Retrieved keyframe {index}"
+                    user_content.append({"type": "text", "text": f"Memory keyframe {index}: {label}"})
+                    user_content.append({"type": "image_url", "image_url": {"url": encoded}})
+            crop_path = str(memory_context.crop_path).strip()
+            if crop_path != "":
+                encoded_crop = self._encode_image_path(crop_path)
+                if encoded_crop != "":
+                    user_content.append({"type": "text", "text": "Retrieved memory crop:"})
+                    user_content.append({"type": "image_url", "image_url": {"url": encoded_crop}})
         user_content.append({"type": "text", "text": f"Current observation (frame {current.frame_id}):"})
         user_content.append({"type": "image_url", "image_url": {"url": self._encode_image(current.image_bgr)}})
 
@@ -380,6 +422,35 @@ class System2Session:
             raise ValueError("failed to encode System2 image as JPEG")
         payload = base64.b64encode(io.BytesIO(encoded).getvalue()).decode("ascii")
         return f"data:image/jpeg;base64,{payload}"
+
+    @classmethod
+    def _encode_image_path(cls, image_path: str) -> str:
+        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+        if image is None:
+            return ""
+        return cls._encode_image(image)
+
+    @staticmethod
+    def _scratchpad_lines(memory_context: MemoryContextBundle | None) -> list[str]:
+        if memory_context is None or memory_context.scratchpad is None:
+            return []
+        scratchpad = memory_context.scratchpad
+        lines: list[str] = []
+        if scratchpad.goal_summary.strip() != "":
+            lines.append(f"Goal: {scratchpad.goal_summary.strip()}")
+        if scratchpad.checked_locations:
+            lines.append("Checked: " + ", ".join(scratchpad.checked_locations[-3:]))
+        if scratchpad.recent_hint.strip() != "":
+            lines.append(f"Hint: {scratchpad.recent_hint.strip()}")
+        if scratchpad.next_priority.strip() != "":
+            lines.append(f"Next: {scratchpad.next_priority.strip()}")
+        return lines[:4]
+
+    @staticmethod
+    def _memory_lines(memory_context: MemoryContextBundle | None) -> list[str]:
+        if memory_context is None:
+            return []
+        return [str(line.text).strip() for line in memory_context.text_lines if str(line.text).strip() != ""][:5]
 
 
 def _first_token_index(text: str, candidates: tuple[str, ...]) -> int:

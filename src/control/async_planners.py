@@ -8,6 +8,7 @@ from typing import Any, Literal, Protocol
 import numpy as np
 
 from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world, trajectory_local_to_world
+from memory.models import MemoryContextBundle
 
 
 def _summarize_dual_response_error(
@@ -349,6 +350,7 @@ class DualPlannerInput:
     sensor_meta: dict[str, Any]
     cam_pos: np.ndarray
     cam_quat: np.ndarray
+    memory_context: MemoryContextBundle | None
     events: dict[str, Any]
 
 
@@ -470,6 +472,7 @@ class AsyncDualPlanner:
                     cam_pos=np.asarray(pending.cam_pos, dtype=np.float32),
                     cam_quat_wxyz=np.asarray(pending.cam_quat, dtype=np.float32),
                     sensor_meta=dict(pending.sensor_meta) if isinstance(pending.sensor_meta, dict) else {},
+                    memory_context=pending.memory_context,
                     events=dict(pending.events) if isinstance(pending.events, dict) else {},
                 )
                 trajectory_world = np.asarray(response.trajectory_world, dtype=np.float32)
@@ -566,6 +569,7 @@ class DualPlannerClient(Protocol):
         cam_pos: np.ndarray,
         cam_quat_wxyz: np.ndarray,
         sensor_meta: dict[str, Any] | None = None,
+        memory_context: MemoryContextBundle | None = None,
         events: dict[str, Any] | None = None,
     ):
         ...

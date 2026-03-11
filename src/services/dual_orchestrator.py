@@ -20,6 +20,7 @@ from inference.vlm import (
     System2SessionResult,
     build_vlm_endpoint,
 )
+from memory.models import MemoryContextBundle
 
 
 def parse_json_field(raw: str | None, fallback: Any) -> Any:
@@ -243,8 +244,8 @@ class DualOrchestrator:
         )
         return True, {"algo": "dual", "state": self.debug_state()}
 
-    def _prepare_s2_request(self, events: dict[str, Any]) -> System2Request:
-        return self.system2_session.prepare_request(events=events)
+    def _prepare_s2_request(self, events: dict[str, Any], memory_context: MemoryContextBundle | None) -> System2Request:
+        return self.system2_session.prepare_request(events=events, memory_context=memory_context)
 
     def _normalize_system2_result(self, result: System2SessionResult) -> S2Result:
         if not result.ok or result.decision is None:
@@ -581,6 +582,7 @@ class DualOrchestrator:
         cam_pos: np.ndarray,
         cam_quat_wxyz: np.ndarray,
         sensor_meta: dict[str, Any],
+        memory_context: MemoryContextBundle | None,
         events: dict[str, Any],
     ) -> dict[str, Any]:
         image = np.asarray(image_bgr, dtype=np.uint8)
@@ -642,7 +644,7 @@ class DualOrchestrator:
 
         if launch_s2:
             try:
-                s2_request = self._prepare_s2_request(dict(events))
+                s2_request = self._prepare_s2_request(dict(events), memory_context)
             except Exception as exc:  # noqa: BLE001
                 self._finish_s2(
                     S2Result(ok=False, error=f"{type(exc).__name__}: {exc}", source="prepare_request"),

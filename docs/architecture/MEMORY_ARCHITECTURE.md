@@ -1,196 +1,131 @@
 # Memory Architecture
 
-AURA의 메모리는 단순 캐시가 아니라, perception 결과를 구조화된 상태로 누적하고 태스크 회상과 recovery에 재사용하는 런타임 서비스다. 현재 구조에서는 `services.memory_service.MemoryService`가 메모리 계층의 중심이며, `TaskOrchestrator`와 여러 서비스가 이를 공유한다.
+AURA의 현재 메모리는 dual-system planning을 위한 VLM-friendly memory layer까지 포함한다. 기존 spatial / temporal / episodic / semantic memory는 유지하고, 그 위에 scratchpad와 keyframe bank를 얹어 System 2 앞단에서 memory-aware planning을 지원한다.
 
-## 핵심 구성요소
+## 메모리 계층
 
-현재 메모리 아키텍처의 중심 구성요소는 다음과 같다.
+### 1. Scratchpad
 
-- `MemoryService`
-  - 메모리 저장소, query, consolidation, persistence를 묶는 상위 서비스
-- `SpatialMemoryStore`
-  - `PlaceNode`, `ObjectNode` 중심의 공간 기억
-- `TemporalMemoryStore`
-  - 시간순 사건, follow loss, speaker binding, 재획득 힌트 저장
-- `EpisodicMemoryStore`
-  - 태스크 단위 episode record 저장
-- `SemanticMemoryStore`
-  - 반복 episode에서 얻은 rule-like 힌트 저장
-- `WorkingMemory`
-  - 현재 태스크에 의미 있는 후보를 우선순위화
-- `MemoryQueryEngine`
-  - recall 시 spatial/semantic/working memory를 결합
-- `MemoryConsolidator`
-  - episode를 semantic rule로 통합
-- `SemanticConsolidationService`
-  - episode summary와 semantic 보강을 수행
-- `SQLiteMemoryPersistence`
-  - snapshot 저장이 필요할 때 SQLite에 직렬화
+현재 dual/interactive task의 짧은 작업 상태다.
 
-## 각 저장소가 담당하는 기억
+- instruction
+- planner mode
+- task state (`pending`, `active`, `completed`, `cancelled`, `failed`, `idle`)
+- checked locations
+- recent hint
+- next priority
 
-### Spatial Memory
+이 scratchpad는 free-form 장문 로그가 아니라, 다음 S2 decision에 도움이 되는 짧은 상태 요약만 유지한다.
 
-`SpatialMemoryStore`는 관측된 객체와 장소의 관계를 유지한다.
+### 2. Object / Place DB
 
-- 객체 observation을 기존 object/place와 연관짓는다.
-- object -> place -> navigation target 형태의 회상을 가능하게 한다.
-- 이후 `"아까 봤던 사과"` 같은 질의가 들어오면 recall 출발점이 된다.
+기존 `SpatialMemoryStore`, `TemporalMemoryStore`, `SemanticMemoryStore`가 그대로 main memory 역할을 한다.
 
-### Temporal Memory
+- 무엇을 봤는가
+- 어디서 봤는가
+- 언제 봤는가
+- 어떤 semantic hint가 붙는가
 
-`TemporalMemoryStore`는 시간에 민감한 사건을 다룬다.
+현재 frame write에서는 observation마다 아래 정보가 object metadata에 보강된다.
 
-- speaker event
-- speaker binding
-- follow target 상실/재획득 단서
-- track 기반 최근성 정보
+- `memory_summary`
+- `room_id`
+- `bearing_deg`
+- `last_bbox_xyxy`
+- `keyframe_id`
+- optional `keyframe_crop_path`
 
-이 계층은 follow recovery나 발화자 주시 같은 태스크에서 직접적으로 쓰인다.
+### 3. Keyframe Bank
 
-### Episodic Memory
+video memory 대신 대표 이미지 몇 장만 저장한다.
 
-`EpisodicMemoryStore`는 태스크 단위 record를 쌓는다.
+- 저장 위치: `state/memory/keyframes/`
+- 저장 단위: `KeyframeRecord`
+- 포함 정보
+  - full image path
+  - crop paths
+  - summary
+  - timestamp
+  - robot pose / yaw
+  - room id
+  - focus labels / focus object ids
 
-- 원본 command text
-- intent
-- target metadata
-- 본 객체/장소
-- candidate attempt
-- recovery action
-- success/failure와 summary
+현재 저장은 heuristic 기반이다. 아래 경우에 keyframe 후보가 된다.
 
-즉, “무엇을 하려 했고 어떤 후보를 거쳤으며 왜 실패/성공했는가”를 구조적으로 남기는 역할이다.
+- 첫 scene capture
+- room change
+- 충분한 pose / yaw 변화
+- 새 object 발견
+- 현재 task instruction과 맞는 target 발견
+- 마지막 keyframe 이후 시간이 충분히 지난 경우
 
-### Semantic Memory
+## 업데이트 경로
 
-`SemanticMemoryStore`는 반복된 episode나 bootstrap rule에서 얻은 규칙성 힌트를 저장한다.
+메모리 업데이트의 canonical ingress는 이제 `Supervisor.process_frame(...)`다.
 
-- 특정 intent/target_class/room 조합에 대한 선호
-- 성공률/지원 횟수
-- planner hint metadata
-
-현재 구현은 rule/template 중심이며, 대규모 symbolic reasoner는 아니다.
-
-### Working Memory
-
-`WorkingMemory`는 장기 저장소 자체가 아니라, 현재 질의와 상황에서 가장 유의미한 후보를 고르는 선택 계층이다.
-
-- recency
-- reachability
-- confidence
-- semantic bonus
-
-이 기준으로 recall candidate를 정렬해 현재 태스크가 바로 사용할 수 있는 active subset을 만든다.
-
-## 현재 업데이트 흐름
-
-메모리 업데이트는 perception과 task orchestration에 직접 연결되어 있다.
-
-1. `Supervisor.process_frame()`가 RGB/depth를 `PerceptionPipeline`에 전달한다.
-2. pipeline이 object observation과 speaker event를 생성한다.
-3. `TaskOrchestrator.on_observations()`가 person track과 attention 상태를 갱신한다.
-4. 같은 함수 안에서 `MemoryService.observe_objects()`가 호출된다.
-5. 각 observation은 다음 순서로 저장된다.
+1. perception이 `ObsObject` 목록을 만든다.
+2. `MemoryService.record_perception_frame(...)`가 호출된다.
+3. 이 함수 안에서
    - spatial association
    - temporal remember
-   - active episode에 place/object 기록
-6. speaker binding이 확인되면 temporal memory와 active episode가 함께 보강된다.
+   - episode observation 기록
+   - keyframe 저장 여부 판단
+   - object memory summary 갱신
+   - scratchpad 보강
+   가 한 번에 수행된다.
+4. 이후 같은 observation은 `TaskOrchestrator.on_observations()`로 넘어가지만, 메모리에 다시 쓰지는 않는다.
 
-즉, perception 결과는 별도 후처리 큐가 아니라 orchestration 루프 안에서 즉시 구조화 메모리로 들어간다.
+즉, frame-aware memory write는 `Supervisor`, task-state consumption은 `TaskOrchestrator`가 맡는다.
 
-## `MemoryService`가 직접 제공하는 주요 기능
+## 조회 경로
 
-현재 `MemoryService`는 단순 CRUD보다 넓은 책임을 가진다.
+dual / interactive task-active 상태에서만 memory retrieval을 켠다.
 
-- `observe_objects(...)`
-  - object observation을 spatial/temporal/episode에 반영
-- `record_speaker_event(...)`
-  - 발화 방향 이벤트 저장
-- `record_speaker_binding(...)`
-  - speaker와 person/track 연결
-- `record_follow_target(...)`
-  - 현재 follow target을 active episode에 기록
-- `record_candidate_attempt(...)`
-  - recall 후보와 적용 semantic rule 추적
-- `record_recovery_action(...)`
-  - recovery 단계 기록
-- `start_episode(...)`, `finish_episode(...)`
-  - 태스크 시작/종료 관리
-- `recall_object(...)`
-  - query engine을 통해 회상 수행
-- `reacquire_follow_target(...)`
-  - temporal memory 기반 target 재획득
-- `persist_snapshot(...)`
-  - places / objects / semantic rules를 SQLite snapshot으로 저장
+`MemoryService.build_memory_context(...)`는 instruction을 세 종류로 분해한다.
 
-## 회상과 태스크 서비스의 연결
+- semantic query
+  - 무엇을 찾는가
+- spatial query
+  - 어느 room / left-right / support clue와 관련 있는가
+- temporal query
+  - 최근성, 이전 관측 여부
 
-메모리는 단독으로 존재하지 않고 `TaskOrchestrator`와 그 하위 서비스에서 직접 사용된다.
+현재 score는 다음 성분을 합친 heuristic이다.
 
-### 기억 기반 객체 탐색
+- semantic score
+- spatial score
+- temporal score
+- recency bonus
+- confidence bonus
+- optional proximity bonus
 
-`GO_TO_REMEMBERED_OBJECT` 상태에서는 `ObjectSearchService`가 `MemoryService.recall_object(...)`를 호출한다.
+결과는 `MemoryContextBundle`로 묶인다.
 
-현재 회상 과정은 다음 정보를 결합한다.
+- `ScratchpadState`
+- `RetrievedMemoryLine` 3~5개
+- `KeyframeRecord` 1~2개
+- optional crop 1개
+- backend seam용 `latent_backend_hint`
 
-- spatial memory의 object 후보
-- semantic memory의 rule
-- working memory의 우선순위화
-- 현재 로봇 pose
-- room/context 정보
+## Dual-System과의 연결
 
-그 결과 가장 유력한 object/place가 선택되고, 이후 탐색/접근 명령 생성으로 이어진다.
+메모리 조회 결과는 System 2에만 직접 들어간다.
 
-### Follow recovery
+- `NavDPCommandSource`가 current frame 처리 직후 `build_memory_context(...)`를 호출한다.
+- 결과는 `ExecutionObservation.memory_context`에 붙는다.
+- `DualPlannerInput` -> dual HTTP -> `DualOrchestrator` -> `System2Session` 순서로 그대로 전달된다.
+- S1/NavDP 쪽 `sensor_meta`에는 memory payload를 섞지 않는다.
 
-follow target을 잃으면 recovery 경로가 temporal memory와 semantic hint를 참고한다.
+즉, 현재 구조는
 
-- 최근 track 재획득
-- cone/local search
-- recovery action 기록
+- S2: memory-aware planner
+- S1: unchanged trajectory/action generator
 
-이 흐름은 “최근에 어디 있었는가”와 “어떤 회복 전략이 시도되었는가”를 메모리에 남긴다.
+로 고정되어 있다.
 
-### Attend / caller binding
+## 지속성과 현재 한계
 
-speaker event와 person tracker가 결합되면 temporal memory에 speaker binding이 기록된다. 이 정보는 caller 주시, follow target 식별, 이후 episode summary에 영향을 준다.
-
-## 통합과 지속성
-
-episode가 끝나면 메모리는 단순 종료되지 않는다.
-
-1. `finish_episode(...)`가 success/failure와 summary를 기록한다.
-2. `SemanticConsolidationService.summarize_episode(...)`가 episode 요약을 만든다.
-3. `MemoryConsolidator.consolidate_episode(...)`가 semantic rule 업데이트를 수행한다.
-4. 이후 유사 태스크 recall에서 semantic hint가 다시 사용된다.
-
-지속성이 필요한 경우 `SQLiteMemoryPersistence`가 snapshot을 저장한다. 현재 snapshot payload는 전체 temporal/episodic history가 아니라 다음에 집중한다.
-
-- places
-- objects
-- semantic rules
-
-또한 `MemoryAgentRuntime`는 초기화 시 bootstrap semantic rule을 하나 주입해 기본 탐색 힌트를 확보한다.
-
-## Live Smoke와의 관계
-
-Live Smoke는 메모리 품질을 평가하는 벤치마크가 아니라, 메모리 ingress가 실제로 연결되어 있는지 검증하는 경로다.
-
-현재 smoke tier는 다음처럼 구분된다.
-
-- `sensor_smoke_pass`
-  - 센서/D455/frame ingress 검증
-- `pipeline_smoke_pass`
-  - perception pipeline 도달 검증
-- `memory_smoke_pass`
-  - `MemoryService` 업데이트 경로 실행 검증
-
-빈 장면이라면 `pipeline`까지는 통과하고 `memory`는 미통과일 수 있다. 이것은 센서 장애가 아니라 “메모리에 넣을 detection이 없었다”는 뜻이다.
-
-## 현재 한계
-
-- semantic consolidation은 아직 rule/template 중심이다.
-- working memory는 heuristic ranking 계층이지 범용 추론 엔진은 아니다.
-- SQLite snapshot은 전체 장기 메모리 상태를 완전 재구성하는 포맷이 아니라, 핵심 객체/장소/rule 보존에 가깝다.
-- memory tier 검증은 detector 품질이 아니라 ingress wiring 확인에 초점이 있다.
+- SQLite snapshot에는 places / objects / semantic rules와 함께 scratchpad, keyframe metadata도 들어간다.
+- keyframe 이미지 자체는 파일 시스템에 저장되고, snapshot에는 메타데이터만 남는다.
+- retrieval은 대규모 embedding search가 아니라 현재 메모리 구조와 metadata를 이용한 lightweight heuristic search다.
+- video timeline 전체를 다시 넣는 구조는 없다. visual history는 selected keyframe bank로 대체한다.

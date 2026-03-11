@@ -167,6 +167,54 @@ class RecallResult:
     selected_place: PlaceNode | None = None
 
 
+@dataclass(frozen=True)
+class ScratchpadState:
+    instruction: str = ""
+    planner_mode: str = ""
+    task_state: str = "idle"
+    task_id: str = ""
+    command_id: int = -1
+    goal_summary: str = ""
+    checked_locations: list[str] = field(default_factory=list)
+    recent_hint: str = ""
+    next_priority: str = ""
+    updated_at: float = 0.0
+
+
+@dataclass(frozen=True)
+class KeyframeRecord:
+    keyframe_id: str
+    image_path: str
+    crop_paths: list[str] = field(default_factory=list)
+    summary: str = ""
+    timestamp: float = 0.0
+    source_frame_id: int = -1
+    robot_pose: Pose3D = (0.0, 0.0, 0.0)
+    robot_yaw_rad: float = 0.0
+    room_id: str = ""
+    focus_labels: list[str] = field(default_factory=list)
+    focus_object_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class RetrievedMemoryLine:
+    text: str
+    score: float
+    source_type: str
+    entity_id: str = ""
+    keyframe_id: str = ""
+
+
+@dataclass(frozen=True)
+class MemoryContextBundle:
+    instruction: str
+    scratchpad: ScratchpadState | None = None
+    text_lines: list[RetrievedMemoryLine] = field(default_factory=list)
+    keyframes: list[KeyframeRecord] = field(default_factory=list)
+    crop_path: str = ""
+    latent_backend_hint: str = "llama.cpp_s2_only"
+
+
 @dataclass
 class AssociationResult:
     object_node: ObjectNode
@@ -174,3 +222,127 @@ class AssociationResult:
     matched_existing: bool
     conflict_flag: bool
     score: float
+
+
+def scratchpad_state_to_dict(state: ScratchpadState | None) -> dict[str, Any] | None:
+    if state is None:
+        return None
+    return {
+        "instruction": str(state.instruction),
+        "planner_mode": str(state.planner_mode),
+        "task_state": str(state.task_state),
+        "task_id": str(state.task_id),
+        "command_id": int(state.command_id),
+        "goal_summary": str(state.goal_summary),
+        "checked_locations": [str(item) for item in state.checked_locations],
+        "recent_hint": str(state.recent_hint),
+        "next_priority": str(state.next_priority),
+        "updated_at": float(state.updated_at),
+    }
+
+
+def scratchpad_state_from_dict(payload: dict[str, Any] | None) -> ScratchpadState | None:
+    if not isinstance(payload, dict):
+        return None
+    return ScratchpadState(
+        instruction=str(payload.get("instruction", "")),
+        planner_mode=str(payload.get("planner_mode", "")),
+        task_state=str(payload.get("task_state", "idle")),
+        task_id=str(payload.get("task_id", "")),
+        command_id=int(payload.get("command_id", -1)),
+        goal_summary=str(payload.get("goal_summary", "")),
+        checked_locations=[str(item) for item in payload.get("checked_locations", []) if str(item).strip() != ""],
+        recent_hint=str(payload.get("recent_hint", "")),
+        next_priority=str(payload.get("next_priority", "")),
+        updated_at=float(payload.get("updated_at", 0.0)),
+    )
+
+
+def keyframe_record_to_dict(record: KeyframeRecord) -> dict[str, Any]:
+    return {
+        "keyframe_id": str(record.keyframe_id),
+        "image_path": str(record.image_path),
+        "crop_paths": [str(path) for path in record.crop_paths],
+        "summary": str(record.summary),
+        "timestamp": float(record.timestamp),
+        "source_frame_id": int(record.source_frame_id),
+        "robot_pose": [float(value) for value in record.robot_pose],
+        "robot_yaw_rad": float(record.robot_yaw_rad),
+        "room_id": str(record.room_id),
+        "focus_labels": [str(label) for label in record.focus_labels],
+        "focus_object_ids": [str(object_id) for object_id in record.focus_object_ids],
+    }
+
+
+def keyframe_record_from_dict(payload: dict[str, Any] | None) -> KeyframeRecord | None:
+    if not isinstance(payload, dict):
+        return None
+    return KeyframeRecord(
+        keyframe_id=str(payload.get("keyframe_id", "")),
+        image_path=str(payload.get("image_path", "")),
+        crop_paths=[str(path) for path in payload.get("crop_paths", []) if str(path).strip() != ""],
+        summary=str(payload.get("summary", "")),
+        timestamp=float(payload.get("timestamp", 0.0)),
+        source_frame_id=int(payload.get("source_frame_id", -1)),
+        robot_pose=pose3(payload.get("robot_pose", (0.0, 0.0, 0.0))),
+        robot_yaw_rad=float(payload.get("robot_yaw_rad", 0.0)),
+        room_id=str(payload.get("room_id", "")),
+        focus_labels=[str(label) for label in payload.get("focus_labels", []) if str(label).strip() != ""],
+        focus_object_ids=[str(object_id) for object_id in payload.get("focus_object_ids", []) if str(object_id).strip() != ""],
+    )
+
+
+def retrieved_memory_line_to_dict(line: RetrievedMemoryLine) -> dict[str, Any]:
+    return {
+        "text": str(line.text),
+        "score": float(line.score),
+        "source_type": str(line.source_type),
+        "entity_id": str(line.entity_id),
+        "keyframe_id": str(line.keyframe_id),
+    }
+
+
+def retrieved_memory_line_from_dict(payload: dict[str, Any] | None) -> RetrievedMemoryLine | None:
+    if not isinstance(payload, dict):
+        return None
+    return RetrievedMemoryLine(
+        text=str(payload.get("text", "")),
+        score=float(payload.get("score", 0.0)),
+        source_type=str(payload.get("source_type", "")),
+        entity_id=str(payload.get("entity_id", "")),
+        keyframe_id=str(payload.get("keyframe_id", "")),
+    )
+
+
+def memory_context_to_dict(bundle: MemoryContextBundle | None) -> dict[str, Any] | None:
+    if bundle is None:
+        return None
+    return {
+        "instruction": str(bundle.instruction),
+        "scratchpad": scratchpad_state_to_dict(bundle.scratchpad),
+        "text_lines": [retrieved_memory_line_to_dict(line) for line in bundle.text_lines],
+        "keyframes": [keyframe_record_to_dict(record) for record in bundle.keyframes],
+        "crop_path": str(bundle.crop_path),
+        "latent_backend_hint": str(bundle.latent_backend_hint),
+    }
+
+
+def memory_context_from_dict(payload: dict[str, Any] | None) -> MemoryContextBundle | None:
+    if not isinstance(payload, dict):
+        return None
+    return MemoryContextBundle(
+        instruction=str(payload.get("instruction", "")),
+        scratchpad=scratchpad_state_from_dict(payload.get("scratchpad")),
+        text_lines=[
+            line
+            for line in (retrieved_memory_line_from_dict(item) for item in payload.get("text_lines", []))
+            if line is not None and line.text.strip() != ""
+        ],
+        keyframes=[
+            record
+            for record in (keyframe_record_from_dict(item) for item in payload.get("keyframes", []))
+            if record is not None and record.keyframe_id.strip() != ""
+        ],
+        crop_path=str(payload.get("crop_path", "")),
+        latent_backend_hint=str(payload.get("latent_backend_hint", "llama.cpp_s2_only")),
+    )

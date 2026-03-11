@@ -387,6 +387,7 @@ class PlannerSession:
                     sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
                     cam_pos=np.asarray(cam_pos, dtype=np.float32),
                     cam_quat=np.asarray(cam_quat, dtype=np.float32),
+                    memory_context=None,
                     events={
                         "force_s2": bool(self._last_trajectory_world.shape[0] == 0),
                         "stuck": False,
@@ -617,6 +618,7 @@ class PlannerSession:
                     sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
                     cam_pos=np.asarray(cam_pos, dtype=np.float32),
                     cam_quat=np.asarray(cam_quat, dtype=np.float32),
+                    memory_context=None,
                     events={
                         "force_s2": bool(self._last_trajectory_world.shape[0] == 0),
                         "stuck": False,

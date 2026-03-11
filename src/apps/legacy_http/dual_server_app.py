@@ -59,6 +59,7 @@ def _read_depth_m() -> np.ndarray:
 
 
 def create_app(args: argparse.Namespace | None = None) -> Flask:
+    from memory.models import memory_context_from_dict
     from services.dual_orchestrator import DualOrchestrator, parse_json_field
 
     parsed_args = parse_args([]) if args is None else args
@@ -89,6 +90,7 @@ def create_app(args: argparse.Namespace | None = None) -> Flask:
                 dtype=np.float32,
             )
             sensor_meta = parse_json_field(request.form.get("sensor_meta"), {})
+            memory_context = memory_context_from_dict(parse_json_field(request.form.get("memory_context"), None))
             events = parse_json_field(request.form.get("events"), {})
             if not isinstance(sensor_meta, dict):
                 sensor_meta = {}
@@ -101,6 +103,7 @@ def create_app(args: argparse.Namespace | None = None) -> Flask:
                 cam_pos=cam_pos,
                 cam_quat_wxyz=cam_quat,
                 sensor_meta=sensor_meta,
+                memory_context=memory_context,
                 events=events,
             )
             return jsonify(body)
