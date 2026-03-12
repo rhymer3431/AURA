@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from inference.detectors.ultralytics_yolo import UltralyticsYoloDetector
+from inference.detectors.ultralytics_yolo import load_tensorrt_engine_bytes
 
 
 class _DummyBoxes:
@@ -76,3 +77,12 @@ def test_ultralytics_detector_reports_missing_model(tmp_path: Path) -> None:
     assert detector.ready is False
     assert detector.probe().selected_reason == "model_missing"
     assert detector.info.warning != ""
+
+
+def test_load_tensorrt_engine_bytes_skips_ultralytics_metadata_header(tmp_path: Path) -> None:
+    engine_path = tmp_path / "dummy.engine"
+    metadata = b'{"description":"test-engine"}'
+    payload = b"TRTENGINE"
+    engine_path.write_bytes(len(metadata).to_bytes(4, byteorder="little") + metadata + payload)
+
+    assert load_tensorrt_engine_bytes(engine_path) == payload

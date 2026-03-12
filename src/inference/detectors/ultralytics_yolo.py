@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Callable
 
@@ -37,6 +38,27 @@ def resolve_capture_device(infer_device: str, cuda_available: bool) -> str:
     if first.startswith("cuda:"):
         return first
     return "cpu"
+
+
+def load_tensorrt_engine_bytes(engine_path: Path) -> bytes:
+    raw = engine_path.read_bytes()
+    if len(raw) < 4:
+        return raw
+
+    metadata_len = int.from_bytes(raw[:4], byteorder="little")
+    max_metadata_len = min(len(raw) - 4, 1_000_000)
+    if metadata_len <= 0 or metadata_len > max_metadata_len:
+        return raw
+
+    metadata_blob = raw[4 : 4 + metadata_len]
+    try:
+        metadata = json.loads(metadata_blob.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return raw
+
+    if not isinstance(metadata, dict):
+        return raw
+    return raw[4 + metadata_len :]
 
 
 class UltralyticsYoloDetector(DetectorBackend):
@@ -182,8 +204,7 @@ class UltralyticsYoloDetector(DetectorBackend):
         try:
             logger = trt.Logger(trt.Logger.ERROR)
             runtime = trt.Runtime(logger)
-            with open(model_path, "rb") as file_obj:
-                engine = runtime.deserialize_cuda_engine(file_obj.read())
+            engine = runtime.deserialize_cuda_engine(load_tensorrt_engine_bytes(model_path))
         except Exception as exc:  # noqa: BLE001
             message = f"TensorRT engine preflight failed: {type(exc).__name__}: {exc}"
             self._report.errors.append(message)
