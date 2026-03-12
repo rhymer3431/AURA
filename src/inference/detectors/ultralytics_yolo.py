@@ -10,7 +10,6 @@ import torch.nn.functional as F
 
 from .base import DetectionResult, DetectorBackend, DetectorInfo
 from .capabilities import DetectorRuntimeReport
-from .postprocess.segmentation_utils import clamp_bbox_xyxy, mask_centroid
 
 
 def is_cuda_device(device: str) -> bool:
@@ -256,39 +255,61 @@ class UltralyticsYoloDetector(DetectorBackend):
         if boxes is None:
             return []
 
-        box_tensor = getattr(boxes, "xyxy", None)
-        if box_tensor is None:
+        raw_box_tensor = getattr(boxes, "xyxy", None)
+        if raw_box_tensor is None:
             return []
-        box_array = np.asarray(self._to_numpy(box_tensor), dtype=np.float32)
-        if box_array.size == 0:
+        box_tensor = self._to_tensor(raw_box_tensor, dtype=torch.float32, device=self.tensor_device)
+        if box_tensor.numel() == 0:
             return []
-        box_array = np.atleast_2d(box_array)
-        count = int(box_array.shape[0])
+        box_tensor = torch.atleast_2d(box_tensor)
+        count = int(box_tensor.shape[0])
 
-        conf_array = self._optional_vector(getattr(boxes, "conf", None), length=count, fill_value=1.0)
-        cls_array = self._optional_vector(getattr(boxes, "cls", None), length=count, fill_value=0.0).astype(np.int64, copy=False)
+        conf_tensor = self._optional_vector_tensor(
+            getattr(boxes, "conf", None),
+            length=count,
+            fill_value=1.0,
+            device=box_tensor.device,
+        )
+        cls_tensor = self._optional_vector_tensor(
+            getattr(boxes, "cls", None),
+            length=count,
+            fill_value=0.0,
+            device=box_tensor.device,
+        ).to(dtype=torch.int64)
         names = self._normalize_names(getattr(result, "names", {}))
         if not names:
             names = self._model_names
-        masks = self._extract_masks(getattr(getattr(result, "masks", None), "data", None), image_shape=image_shape)
+        bbox_tensor = self._scale_bboxes_to_image_tensor(box_tensor, image_shape=image_shape)
+        bbox_tensor = self._clamp_bboxes_xyxy_tensor(
+            bbox_tensor,
+            width=int(image_shape[1]),
+            height=int(image_shape[0]),
+        )
+        mask_tensor = self._extract_masks_tensor(
+            getattr(getattr(result, "masks", None), "data", None),
+            image_shape=image_shape,
+            device=box_tensor.device,
+        )
+        mask_centroids: torch.Tensor | None = None
+        mask_areas: torch.Tensor | None = None
+        if mask_tensor is not None:
+            mask_tensor = mask_tensor >= 0.5
+            mask_centroids, mask_areas = self._mask_centroids_and_areas(mask_tensor)
         output: list[DetectionResult] = []
 
-        for index, bbox_xyxy in enumerate(box_array):
-            scaled_bbox = self._scale_bbox_to_image(bbox_xyxy, image_shape=image_shape)
-            bbox = clamp_bbox_xyxy(
-                tuple(float(v) for v in scaled_bbox),
-                width=int(image_shape[1]),
-                height=int(image_shape[0]),
-            )
+        for index in range(count):
+            bbox = tuple(int(v) for v in bbox_tensor[index].tolist())
             mask = None
             centroid = None
-            if masks is not None and index < masks.shape[0]:
-                mask = np.asarray(masks[index] >= 0.5, dtype=bool)
-                centroid = mask_centroid(mask)
+            if mask_tensor is not None and index < mask_tensor.shape[0]:
+                mask = np.asarray(mask_tensor[index].detach().cpu().numpy(), dtype=bool)
+                if mask_centroids is not None and mask_areas is not None and float(mask_areas[index].item()) > 0.0:
+                    centroid_vals = mask_centroids[index].tolist()
+                    centroid = (float(centroid_vals[0]), float(centroid_vals[1]))
             if centroid is None:
                 centroid = ((bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5)
 
-            class_id = int(cls_array[index]) if index < cls_array.shape[0] else 0
+            class_id = int(cls_tensor[index].item()) if index < cls_tensor.shape[0] else 0
             class_name = self._resolve_class_name(class_id, names=names, metadata=metadata)
             detection_metadata: dict[str, Any] = {
                 "backend": "ultralytics_yolo",
@@ -296,12 +317,12 @@ class UltralyticsYoloDetector(DetectorBackend):
                 "model_path": self.model_path,
                 "model_format": self.model_format,
             }
-            if mask is not None:
-                detection_metadata["mask_area_px"] = int(mask.sum())
+            if mask_areas is not None and index < mask_areas.shape[0]:
+                detection_metadata["mask_area_px"] = int(mask_areas[index].item())
             output.append(
                 DetectionResult(
                     class_name=class_name,
-                    confidence=float(conf_array[index]) if index < conf_array.shape[0] else 1.0,
+                    confidence=float(conf_tensor[index].item()) if index < conf_tensor.shape[0] else 1.0,
                     bbox_xyxy=bbox,
                     mask=mask,
                     centroid_xy=centroid,
@@ -310,24 +331,38 @@ class UltralyticsYoloDetector(DetectorBackend):
             )
         return output
 
-    def _scale_bbox_to_image(self, bbox_xyxy: np.ndarray, *, image_shape: tuple[int, int]) -> np.ndarray:
+    def _scale_bboxes_to_image_tensor(self, boxes_xyxy: torch.Tensor, *, image_shape: tuple[int, int]) -> torch.Tensor:
         height, width = int(image_shape[0]), int(image_shape[1])
         scale_x = float(width) / float(self.model_input_size[1])
         scale_y = float(height) / float(self.model_input_size[0])
-        return np.asarray(
-            [
-                float(bbox_xyxy[0]) * scale_x,
-                float(bbox_xyxy[1]) * scale_y,
-                float(bbox_xyxy[2]) * scale_x,
-                float(bbox_xyxy[3]) * scale_y,
-            ],
-            dtype=np.float32,
-        )
+        scale = torch.tensor([scale_x, scale_y, scale_x, scale_y], dtype=boxes_xyxy.dtype, device=boxes_xyxy.device)
+        return boxes_xyxy * scale
 
-    def _extract_masks(self, mask_data: Any, *, image_shape: tuple[int, int]) -> np.ndarray | None:
+    @staticmethod
+    def _clamp_bboxes_xyxy_tensor(boxes_xyxy: torch.Tensor, *, width: int, height: int) -> torch.Tensor:
+        x0 = torch.round(boxes_xyxy[:, 0]).to(dtype=torch.int64)
+        y0 = torch.round(boxes_xyxy[:, 1]).to(dtype=torch.int64)
+        x1 = torch.round(boxes_xyxy[:, 2]).to(dtype=torch.int64)
+        y1 = torch.round(boxes_xyxy[:, 3]).to(dtype=torch.int64)
+
+        max_x = max(int(width) - 1, 0)
+        max_y = max(int(height) - 1, 0)
+        x0 = x0.clamp(0, max_x)
+        y0 = y0.clamp(0, max_y)
+        x1 = torch.maximum(x1.clamp(0, max_x), x0)
+        y1 = torch.maximum(y1.clamp(0, max_y), y0)
+        return torch.stack((x0, y0, x1, y1), dim=1)
+
+    def _extract_masks_tensor(
+        self,
+        mask_data: Any,
+        *,
+        image_shape: tuple[int, int],
+        device: torch.device,
+    ) -> torch.Tensor | None:
         if mask_data is None:
             return None
-        tensor = torch.as_tensor(mask_data, dtype=torch.float32).detach().cpu()
+        tensor = self._to_tensor(mask_data, dtype=torch.float32, device=device)
         if tensor.ndim == 2:
             tensor = tensor.unsqueeze(0)
         if tensor.ndim == 4 and tensor.shape[1] == 1:
@@ -341,23 +376,41 @@ class UltralyticsYoloDetector(DetectorBackend):
                 mode="bilinear",
                 align_corners=False,
             ).squeeze(1)
-        return np.asarray(tensor.numpy(), dtype=np.float32)
+        return tensor
 
     @staticmethod
-    def _to_numpy(value: Any) -> np.ndarray:
+    def _mask_centroids_and_areas(mask_tensor: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        masks = mask_tensor.to(dtype=torch.float32)
+        areas = masks.sum(dim=(-2, -1))
+        ys = torch.arange(mask_tensor.shape[-2], dtype=torch.float32, device=mask_tensor.device).view(1, -1, 1)
+        xs = torch.arange(mask_tensor.shape[-1], dtype=torch.float32, device=mask_tensor.device).view(1, 1, -1)
+        x_sum = (masks * xs).sum(dim=(-2, -1))
+        y_sum = (masks * ys).sum(dim=(-2, -1))
+        safe_areas = torch.where(areas > 0, areas, torch.ones_like(areas))
+        centroids = torch.stack((x_sum / safe_areas, y_sum / safe_areas), dim=1)
+        return centroids, areas
+
+    @staticmethod
+    def _to_tensor(value: Any, *, dtype: torch.dtype, device: torch.device) -> torch.Tensor:
         if isinstance(value, torch.Tensor):
-            return value.detach().cpu().numpy()
-        return np.asarray(value)
+            return value.detach().to(device=device, dtype=dtype, non_blocking=True)
+        return torch.as_tensor(value, dtype=dtype, device=device)
 
     @staticmethod
-    def _optional_vector(value: Any, *, length: int, fill_value: float) -> np.ndarray:
+    def _optional_vector_tensor(
+        value: Any,
+        *,
+        length: int,
+        fill_value: float,
+        device: torch.device,
+    ) -> torch.Tensor:
         if value is None:
-            return np.full((int(length),), float(fill_value), dtype=np.float32)
-        array = np.asarray(UltralyticsYoloDetector._to_numpy(value), dtype=np.float32).reshape(-1)
-        if array.shape[0] >= int(length):
-            return array[: int(length)]
-        padded = np.full((int(length),), float(fill_value), dtype=np.float32)
-        padded[: array.shape[0]] = array
+            return torch.full((int(length),), float(fill_value), dtype=torch.float32, device=device)
+        tensor = UltralyticsYoloDetector._to_tensor(value, dtype=torch.float32, device=device).reshape(-1)
+        if tensor.shape[0] >= int(length):
+            return tensor[: int(length)]
+        padded = torch.full((int(length),), float(fill_value), dtype=torch.float32, device=device)
+        padded[: tensor.shape[0]] = tensor
         return padded
 
     @staticmethod

@@ -69,6 +69,7 @@ def test_ultralytics_detector_decodes_scaled_boxes_and_masks(tmp_path: Path) -> 
     assert results[0].mask.shape == (96, 192)
     assert results[0].centroid_xy is not None
     assert results[0].metadata["backend"] == "ultralytics_yolo"
+    assert results[0].metadata["mask_area_px"] > 0
 
 
 def test_ultralytics_detector_reports_missing_model(tmp_path: Path) -> None:
