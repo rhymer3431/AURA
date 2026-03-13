@@ -66,11 +66,12 @@ def build_snapshot_message(frame: FrameCache, *, active_command_type: str = "") 
     detections = frame.viewer_overlay.get("detections", [])
     snapshot_action = str(active_command_type).strip()
     active_target = frame.viewer_overlay.get("active_target", {})
+    planner_overlay = frame.frame_header.metadata.get("planner_overlay", {})
     if isinstance(active_target, dict):
         maybe_action = str(active_target.get("action_type", "")).strip()
         if maybe_action != "":
             snapshot_action = maybe_action
-    return {
+    payload = {
         "type": "snapshot",
         "seq": int(frame.seq),
         "frame_id": int(frame.frame_header.frame_id),
@@ -88,10 +89,31 @@ def build_snapshot_message(frame: FrameCache, *, active_command_type: str = "") 
         "active_command_type": snapshot_action,
         "has_depth": frame.depth_image_m is not None,
     }
+    if isinstance(active_target, dict) and active_target:
+        payload["active_target"] = dict(active_target)
+        payload["activeTarget"] = dict(active_target)
+    if isinstance(planner_overlay, dict):
+        for source_key, target_key in (
+            ("plan_version", "planVersion"),
+            ("goal_version", "goalVersion"),
+            ("traj_version", "trajVersion"),
+            ("stale_sec", "staleSec"),
+            ("planner_control_mode", "plannerControlMode"),
+            ("planner_yaw_delta_rad", "plannerYawDeltaRad"),
+            ("interactive_phase", "interactivePhase"),
+            ("interactive_command_id", "interactiveCommandId"),
+            ("interactive_instruction", "interactiveInstruction"),
+        ):
+            value = planner_overlay.get(source_key)
+            if value is None:
+                continue
+            payload[target_key] = value
+    return payload
 
 
 def build_frame_meta_message(frame: FrameCache) -> dict[str, object]:
     overlay = frame.viewer_overlay if isinstance(frame.viewer_overlay, dict) else {}
+    planner_overlay = frame.frame_header.metadata.get("planner_overlay", {})
     detections = overlay.get("detections", [])
     compact_detections: list[dict[str, object]] = []
     if isinstance(detections, list):
@@ -133,10 +155,28 @@ def build_frame_meta_message(frame: FrameCache) -> dict[str, object]:
         "sim_time_s": float(frame.frame_header.sim_time_s),
         "detections": compact_detections,
         "trajectory_pixels": compact_trajectory,
+        "trajectoryPixels": compact_trajectory,
     }
     active_target = overlay.get("active_target", {})
     if isinstance(active_target, dict):
         payload["active_target"] = dict(active_target)
+        payload["activeTarget"] = dict(active_target)
+    if isinstance(planner_overlay, dict):
+        for source_key, target_key in (
+            ("plan_version", "planVersion"),
+            ("goal_version", "goalVersion"),
+            ("traj_version", "trajVersion"),
+            ("stale_sec", "staleSec"),
+            ("planner_control_mode", "plannerControlMode"),
+            ("planner_yaw_delta_rad", "plannerYawDeltaRad"),
+            ("interactive_phase", "interactivePhase"),
+            ("interactive_command_id", "interactiveCommandId"),
+            ("interactive_instruction", "interactiveInstruction"),
+        ):
+            value = planner_overlay.get(source_key)
+            if value is None:
+                continue
+            payload[target_key] = value
     return payload
 
 

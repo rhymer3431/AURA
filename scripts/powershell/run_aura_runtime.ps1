@@ -45,6 +45,8 @@ $ViewerTelemetryEndpoint = if ($env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT) { $e
 $ViewerShmName = if ($env:G1_POINTGOAL_VIEWER_SHM_NAME) { $env:G1_POINTGOAL_VIEWER_SHM_NAME } else { "g1_view_frames" }
 $ViewerShmSlotSize = if ($env:G1_POINTGOAL_VIEWER_SHM_SLOT_SIZE) { $env:G1_POINTGOAL_VIEWER_SHM_SLOT_SIZE } else { "8388608" }
 $ViewerShmCapacity = if ($env:G1_POINTGOAL_VIEWER_SHM_CAPACITY) { $env:G1_POINTGOAL_VIEWER_SHM_CAPACITY } else { "8" }
+$ViewerPublish = if ($env:G1_POINTGOAL_VIEWER_PUBLISH) { $env:G1_POINTGOAL_VIEWER_PUBLISH } else { "0" }
+$NativeViewer = if ($env:G1_POINTGOAL_NATIVE_VIEWER) { $env:G1_POINTGOAL_NATIVE_VIEWER } else { "off" }
 $ForceRuntimeCamera = if ($env:G1_POINTGOAL_FORCE_RUNTIME_CAMERA) {
     $env:G1_POINTGOAL_FORCE_RUNTIME_CAMERA
 } else {
@@ -237,8 +239,25 @@ $EffectiveViewerTelemetryEndpoint = Get-LaunchArgValue -InputArgs $args -Names @
 $EffectiveViewerShmName = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-name") -DefaultValue $ViewerShmName
 $EffectiveViewerShmSlotSize = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-slot-size") -DefaultValue $ViewerShmSlotSize
 $EffectiveViewerShmCapacity = Get-LaunchArgValue -InputArgs $args -Names @("--viewer-shm-capacity") -DefaultValue $ViewerShmCapacity
+$EffectiveNativeViewer = Get-LaunchArgValue -InputArgs $args -Names @("--native-viewer") -DefaultValue $NativeViewer
 $EffectiveDepthMaxM = Get-LaunchArgValue -InputArgs $args -Names @("--depth-max-m") -DefaultValue "5.0"
 $ShowDepthView = Test-LaunchArgPresent -InputArgs $args -Names @("--show-depth")
+$HasViewerPublish = Test-LaunchArgPresent -InputArgs $args -Names @("--viewer-publish")
+$HasNoViewerPublish = Test-LaunchArgPresent -InputArgs $args -Names @("--no-viewer-publish")
+$EffectiveViewerPublish = $ViewerPublish
+if ($HasViewerPublish) {
+    $EffectiveViewerPublish = "1"
+}
+if ($HasNoViewerPublish) {
+    $EffectiveViewerPublish = "0"
+}
+if ($EffectiveLaunchMode -eq "g1_view") {
+    $EffectiveViewerPublish = "1"
+    if (-not (Test-LaunchArgPresent -InputArgs $args -Names @("--native-viewer"))) {
+        $EffectiveNativeViewer = "opencv"
+    }
+}
+$ViewerPublishEnabled = $EffectiveViewerPublish -notin @("0", "false", "False", "FALSE", "no", "No", "NO")
 
 $ResolvedScene = Resolve-SceneSelection `
     -SelectedPreset $EffectiveScenePreset `
@@ -312,6 +331,9 @@ Write-Host "[AURA Runtime] default server-url=$ServerUrl"
 Write-Host "[AURA Runtime] default viewer-control-endpoint=$ViewerControlEndpoint"
 Write-Host "[AURA Runtime] default viewer-telemetry-endpoint=$ViewerTelemetryEndpoint"
 Write-Host "[AURA Runtime] default viewer-shm-name=$ViewerShmName"
+Write-Host "[AURA Runtime] default viewer-publish=$ViewerPublish"
+Write-Host "[AURA Runtime] effective viewer-publish=$EffectiveViewerPublish"
+Write-Host "[AURA Runtime] effective native-viewer=$EffectiveNativeViewer"
 Write-Host "[AURA Runtime] default force-runtime-camera=$ForceRuntimeCamera"
 Write-Host "[AURA Runtime] default memory-store=on"
 Write-Host "[AURA Runtime] default detection=on"
@@ -338,8 +360,15 @@ $LaunchArgs = @(
     "--viewer-telemetry-endpoint", $ViewerTelemetryEndpoint,
     "--viewer-shm-name", $ViewerShmName,
     "--viewer-shm-slot-size", $ViewerShmSlotSize,
-    "--viewer-shm-capacity", $ViewerShmCapacity
+    "--viewer-shm-capacity", $ViewerShmCapacity,
+    "--native-viewer", $EffectiveNativeViewer
 )
+
+if ($ViewerPublishEnabled) {
+    $LaunchArgs += @("--viewer-publish")
+} else {
+    $LaunchArgs += @("--no-viewer-publish")
+}
 
 if (-not [string]::IsNullOrWhiteSpace($EffectiveLaunchMode)) {
     $LaunchArgs += @("--launch-mode", $EffectiveLaunchMode)
@@ -366,7 +395,7 @@ if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = "$SrcDir$PathSep$PreviousPythonPath"
 }
 try {
-    if ($EffectiveLaunchMode -eq "g1_view") {
+    if ($ViewerPublishEnabled -and $EffectiveNativeViewer -eq "opencv") {
         if (-not (Test-Path -LiteralPath $ViewerScript)) {
             Write-Host "[AURA Runtime] viewer launcher not found: `"$ViewerScript`""
             exit 1

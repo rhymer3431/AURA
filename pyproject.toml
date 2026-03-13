@@ -9,6 +9,9 @@ description = "Function-oriented Isaac Aura runtime and service packages."
 requires-python = ">=3.10"
 
 [project.optional-dependencies]
+dashboard = [
+    "aiohttp>=3.9",
+]
 webrtc = [
     "aiohttp>=3.9",
     "aiortc>=1.6",
@@ -29,6 +32,8 @@ include = [
     "common.*",
     "control",
     "control.*",
+    "dashboard_backend",
+    "dashboard_backend.*",
     "ipc",
     "ipc.*",
     "inference",

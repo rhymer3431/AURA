@@ -4,13 +4,25 @@ from dataclasses import replace
 import threading
 import time
 import traceback
+from typing import Any
 
 import numpy as np
 
 from apps.runtime_common import RuntimeIo, build_runtime_io
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from common.geometry import quat_wxyz_to_yaw
-from ipc.messages import ActionCommand, ActionStatus, FrameHeader
+from ipc.inproc_bus import InprocBus
+from ipc.messages import (
+    ActionCommand,
+    ActionStatus,
+    CapabilityReport,
+    FrameHeader,
+    HealthPing,
+    RuntimeControlRequest,
+    RuntimeNotice,
+    TaskRequest,
+)
+from ipc.zmq_bus import ZmqBus
 
 from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
 from .planning_session import PlanningSession, TrajectoryUpdate
@@ -31,6 +43,8 @@ class AuraRuntimeCommandSource:
         self.exit_code = 0
         self.shutdown_reason = ""
         self._launch_mode = str(getattr(args, "resolved_launch_mode", resolve_launch_mode(args))).strip().lower()
+        self._viewer_publish = bool(getattr(args, "viewer_publish", self._launch_mode == "g1_view"))
+        self._native_viewer = str(getattr(args, "native_viewer", "off")).strip().lower() or "off"
         self.requires_render = self._launch_mode in {"g1_view", "headless"}
 
         self._controller = None
@@ -57,6 +71,11 @@ class AuraRuntimeCommandSource:
         self._interactive_input_thread: threading.Thread | None = None
         self._last_interactive_phase = ""
         self._last_interactive_command_id = -1
+        self._last_frame_header: FrameHeader | None = None
+        self._last_capture_report: dict[str, object] = {}
+        self._last_viewer_overlay: dict[str, object] = {}
+        self._last_sensor_meta: dict[str, object] = {}
+        self._last_runtime_snapshot_frame = -1
 
     @property
     def supervisor(self) -> Supervisor:
@@ -73,8 +92,19 @@ class AuraRuntimeCommandSource:
         for _ in range(max(int(self.args.startup_updates), 0)):
             simulation_app.update()
         self._executor.initialize(simulation_app, stage)
-        self._ensure_view_runtime()
+        self._ensure_runtime_bridge()
         self._bootstrap_mode()
+        self._publish_detector_capability()
+        self._publish_notice(
+            level="info",
+            notice="aura runtime ready",
+            details={
+                "plannerMode": self._mode,
+                "launchMode": self._launch_mode,
+                "viewerPublish": bool(self._viewer_publish),
+                "nativeViewer": self._native_viewer,
+            },
+        )
         if self._mode == "interactive":
             self._interactive_running = True
             self._print_interactive_help()
@@ -94,6 +124,7 @@ class AuraRuntimeCommandSource:
         robot_quat = np.asarray(base_state.quat_wxyz, dtype=np.float32)
         robot_yaw = float(quat_wxyz_to_yaw(robot_quat))
         self._last_robot_pose_xyz = robot_pose
+        self._drain_external_runtime_requests()
 
         observation = self.planning_session.capture_observation(frame_idx)
         if observation is not None:
@@ -129,7 +160,12 @@ class AuraRuntimeCommandSource:
                 camera_intrinsic=observation.intrinsic,
                 capture_report=dict(observation.sensor_meta),
             )
-            self.supervisor.process_frame(batch, publish=self._launch_mode == "g1_view")
+            enriched = self.supervisor.process_frame(batch, publish=self._viewer_publish)
+            self._last_frame_header = enriched.frame_header
+            self._last_capture_report = dict(enriched.capture_report)
+            self._last_sensor_meta = dict(observation.sensor_meta)
+            overlay = enriched.frame_header.metadata.get("viewer_overlay", {})
+            self._last_viewer_overlay = dict(overlay) if isinstance(overlay, dict) else {}
             active_memory_instruction = self.planning_session.active_memory_instruction()
             if active_memory_instruction != "":
                 memory_context = self.supervisor.memory_service.build_memory_context(
@@ -152,6 +188,9 @@ class AuraRuntimeCommandSource:
         self._command = execution.command_vector
         self._pending_status = execution.status
         self._sync_planner_scratchpad(update)
+        if self._pending_status is not None and self._runtime_io is not None:
+            self.supervisor.bridge.publish_status(self._pending_status)
+        self._publish_runtime_snapshot(frame_idx, update=update, evaluation=evaluation)
 
         if evaluation.reached_goal and self._mode == "pointgoal":
             self._arm_exit(0, f"goal reached at step={frame_idx} dist={evaluation.goal_distance_m:.3f}m")
@@ -179,6 +218,7 @@ class AuraRuntimeCommandSource:
 
     def shutdown(self) -> None:
         self._interactive_running = False
+        self._publish_notice(level="info", notice="aura runtime shutdown", details={"reason": self.shutdown_reason})
         self._executor.shutdown()
         if self._runtime_io is not None:
             self._runtime_io.close(unlink_shm=True)
@@ -287,12 +327,8 @@ class AuraRuntimeCommandSource:
                 self._print_interactive_help()
                 continue
             if lowered == "/cancel":
-                cancelled = self.planning_session.cancel_interactive_task()
+                cancelled = self._cancel_interactive_task(source="stdin")
                 if cancelled:
-                    self.supervisor.memory_service.clear_planner_task(
-                        task_state="cancelled",
-                        reason="interactive task cancelled",
-                    )
                     print("[G1_INTERACTIVE][TASK] cancel requested")
                 else:
                     print("[G1_INTERACTIVE][ROAM] no active task to cancel")
@@ -305,50 +341,52 @@ class AuraRuntimeCommandSource:
                 continue
 
             try:
-                self.planning_session.ensure_navdp_service_ready(context="interactive task")
-                self.planning_session.ensure_dual_service_ready(context="interactive task")
-                command_id = self.planning_session.submit_interactive_instruction(text)
-                self.supervisor.memory_service.set_planner_task(
-                    instruction=text,
-                    planner_mode="interactive",
-                    task_state="pending",
-                    task_id="interactive",
-                    command_id=int(command_id),
-                )
+                command_id = self._submit_interactive_instruction(text, source="stdin")
             except Exception as exc:  # noqa: BLE001
                 print(f"[G1_INTERACTIVE][TASK] rejected instruction={text!r} error={type(exc).__name__}: {exc}")
                 continue
             print(f"[G1_INTERACTIVE][TASK] command_id={command_id} queued instruction={text!r}")
 
-    def _ensure_view_runtime(self) -> None:
-        if self._launch_mode != "g1_view":
-            if self._supervisor is None:
-                self._supervisor = Supervisor(config=self._supervisor_config)
-            return
+    def _ensure_runtime_bridge(self) -> None:
         if self._runtime_io is not None:
             return
-        self._runtime_io = build_runtime_io(
-            bus_kind="zmq",
-            endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
-            bind=True,
-            shm_name=str(getattr(self.args, "viewer_shm_name", "g1_view_frames")),
-            shm_slot_size=int(getattr(self.args, "viewer_shm_slot_size", 8 * 1024 * 1024)),
-            shm_capacity=int(getattr(self.args, "viewer_shm_capacity", 8)),
-            create_shm=True,
-            role="bridge",
-            control_endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
-            telemetry_endpoint=str(getattr(self.args, "viewer_telemetry_endpoint", "")),
-        )
+        if self._viewer_publish:
+            self._runtime_io = build_runtime_io(
+                bus_kind="zmq",
+                endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
+                bind=True,
+                shm_name=str(getattr(self.args, "viewer_shm_name", "g1_view_frames")),
+                shm_slot_size=int(getattr(self.args, "viewer_shm_slot_size", 8 * 1024 * 1024)),
+                shm_capacity=int(getattr(self.args, "viewer_shm_capacity", 8)),
+                create_shm=True,
+                role="bridge",
+                control_endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
+                telemetry_endpoint=str(getattr(self.args, "viewer_telemetry_endpoint", "")),
+            )
+        else:
+            try:
+                bus = ZmqBus(
+                    control_endpoint=str(getattr(self.args, "viewer_control_endpoint", "")),
+                    telemetry_endpoint=str(getattr(self.args, "viewer_telemetry_endpoint", "")),
+                    role="bridge",
+                )
+            except RuntimeError:
+                bus = InprocBus()
+            self._runtime_io = RuntimeIo(
+                bus=bus,
+                shm_ring=None,
+            )
         self._supervisor = Supervisor(
             bus=self._runtime_io.bus,
             shm_ring=self._runtime_io.shm_ring,
             config=self._supervisor_config,
         )
         print(
-            "[G1_VIEW] viewer bridge ready "
+            "[AURA_RUNTIME] runtime bridge ready "
             f"control={getattr(self.args, 'viewer_control_endpoint', '')} "
             f"telemetry={getattr(self.args, 'viewer_telemetry_endpoint', '')} "
-            f"shm={getattr(self.args, 'viewer_shm_name', '')}"
+            f"shm={getattr(self.args, 'viewer_shm_name', '') if self._viewer_publish else 'disabled'} "
+            f"viewer_publish={self._viewer_publish}"
         )
 
     def _log_prefix(self) -> str:
@@ -370,6 +408,251 @@ class AuraRuntimeCommandSource:
                 "planner_mode": self._mode,
             },
         )
+
+    def _submit_interactive_instruction(self, text: str, *, source: str, task_id: str = "") -> int:
+        if self._mode != "interactive":
+            raise RuntimeError("interactive instruction requires planner-mode=interactive")
+        instruction = str(text).strip()
+        if instruction == "":
+            raise ValueError("interactive instruction must be non-empty")
+        self.planning_session.ensure_navdp_service_ready(context=f"interactive task ({source})")
+        self.planning_session.ensure_dual_service_ready(context=f"interactive task ({source})")
+        command_id = int(self.planning_session.submit_interactive_instruction(instruction))
+        self.supervisor.memory_service.set_planner_task(
+            instruction=instruction,
+            planner_mode="interactive",
+            task_state="pending",
+            task_id=str(task_id or "interactive"),
+            command_id=command_id,
+        )
+        self._publish_notice(
+            level="info",
+            notice="interactive task queued",
+            details={
+                "source": source,
+                "taskId": str(task_id or "interactive"),
+                "commandId": command_id,
+                "instruction": instruction,
+            },
+        )
+        return command_id
+
+    def _cancel_interactive_task(self, *, source: str) -> bool:
+        cancelled = bool(self.planning_session.cancel_interactive_task())
+        if cancelled:
+            self.supervisor.memory_service.clear_planner_task(
+                task_state="cancelled",
+                reason=f"interactive task cancelled via {source}",
+            )
+            self._publish_notice(
+                level="info",
+                notice="interactive task cancelled",
+                details={"source": source},
+            )
+        return cancelled
+
+    def _drain_external_runtime_requests(self) -> None:
+        if self._runtime_io is None:
+            return
+        for request in self.supervisor.bridge.drain_task_requests():
+            self._handle_task_request(request)
+        for request in self.supervisor.bridge.drain_runtime_controls():
+            self._handle_runtime_control(request)
+
+    def _handle_task_request(self, request: TaskRequest) -> None:
+        instruction = str(request.command_text).strip()
+        if instruction == "":
+            self._publish_notice(
+                level="warning",
+                notice="ignored empty task request",
+                details={"taskId": str(request.task_id), "source": "dashboard"},
+            )
+            return
+        if self._mode != "interactive":
+            self._publish_notice(
+                level="warning",
+                notice="task request rejected",
+                details={
+                    "reason": "planner_mode_not_interactive",
+                    "plannerMode": self._mode,
+                    "taskId": str(request.task_id),
+                    "instruction": instruction,
+                },
+            )
+            return
+        try:
+            self._submit_interactive_instruction(instruction, source="dashboard", task_id=str(request.task_id))
+        except Exception as exc:  # noqa: BLE001
+            self._publish_notice(
+                level="error",
+                notice="task request failed",
+                details={
+                    "taskId": str(request.task_id),
+                    "instruction": instruction,
+                    "error": f"{type(exc).__name__}: {exc}",
+                },
+            )
+
+    def _handle_runtime_control(self, request: RuntimeControlRequest) -> None:
+        action = str(request.action).strip().lower()
+        if action != "cancel_interactive_task":
+            self._publish_notice(
+                level="warning",
+                notice="unsupported runtime control request",
+                details={"action": action},
+            )
+            return
+        if not self._cancel_interactive_task(source="dashboard"):
+            self._publish_notice(
+                level="warning",
+                notice="interactive cancel ignored",
+                details={"reason": "no_active_task"},
+            )
+
+    def _publish_detector_capability(self) -> None:
+        if self._runtime_io is None:
+            return
+        detector_report = self.supervisor.perception_pipeline.detector.runtime_report
+        if detector_report is None:
+            return
+        self.supervisor.bridge.publish_capability(
+            CapabilityReport(
+                component="detector",
+                status="ready" if detector_report.ready_for_inference else "fallback",
+                backend_name=self.supervisor.perception_pipeline.detector.info.backend_name,
+                details=detector_report.as_dict(),
+                warnings=list(detector_report.warnings),
+                errors=list(detector_report.errors),
+            )
+        )
+
+    def _publish_notice(self, *, level: str, notice: str, details: dict[str, object] | None = None) -> None:
+        if self._runtime_io is None:
+            return
+        self.supervisor.bridge.publish_notice(
+            RuntimeNotice(component="aura_runtime", level=level, notice=notice, details=dict(details or {}))
+        )
+
+    def _publish_runtime_snapshot(
+        self,
+        frame_idx: int,
+        *,
+        update: TrajectoryUpdate,
+        evaluation: CommandEvaluation,
+    ) -> None:
+        if self._runtime_io is None:
+            return
+        interval = max(int(getattr(self.args, "log_interval", 30)), 1)
+        if self._last_runtime_snapshot_frame >= 0 and (frame_idx - self._last_runtime_snapshot_frame) < interval:
+            return
+        self._last_runtime_snapshot_frame = int(frame_idx)
+        self.supervisor.bridge.publish_health(
+            HealthPing(
+                component="aura_runtime",
+                details={"snapshot": self._build_runtime_snapshot(update=update, evaluation=evaluation)},
+            )
+        )
+
+    def _build_runtime_snapshot(
+        self,
+        *,
+        update: TrajectoryUpdate,
+        evaluation: CommandEvaluation,
+    ) -> dict[str, object]:
+        detector = self.supervisor.perception_pipeline.detector
+        detector_report = detector.runtime_report
+        scratchpad = self.supervisor.memory_service.scratchpad
+        frame_header = self._last_frame_header
+        overlay = self._last_viewer_overlay if isinstance(self._last_viewer_overlay, dict) else {}
+        detections = overlay.get("detections", [])
+        transport = {
+            "viewerPublish": bool(self._viewer_publish),
+            "nativeViewer": self._native_viewer,
+            "controlEndpoint": str(getattr(self.args, "viewer_control_endpoint", "")),
+            "telemetryEndpoint": str(getattr(self.args, "viewer_telemetry_endpoint", "")),
+            "shmName": str(getattr(self.args, "viewer_shm_name", "")),
+            "frameAvailable": frame_header is not None,
+        }
+        modes = {
+            "plannerMode": self._mode,
+            "launchMode": self._launch_mode,
+            "viewerPublish": bool(self._viewer_publish),
+            "nativeViewer": self._native_viewer,
+            "scenePreset": str(getattr(self.args, "scene_preset", "")),
+            "showDepth": bool(getattr(self.args, "show_depth", False)),
+            "memoryStore": bool(getattr(self.args, "memory_store", True)),
+            "detectionEnabled": not bool(getattr(self.args, "skip_detection", False)),
+        }
+        planner = {
+            "planVersion": int(update.plan_version),
+            "goalVersion": int(update.goal_version),
+            "trajVersion": int(update.traj_version),
+            "staleSec": float(update.stale_sec),
+            "plannerControlMode": str(update.planner_control_mode),
+            "plannerYawDeltaRad": float(update.planner_yaw_delta_rad) if update.planner_yaw_delta_rad is not None else None,
+            "goalDistanceM": float(evaluation.goal_distance_m),
+            "yawErrorRad": float(evaluation.yaw_error_rad),
+            "interactivePhase": str(update.interactive_phase or ""),
+            "interactiveCommandId": int(update.interactive_command_id),
+            "interactiveInstruction": str(update.interactive_instruction),
+            "actionStatus": None
+            if self._pending_status is None
+            else {
+                "state": str(self._pending_status.state),
+                "success": bool(self._pending_status.success),
+                "reason": str(self._pending_status.reason),
+                "distanceRemainingM": self._pending_status.distance_remaining_m,
+            },
+            "activeCommandType": "" if self._active_command is None else str(self._active_command.action_type),
+        }
+        sensor = {
+            "rgbAvailable": frame_header is not None,
+            "depthAvailable": frame_header is not None and bool(overlay.get("has_depth", False) or "depth_ref" in frame_header.metadata or "depth_inline" in frame_header.metadata),
+            "poseAvailable": frame_header is not None,
+            "frameId": None if frame_header is None else int(frame_header.frame_id),
+            "source": "" if frame_header is None else str(frame_header.source),
+            "cameraPoseXyz": [] if frame_header is None else [float(v) for v in frame_header.camera_pose_xyz[:3]],
+            "robotPoseXyz": [] if frame_header is None else [float(v) for v in frame_header.robot_pose_xyz[:3]],
+            "robotYawRad": None if frame_header is None else float(frame_header.robot_yaw_rad),
+            "sensorMeta": dict(self._last_sensor_meta),
+            "captureReport": dict(self._last_capture_report),
+        }
+        perception = {
+            "detectorBackend": str(detector.info.backend_name),
+            "detectorSelectedReason": str(detector.info.selected_reason),
+            "detectorReady": bool(detector_report.ready_for_inference) if detector_report is not None else False,
+            "detectorRuntimeReport": None if detector_report is None else detector_report.as_dict(),
+            "detectionCount": len(detections) if isinstance(detections, list) else 0,
+            "trackedDetectionCount": len(detections) if isinstance(detections, list) else 0,
+            "trajectoryPointCount": len(overlay.get("trajectory_pixels", [])) if isinstance(overlay.get("trajectory_pixels", []), list) else 0,
+        }
+        memory = {
+            "objectCount": len(self.supervisor.memory_service.spatial_store.objects),
+            "placeCount": len(self.supervisor.memory_service.spatial_store.places),
+            "semanticRuleCount": len(self.supervisor.memory_service.semantic_store.list()),
+            "keyframeCount": len(self.supervisor.memory_service.keyframes),
+            "scratchpad": {
+                "instruction": str(scratchpad.instruction),
+                "plannerMode": str(scratchpad.planner_mode),
+                "taskState": str(scratchpad.task_state),
+                "taskId": str(scratchpad.task_id),
+                "commandId": int(scratchpad.command_id),
+                "goalSummary": str(scratchpad.goal_summary),
+                "recentHint": str(scratchpad.recent_hint),
+                "nextPriority": str(scratchpad.next_priority),
+            },
+            "memoryAwareTaskActive": bool(
+                self._mode == "interactive" and str(update.interactive_phase or "") == "task_active" and str(update.interactive_instruction).strip() != ""
+            ),
+        }
+        return {
+            "modes": modes,
+            "planner": planner,
+            "sensor": sensor,
+            "perception": perception,
+            "memory": memory,
+            "transport": transport,
+        }
 
     def _sync_planner_scratchpad(self, update: TrajectoryUpdate) -> None:
         if self._mode == "interactive":
@@ -429,8 +712,8 @@ class AuraRuntimeCommandSource:
 
 def build_launch_config(args) -> dict[str, bool]:
     launch_config = {"headless": bool(args.headless)}
-    launch_mode = str(getattr(args, "resolved_launch_mode", resolve_launch_mode(args))).strip().lower()
-    if bool(args.headless) and launch_mode != "g1_view":
+    viewer_publish = bool(getattr(args, "viewer_publish", False))
+    if bool(args.headless) and not viewer_publish:
         launch_config["disable_viewport_updates"] = True
     return launch_config
 

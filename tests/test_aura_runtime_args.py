@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from runtime.aura_runtime import build_launch_config
 from runtime.aura_runtime_args import (
+    DEFAULT_NATIVE_VIEWER,
     DEFAULT_OBJECT_SEARCH_INSTRUCTION,
     DEFAULT_VIEWER_CONTROL_ENDPOINT,
     DEFAULT_VIEWER_SHM_NAME,
@@ -92,6 +101,8 @@ def test_apply_launch_mode_defaults_forces_headless_for_g1_view():
 
     assert args.resolved_launch_mode == "g1_view"
     assert args.headless is True
+    assert args.viewer_publish is True
+    assert args.native_viewer == "opencv"
 
 
 def test_build_launch_config_keeps_viewport_updates_for_g1_view():
@@ -114,9 +125,27 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
 
     assert args.viewer_control_endpoint == DEFAULT_VIEWER_CONTROL_ENDPOINT
     assert args.viewer_shm_name == DEFAULT_VIEWER_SHM_NAME
+    assert args.native_viewer == DEFAULT_NATIVE_VIEWER
+    assert args.viewer_publish is False
 
 
 def test_build_arg_parser_accepts_skip_detection_flag():
     args = _parse_args("--skip-detection")
 
     assert args.skip_detection is True
+
+
+def test_validate_args_rejects_native_viewer_without_viewer_publish():
+    args = _parse_args("--native-viewer", "opencv")
+
+    with pytest.raises(ValueError, match="--native-viewer opencv requires --viewer-publish"):
+        validate_args(args)
+
+
+def test_build_launch_config_keeps_viewport_updates_when_viewer_publish_enabled():
+    args = _parse_args("--headless", "--viewer-publish")
+
+    apply_launch_mode_defaults(args)
+    launch_config = build_launch_config(args)
+
+    assert launch_config == {"headless": True}

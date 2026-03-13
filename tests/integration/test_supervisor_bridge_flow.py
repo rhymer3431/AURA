@@ -178,7 +178,8 @@ def test_dual_mode_bootstraps_planner_managed_command_flow() -> None:
     assert planning_session.last_action_type == "LOCAL_SEARCH"
     assert command_source._active_command is not None
     assert command_source._active_command.metadata["planner_managed"] is True
-    assert command_source._runtime_io is None
+    assert command_source._runtime_io is not None
+    assert command_source._runtime_io.shm_ring is None
 
 
 def test_interactive_mode_uses_planning_session_control_flow(monkeypatch: pytest.MonkeyPatch) -> None:

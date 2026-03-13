@@ -39,6 +39,19 @@ def _frame_cache() -> FrameCache:
             robot_pose_xyz=(1.0, 2.0, 3.0),
             robot_yaw_rad=0.25,
             sim_time_s=4.5,
+            metadata={
+                "planner_overlay": {
+                    "plan_version": 4,
+                    "goal_version": 2,
+                    "traj_version": 3,
+                    "stale_sec": 0.4,
+                    "planner_control_mode": "trajectory",
+                    "planner_yaw_delta_rad": 0.12,
+                    "interactive_phase": "task_active",
+                    "interactive_command_id": 8,
+                    "interactive_instruction": "go to apple",
+                }
+            },
         ),
         rgb_image=rgb,
         depth_image_m=depth,
@@ -83,13 +96,20 @@ def test_frame_messages_follow_contract() -> None:
     assert snapshot["detection_count"] == 1
     assert snapshot["active_command_type"] == "NAV_TO_POSE"
     assert snapshot["has_depth"] is True
+    assert snapshot["planVersion"] == 4
+    assert snapshot["goalVersion"] == 2
+    assert snapshot["trajVersion"] == 3
+    assert snapshot["interactiveCommandId"] == 8
 
     assert meta["type"] == "frame_meta"
     assert meta["frame_id"] == 11
     assert meta["detections"][0]["class_name"] == "apple"
     assert meta["detections"][0]["bbox_xyxy"] == [1, 2, 10, 12]
     assert meta["trajectory_pixels"] == [[10, 12], [15, 18]]
+    assert meta["trajectoryPixels"] == [[10, 12], [15, 18]]
     assert meta["active_target"]["target_track_id"] == "track-1"
+    assert meta["activeTarget"]["target_track_id"] == "track-1"
+    assert meta["interactiveInstruction"] == "go to apple"
 
     assert ready["sessionId"] == "abc123"
     assert ready["trackRoles"] == ["rgb", "depth"]

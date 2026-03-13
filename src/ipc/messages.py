@@ -76,6 +76,13 @@ class TaskRequest:
 
 
 @dataclass(frozen=True)
+class RuntimeControlRequest:
+    action: Literal["cancel_interactive_task"]
+    request_id: str = field(default_factory=lambda: _message_id("rtctl"))
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class CapabilityReport:
     component: str
     status: Literal["ready", "fallback", "degraded", "unavailable"]
@@ -106,7 +113,16 @@ class HealthPing:
     message_id: str = field(default_factory=lambda: _message_id("health"))
 
 
-MessagePayload = FrameHeader | ActionCommand | ActionStatus | TaskRequest | CapabilityReport | RuntimeNotice | HealthPing
+MessagePayload = (
+    FrameHeader
+    | ActionCommand
+    | ActionStatus
+    | TaskRequest
+    | RuntimeControlRequest
+    | CapabilityReport
+    | RuntimeNotice
+    | HealthPing
+)
 
 
 MESSAGE_TYPES: dict[str, type[MessagePayload]] = {
@@ -114,6 +130,7 @@ MESSAGE_TYPES: dict[str, type[MessagePayload]] = {
     "ActionCommand": ActionCommand,
     "ActionStatus": ActionStatus,
     "TaskRequest": TaskRequest,
+    "RuntimeControlRequest": RuntimeControlRequest,
     "CapabilityReport": CapabilityReport,
     "RuntimeNotice": RuntimeNotice,
     "HealthPing": HealthPing,

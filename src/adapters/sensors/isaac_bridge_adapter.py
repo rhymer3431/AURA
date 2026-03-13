@@ -6,7 +6,16 @@ import numpy as np
 
 from ipc.base import MessageBus
 from ipc.frame_codec import decode_ndarray, encode_ndarray, ref_from_dict, ref_to_dict
-from ipc.messages import ActionCommand, ActionStatus, CapabilityReport, FrameHeader, HealthPing, RuntimeNotice, TaskRequest
+from ipc.messages import (
+    ActionCommand,
+    ActionStatus,
+    CapabilityReport,
+    FrameHeader,
+    HealthPing,
+    RuntimeControlRequest,
+    RuntimeNotice,
+    TaskRequest,
+)
 from ipc.shm_ring import SharedMemoryRing
 from memory.models import ObsObject
 from perception.speaker_events import SpeakerEvent
@@ -18,6 +27,7 @@ class IsaacBridgeAdapterConfig:
     command_topic: str = "isaac.command"
     status_topic: str = "isaac.status"
     task_topic: str = "isaac.task"
+    runtime_control_topic: str = "isaac.runtime_control"
     notice_topic: str = "isaac.notice"
     capability_topic: str = "isaac.capability"
     health_topic: str = "isaac.health"
@@ -164,6 +174,9 @@ class IsaacBridgeAdapter:
     def publish_task_request(self, request: TaskRequest) -> None:
         self._bus.publish(self.config.task_topic, request)
 
+    def publish_runtime_control(self, request: RuntimeControlRequest) -> None:
+        self._bus.publish(self.config.runtime_control_topic, request)
+
     def publish_status(self, status: ActionStatus) -> None:
         self._bus.publish(self.config.status_topic, status)
 
@@ -181,6 +194,9 @@ class IsaacBridgeAdapter:
 
     def drain_task_requests(self) -> list[TaskRequest]:
         return [record.message for record in self._bus.poll(self.config.task_topic, max_items=32)]
+
+    def drain_runtime_controls(self) -> list[RuntimeControlRequest]:
+        return [record.message for record in self._bus.poll(self.config.runtime_control_topic, max_items=32)]
 
     def drain_statuses(self) -> list[ActionStatus]:
         return [record.message for record in self._bus.poll(self.config.status_topic, max_items=32)]

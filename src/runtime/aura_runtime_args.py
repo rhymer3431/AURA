@@ -13,6 +13,7 @@ DEFAULT_VIEWER_TELEMETRY_ENDPOINT = "tcp://127.0.0.1:5581"
 DEFAULT_VIEWER_SHM_NAME = "g1_view_frames"
 DEFAULT_VIEWER_SHM_SLOT_SIZE = 8 * 1024 * 1024
 DEFAULT_VIEWER_SHM_CAPACITY = 8
+DEFAULT_NATIVE_VIEWER = "off"
 
 
 def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -100,6 +101,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--viewer-shm-name", dest="viewer_shm_name", type=str, default=DEFAULT_VIEWER_SHM_NAME)
     parser.add_argument("--viewer-shm-slot-size", dest="viewer_shm_slot_size", type=int, default=DEFAULT_VIEWER_SHM_SLOT_SIZE)
     parser.add_argument("--viewer-shm-capacity", dest="viewer_shm_capacity", type=int, default=DEFAULT_VIEWER_SHM_CAPACITY)
+    parser.add_argument("--viewer-publish", dest="viewer_publish", action="store_true")
+    parser.add_argument("--no-viewer-publish", dest="viewer_publish", action="store_false")
+    parser.set_defaults(viewer_publish=False)
+    parser.add_argument("--native-viewer", dest="native_viewer", type=str, choices=("off", "opencv"), default=DEFAULT_NATIVE_VIEWER)
     parser.add_argument("--show-depth", dest="show_depth", action="store_true")
     add_subgoal_executor_args(parser)
     return parser
@@ -135,6 +140,13 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("--spawn-demo-object requires --planner-mode dual")
         if str(args.interactive_prompt).strip() == "":
             raise ValueError("--interactive-prompt must be non-empty in planner-mode=interactive")
+    launch_mode = str(getattr(args, "launch_mode", "")).strip().lower()
+    if (
+        str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() == "opencv"
+        and not bool(getattr(args, "viewer_publish", False))
+        and launch_mode != "g1_view"
+    ):
+        raise ValueError("--native-viewer opencv requires --viewer-publish")
 
 
 def resolve_launch_mode(args: argparse.Namespace) -> Literal["gui", "g1_view", "headless"]:
@@ -150,6 +162,13 @@ def apply_launch_mode_defaults(args: argparse.Namespace) -> argparse.Namespace:
     resolved_mode = resolve_launch_mode(args)
     args.resolved_launch_mode = resolved_mode
     args.headless = resolved_mode != "gui"
+    native_viewer = str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() or DEFAULT_NATIVE_VIEWER
+    viewer_publish = bool(getattr(args, "viewer_publish", False))
+    if resolved_mode == "g1_view":
+        viewer_publish = True
+        native_viewer = "opencv"
+    args.viewer_publish = viewer_publish
+    args.native_viewer = native_viewer
     return args
 
 
@@ -160,6 +179,7 @@ __all__ = [
     "DEFAULT_INTERACTIVE_PROMPT",
     "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
     "DEFAULT_VIEWER_CONTROL_ENDPOINT",
+    "DEFAULT_NATIVE_VIEWER",
     "DEFAULT_VIEWER_TELEMETRY_ENDPOINT",
     "DEFAULT_VIEWER_SHM_NAME",
     "DEFAULT_VIEWER_SHM_SLOT_SIZE",

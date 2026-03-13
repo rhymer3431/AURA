@@ -1,0 +1,145 @@
+import {
+  LineChart, Line, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Tooltip,
+} from "recharts";
+import { Navigation, AlertTriangle } from "lucide-react";
+
+import { useDashboard } from "../state";
+import { asRecord, formatMeters, formatRadians, formatSeconds, stringValue } from "../selectors";
+
+function Badge({ color, children }: { color: "green" | "blue" | "amber"; children: React.ReactNode }) {
+  const tones = {
+    green: "bg-emerald-50 text-emerald-600 border-emerald-200",
+    blue: "bg-sky-50 text-sky-600 border-sky-200",
+    amber: "bg-amber-50 text-amber-600 border-amber-200",
+  };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] border ${tones[color]}`}>
+      {children}
+    </span>
+  );
+}
+
+export function NavigationControlPanel() {
+  const { history, state } = useDashboard();
+  const runtime = asRecord(state?.runtime);
+  const actionStatus = asRecord(runtime.actionStatus);
+  const currentPhase = stringValue(runtime.interactivePhase || runtime.plannerControlMode, "idle");
+  const plannerMode = state?.session.config?.plannerMode ?? "idle";
+  const phaseTone =
+    currentPhase === "task_active" || currentPhase === "trajectory"
+      ? "green"
+      : currentPhase === "roaming"
+        ? "blue"
+        : "amber";
+
+  const metrics = [
+    { label: "Plan Ver.", value: `v${Number(runtime.planVersion ?? 0)}` },
+    { label: "Goal Ver.", value: `v${Number(runtime.goalVersion ?? 0)}` },
+    { label: "Traj Ver.", value: `v${Number(runtime.trajVersion ?? 0)}` },
+    { label: "Stale", value: formatSeconds(runtime.staleSec, "n/a") },
+    { label: "Goal Dist", value: formatMeters(runtime.goalDistanceM, "n/a") },
+    { label: "Yaw Err", value: formatRadians(runtime.plannerYawDeltaRad ?? runtime.yawErrorRad, "n/a") },
+  ];
+
+  return (
+    <div className="bg-[#F7F9FB] rounded-3xl p-6 flex-1 min-w-0">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Navigation className="size-4 text-black/40" />
+          <h3 className="text-[15px] font-semibold text-black">Navigation / Control 상태</h3>
+        </div>
+        <Badge color={phaseTone}>{currentPhase}</Badge>
+      </div>
+
+      <div className="bg-black/[0.02] border border-black/[0.06] rounded-xl p-4 mb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[12px]">
+          <div>
+            <div className="text-black/50 mb-1 text-[11px]">planner_mode</div>
+            <div className="text-black font-medium">{plannerMode}</div>
+          </div>
+          <div>
+            <div className="text-black/50 mb-1 text-[11px]">interactive_phase</div>
+            <div className="text-emerald-600 font-medium">{currentPhase}</div>
+          </div>
+          <div>
+            <div className="text-black/50 mb-1 text-[11px]">control_mode</div>
+            <div className="text-black font-medium">{stringValue(runtime.plannerControlMode, "idle")}</div>
+          </div>
+          <div>
+            <div className="text-black/50 mb-1 text-[11px]">ActionStatus</div>
+            <div className="text-emerald-600 font-medium">{stringValue(actionStatus.state, "n/a")}</div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-4">
+        {metrics.map((metric) => (
+          <div key={metric.label} className="bg-black/[0.02] border border-black/[0.06] rounded-xl px-3 py-2.5">
+            <div className="text-[10px] text-black/40 uppercase tracking-wider mb-0.5">{metric.label}</div>
+            <div className="text-[16px] font-medium text-black leading-tight">{metric.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2.5 mb-5 bg-black/[0.01] border border-black/5 rounded-lg px-3 py-2 flex-wrap">
+        <span className="text-[11px] text-black/50 font-medium">Control:</span>
+        <Badge color={phaseTone}>{stringValue(runtime.plannerControlMode, "idle")}</Badge>
+        <span className="text-[11px] text-black/40">instruction: {stringValue(runtime.interactiveInstruction, "none") || "none"}</span>
+        <div className="flex-1" />
+        <div className="flex items-center gap-1.5 text-[11px] text-black/40 font-medium">
+          <AlertTriangle className="size-3.5" />
+          status: <span className="text-black/60">{stringValue(actionStatus.reason, "clear")}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="bg-white rounded-2xl p-4">
+          <div className="text-[12px] font-medium text-black/60 mb-3">Trajectory Freshness (s)</div>
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={history.stale}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
+                <XAxis dataKey="t" tick={{ fontSize: 10, fill: "rgba(0,0,0,0.4)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <YAxis tick={{ fontSize: 10, fill: "rgba(0,0,0,0.4)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <Tooltip contentStyle={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 8, fontSize: 11 }} />
+                <Line type="monotone" dataKey="v" stroke="#f59e0b" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl p-4">
+          <div className="text-[12px] font-medium text-black/60 mb-3">Goal Distance (m)</div>
+          <div className="h-[120px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={history.goalDistance}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
+                <XAxis dataKey="t" tick={{ fontSize: 10, fill: "rgba(0,0,0,0.4)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <YAxis tick={{ fontSize: 10, fill: "rgba(0,0,0,0.4)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <Tooltip contentStyle={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 8, fontSize: 11 }} />
+                <Line type="monotone" dataKey="v" stroke="#0ea5e9" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 bg-white rounded-2xl p-4">
+        <div className="text-[11px] font-medium text-black/50 mb-2">Planner Snapshot</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px]">
+          <div className="bg-[#F7F9FB] rounded-xl px-3 py-2">
+            <div className="text-black/40 mb-1">Command ID</div>
+            <div className="text-black/80 font-medium">{Number(runtime.interactiveCommandId ?? -1)}</div>
+          </div>
+          <div className="bg-[#F7F9FB] rounded-xl px-3 py-2">
+            <div className="text-black/40 mb-1">Active Command</div>
+            <div className="text-black/80 font-medium">{stringValue(runtime.activeCommandType, "none")}</div>
+          </div>
+          <div className="bg-[#F7F9FB] rounded-xl px-3 py-2">
+            <div className="text-black/40 mb-1">Status Reason</div>
+            <div className="text-black/80 font-medium">{stringValue(actionStatus.reason, "clear")}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
