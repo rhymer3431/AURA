@@ -67,7 +67,7 @@ def test_webrtc_gateway_offer_loopback() -> None:
             stale_frame_timeout_sec=30.0,
         )
         subscriber = ObservationSubscriber(config, bus=bus)
-        args = parse_args([])
+        args = parse_args(["--cors-origin", "tauri://localhost"])
         app = create_app(args, subscriber=subscriber)
         runner = web.AppRunner(app)
         await runner.setup()
@@ -150,6 +150,58 @@ def test_webrtc_gateway_offer_loopback() -> None:
             assert frame_meta["detections"][0]["class_name"] == "apple"
         finally:
             await pc.close()
+            await runner.cleanup()
+
+    asyncio.run(scenario())
+
+
+def test_webrtc_gateway_returns_cors_headers_on_offer_error() -> None:
+    pytest.importorskip("aiohttp")
+
+    class _FakeSubscriber:
+        current_frame = None
+
+        async def start(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+        def last_frame_age_ms(self):
+            return None
+
+    class _FailingSessionManager:
+        active_session = None
+
+        async def accept_offer(self, payload: dict[str, object]):
+            _ = payload
+            raise RuntimeError("aiortc is required for WebRTC peer sessions.")
+
+        async def close(self) -> None:
+            return None
+
+    async def scenario() -> None:
+        from aiohttp import ClientSession, web
+
+        args = parse_args(["--cors-origin", "tauri://localhost"])
+        app = create_app(args, subscriber=_FakeSubscriber(), session_manager=_FailingSessionManager())
+        runner = web.AppRunner(app)
+        await runner.setup()
+        port = _free_tcp_port()
+        site = web.TCPSite(runner, "127.0.0.1", port)
+        await site.start()
+
+        try:
+            async with ClientSession() as client:
+                response = await client.post(
+                    f"http://127.0.0.1:{port}/offer",
+                    headers={"Origin": "tauri://localhost"},
+                    json={"sdp": "offer", "type": "offer"},
+                )
+                assert response.status == 400
+                assert response.headers["Access-Control-Allow-Origin"] == "tauri://localhost"
+                assert "aiortc is required" in await response.text()
+        finally:
             await runner.cleanup()
 
     asyncio.run(scenario())

@@ -249,6 +249,7 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/session/start",
+                    headers={"Origin": "tauri://localhost"},
                     json={
                         "plannerMode": "interactive",
                         "launchMode": "gui",
@@ -266,6 +267,7 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/runtime/task",
+                    headers={"Origin": "tauri://localhost"},
                     json={"instruction": "go to the loading dock"},
                 )
                 assert response.status == 200
@@ -273,24 +275,36 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert task_body["commandText"] == "go to the loading dock"
                 assert control_client.submitted == ["go to the loading dock"]
 
-                response = await client.post(f"http://127.0.0.1:{port}/api/runtime/cancel", json={})
+                response = await client.post(
+                    f"http://127.0.0.1:{port}/api/runtime/cancel",
+                    headers={"Origin": "tauri://localhost"},
+                    json={},
+                )
                 assert response.status == 200
                 cancel_body = await response.json()
                 assert cancel_body["action"] == "cancel_interactive_task"
                 assert control_client.cancel_count == 1
 
-                response = await client.get(f"http://127.0.0.1:{port}/api/webrtc/config")
+                response = await client.get(
+                    f"http://127.0.0.1:{port}/api/webrtc/config",
+                    headers={"Origin": "tauri://localhost"},
+                )
                 assert response.status == 200
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/webrtc/offer",
+                    headers={"Origin": "tauri://localhost"},
                     json={"sdp": "offer-sdp", "type": "offer"},
                 )
                 assert response.status == 200
                 offer_body = await response.json()
                 assert offer_body["sessionId"] == "session-123"
 
-                response = await client.post(f"http://127.0.0.1:{port}/api/session/stop", json={})
+                response = await client.post(
+                    f"http://127.0.0.1:{port}/api/session/stop",
+                    headers={"Origin": "tauri://localhost"},
+                    json={},
+                )
                 assert response.status == 200
                 stopped = await response.json()
                 assert stopped["session"]["active"] is False
@@ -330,6 +344,7 @@ def test_dashboard_backend_returns_service_unavailable_when_process_start_fails(
             async with ClientSession() as client:
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/session/start",
+                    headers={"Origin": "tauri://localhost"},
                     json={
                         "plannerMode": "interactive",
                         "launchMode": "gui",
@@ -341,6 +356,7 @@ def test_dashboard_backend_returns_service_unavailable_when_process_start_fails(
                     },
                 )
                 assert response.status == 503
+                assert response.headers["Access-Control-Allow-Origin"] == "tauri://localhost"
                 assert "navdp failed to start" in await response.text()
         finally:
             await runner.cleanup()

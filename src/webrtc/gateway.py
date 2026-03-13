@@ -48,10 +48,13 @@ class WebRTCGateway:
     def _cors_middleware(self):
         @self._web.middleware
         async def middleware(request, handler):  # noqa: ANN001
-            if request.method == "OPTIONS":
-                response = self._web.Response(status=200)
-            else:
-                response = await handler(request)
+            try:
+                if request.method == "OPTIONS":
+                    response = self._web.Response(status=200)
+                else:
+                    response = await handler(request)
+            except self._web.HTTPException as exc:
+                response = self._web.Response(status=exc.status, text=exc.reason, headers=exc.headers)
             origin_header = cors_header_for_origin(request.headers.get("Origin", ""), self.config.cors_origins)
             if origin_header is not None:
                 response.headers["Access-Control-Allow-Origin"] = origin_header

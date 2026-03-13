@@ -118,10 +118,13 @@ class DashboardWebApp:
     def _cors_middleware(self):
         @web.middleware
         async def middleware(request, handler):  # noqa: ANN001
-            if request.method == "OPTIONS":
-                response = web.Response(status=200)
-            else:
-                response = await handler(request)
+            try:
+                if request.method == "OPTIONS":
+                    response = web.Response(status=200)
+                else:
+                    response = await handler(request)
+            except web.HTTPException as exc:
+                response = web.Response(status=exc.status, text=exc.reason, headers=exc.headers)
             self._apply_cors_headers(request, response)
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type"

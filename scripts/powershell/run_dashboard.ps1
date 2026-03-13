@@ -25,12 +25,32 @@ function Join-SingleQuotedArgs {
     return [string]::Join(" ", $Quoted)
 }
 
+function Test-PythonModules {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$PythonPath,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Modules
+    )
+
+    $ModuleList = [string]::Join(",", $Modules)
+    & $PythonPath -c "import importlib.util; import sys; missing=[name for name in '$ModuleList'.split(',') if importlib.util.find_spec(name) is None]; sys.exit(0 if len(missing) == 0 else 1)"
+    return $LASTEXITCODE -eq 0
+}
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
 $DashboardDir = Join-Path $RepoDir "dashboard"
 $SrcDir = Join-Path $RepoDir "src"
 $PowerShellExe = Join-Path $PSHOME "powershell.exe"
-$PythonExe = if ($env:AURA_DASHBOARD_PYTHON_EXE) { $env:AURA_DASHBOARD_PYTHON_EXE } else { "python" }
+$DefaultPythonExe = "C:\Users\mango\anaconda3\python.exe"
+$PythonExe = if ($env:AURA_DASHBOARD_PYTHON_EXE) {
+    $env:AURA_DASHBOARD_PYTHON_EXE
+} elseif (Test-Path $DefaultPythonExe) {
+    $DefaultPythonExe
+} else {
+    "python"
+}
 $NpmCmd = if ($env:AURA_DASHBOARD_NPM_CMD) { $env:AURA_DASHBOARD_NPM_CMD } else { "npm.cmd" }
 $DefaultCargoPath = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
 $CargoCmd = if ($env:AURA_DASHBOARD_CARGO_CMD) {
@@ -51,7 +71,7 @@ if (-not (Test-Path $DashboardDir)) {
 if (-not (Test-Path (Join-Path $DashboardDir "package.json"))) {
     throw "dashboard/package.json not found."
 }
-if (-not (Get-Command $PythonExe -ErrorAction SilentlyContinue)) {
+if (-not (Test-Path $PythonExe) -and -not (Get-Command $PythonExe -ErrorAction SilentlyContinue)) {
     throw "Python executable not found: $PythonExe"
 }
 if (-not (Get-Command $NpmCmd -ErrorAction SilentlyContinue)) {
@@ -59,6 +79,13 @@ if (-not (Get-Command $NpmCmd -ErrorAction SilentlyContinue)) {
 }
 if (-not (Test-Path $CargoCmd) -and -not (Get-Command $CargoCmd -ErrorAction SilentlyContinue)) {
     throw "Rust cargo executable not found: $CargoCmd. Install the Rust toolchain before running the Tauri dashboard."
+}
+if (-not (Test-PythonModules -PythonPath $PythonExe -Modules @("aiohttp", "aiortc", "av"))) {
+    Write-Host "[AURA_DASHBOARD] installing missing backend Python modules: aiohttp aiortc av"
+    & $PythonExe -m pip install aiohttp aiortc av
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install required backend Python modules into $PythonExe"
+    }
 }
 
 $RepoDirEsc = Quote-ForSingleQuotedString $RepoDir

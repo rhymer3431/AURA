@@ -23,6 +23,18 @@ else:
 
 
 def _require_rtc_dependencies() -> None:
+    global RTCConfiguration, RTCIceServer, RTCPeerConnection, RTCSessionDescription, _RTC_IMPORT_ERROR
+    if _RTC_IMPORT_ERROR is not None:
+        try:
+            from aiortc import RTCConfiguration as _RTCConfiguration, RTCIceServer as _RTCIceServer, RTCPeerConnection as _RTCPeerConnection, RTCSessionDescription as _RTCSessionDescription
+        except Exception:
+            pass
+        else:
+            RTCConfiguration = _RTCConfiguration
+            RTCIceServer = _RTCIceServer
+            RTCPeerConnection = _RTCPeerConnection
+            RTCSessionDescription = _RTCSessionDescription
+            _RTC_IMPORT_ERROR = None
     if _RTC_IMPORT_ERROR is not None:
         raise RuntimeError("aiortc is required for WebRTC peer sessions.") from _RTC_IMPORT_ERROR
 
