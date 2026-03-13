@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -18,8 +19,10 @@ class ProcessSpec:
     script_path: Path
     args: tuple[str, ...]
     health_url: str
+    debug_url: str = ""
     tcp_ready_host: str | None = None
     tcp_ready_port: int | None = None
+    env: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass
@@ -54,6 +57,7 @@ class ProcessManager:
         self._runner = runner or self._default_runner
         self._startup_timeout_sec = max(float(startup_timeout_sec), 1.0)
         self._processes: dict[str, ManagedProcess] = {}
+        self._planned_specs: dict[str, ProcessSpec] = {}
         self._current_request: DashboardSessionRequest | None = None
         self._session_started_at: float | None = None
 
@@ -69,14 +73,18 @@ class ProcessManager:
         await self.stop_all()
         self.config.process_log_dir.mkdir(parents=True, exist_ok=True)
         specs = self._build_specs(request)
+        self._planned_specs = {spec.name: spec for spec in specs}
+        spec: ProcessSpec | None = None
+        managed: ManagedProcess | None = None
         try:
             for spec in specs:
                 managed = self._runner(spec, self.config.process_log_dir / f"{spec.name}.stdout.log", self.config.process_log_dir / f"{spec.name}.stderr.log")
                 self._processes[spec.name] = managed
                 await self._wait_ready(spec, managed)
-        except Exception:
+        except Exception as exc:
+            message = self._format_startup_error(spec, managed, exc)
             await self.stop_all()
-            raise
+            raise RuntimeError(message) from exc
         self._current_request = request
         self._session_started_at = time.time()
 
@@ -86,6 +94,7 @@ class ProcessManager:
             if managed is None:
                 continue
             await self._stop_process(managed)
+        self._planned_specs = {}
         self._current_request = None
         self._session_started_at = None
 
@@ -104,7 +113,7 @@ class ProcessManager:
                         "pid": None,
                         "exitCode": None,
                         "startedAt": None,
-                        "healthUrl": self._default_health_url(name),
+                        "healthUrl": self.service_urls(name)[0],
                         "stdoutLog": str(self.config.process_log_dir / f"{name}.stdout.log"),
                         "stderrLog": str(self.config.process_log_dir / f"{name}.stderr.log"),
                     }
@@ -128,15 +137,23 @@ class ProcessManager:
 
     def _build_specs(self, request: DashboardSessionRequest) -> list[ProcessSpec]:
         scripts_dir = resolve_repo_path(self.config.repo_root, "scripts", "powershell")
-        runtime_args = self._runtime_args(request)
+        navdp_port = self._reserve_port("127.0.0.1", 8888)
+        system2_port = self._reserve_port("127.0.0.1", 8080, reserved={navdp_port})
+        dual_port = self._reserve_port("127.0.0.1", 8890, reserved={navdp_port, system2_port})
+        navdp_base_url = f"http://127.0.0.1:{navdp_port}"
+        system2_base_url = f"http://127.0.0.1:{system2_port}"
+        dual_base_url = f"http://127.0.0.1:{dual_port}"
+        runtime_args = self._runtime_args(request, navdp_base_url=navdp_base_url, dual_base_url=dual_base_url)
         specs = [
             ProcessSpec(
                 name="navdp",
                 script_path=scripts_dir / "run_navdp_server.ps1",
                 args=(),
-                health_url="http://127.0.0.1:8888/health",
+                health_url=f"{navdp_base_url}/health",
+                debug_url=f"{navdp_base_url}/debug_last_input",
                 tcp_ready_host="127.0.0.1",
-                tcp_ready_port=8888,
+                tcp_ready_port=navdp_port,
+                env=(("NAVDP_PORT", str(navdp_port)),),
             )
         ]
         if request.planner_mode == "interactive":
@@ -146,17 +163,25 @@ class ProcessManager:
                         name="system2",
                         script_path=scripts_dir / "run_internvla_system2.ps1",
                         args=(),
-                        health_url="http://127.0.0.1:8080",
+                        health_url=system2_base_url,
                         tcp_ready_host="127.0.0.1",
-                        tcp_ready_port=8080,
+                        tcp_ready_port=system2_port,
+                        env=(("INTERNVLA_HOST", "127.0.0.1"), ("INTERNVLA_PORT", str(system2_port))),
                     ),
                     ProcessSpec(
                         name="dual",
                         script_path=scripts_dir / "run_dual_server.ps1",
                         args=(),
-                        health_url="http://127.0.0.1:8890/health",
+                        health_url=f"{dual_base_url}/health",
+                        debug_url=f"{dual_base_url}/dual_debug_state",
                         tcp_ready_host="127.0.0.1",
-                        tcp_ready_port=8890,
+                        tcp_ready_port=dual_port,
+                        env=(
+                            ("DUAL_SERVER_HOST", "127.0.0.1"),
+                            ("DUAL_SERVER_PORT", str(dual_port)),
+                            ("DUAL_NAVDP_URL", navdp_base_url),
+                            ("DUAL_VLM_URL", system2_base_url),
+                        ),
                     ),
                 ]
             )
@@ -170,7 +195,13 @@ class ProcessManager:
         )
         return specs
 
-    def _runtime_args(self, request: DashboardSessionRequest) -> list[str]:
+    def _runtime_args(
+        self,
+        request: DashboardSessionRequest,
+        *,
+        navdp_base_url: str,
+        dual_base_url: str,
+    ) -> list[str]:
         args = [
             "--planner-mode",
             request.planner_mode,
@@ -178,7 +209,11 @@ class ProcessManager:
             request.scene_preset,
             "--native-viewer",
             "off",
+            "--server-url",
+            navdp_base_url,
         ]
+        if request.planner_mode == "interactive":
+            args += ["--dual-server-url", dual_base_url]
         if request.launch_mode == "gui":
             args += ["--launch-mode", "gui"]
         else:
@@ -197,6 +232,21 @@ class ProcessManager:
             assert request.goal_x is not None and request.goal_y is not None
             args += ["--goal-x", str(request.goal_x), "--goal-y", str(request.goal_y)]
         return args
+
+    def service_urls(self, name: str) -> tuple[str, str]:
+        managed = self._processes.get(name)
+        if managed is not None:
+            return managed.spec.health_url, managed.spec.debug_url
+        planned = self._planned_specs.get(name)
+        if planned is not None:
+            return planned.health_url, planned.debug_url
+        if name == "navdp":
+            return "http://127.0.0.1:8888/health", "http://127.0.0.1:8888/debug_last_input"
+        if name == "dual":
+            return "http://127.0.0.1:8890/health", "http://127.0.0.1:8890/dual_debug_state"
+        if name == "system2":
+            return "http://127.0.0.1:8080", ""
+        return "", ""
 
     async def _wait_ready(self, spec: ProcessSpec, managed: ManagedProcess) -> None:
         if spec.tcp_ready_host is None or spec.tcp_ready_port is None:
@@ -239,17 +289,49 @@ class ProcessManager:
             return False
 
     def _default_health_url(self, name: str) -> str:
-        if name == "navdp":
-            return "http://127.0.0.1:8888/health"
-        if name == "dual":
-            return "http://127.0.0.1:8890/health"
-        if name == "system2":
-            return "http://127.0.0.1:8080"
-        return ""
+        return self.service_urls(name)[0]
+
+    @staticmethod
+    def _reserve_port(host: str, preferred_port: int, *, reserved: set[int] | None = None) -> int:
+        reserved_ports = set() if reserved is None else set(reserved)
+        if preferred_port not in reserved_ports and ProcessManager._can_bind(host, preferred_port):
+            return preferred_port
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, 0))
+            return int(sock.getsockname()[1])
+
+    @staticmethod
+    def _can_bind(host: str, port: int) -> bool:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind((host, port))
+                return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _tail_file(path: Path, *, limit: int = 4) -> str:
+        if not path.exists():
+            return ""
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return " | ".join(line.strip() for line in lines[-max(limit, 1) :] if line.strip())
+
+    def _format_startup_error(self, spec: ProcessSpec | None, managed: ManagedProcess | None, exc: Exception) -> str:
+        if spec is None:
+            return f"process startup failed: {exc}"
+        if managed is None:
+            return f"{spec.name} failed to start: {exc}"
+        stderr_tail = self._tail_file(managed.stderr_log)
+        if stderr_tail == "":
+            return f"{spec.name} failed to start: {exc}"
+        return f"{spec.name} failed to start: {exc}. stderr: {stderr_tail}"
 
     def _default_runner(self, spec: ProcessSpec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:
         stdout_handle = stdout_log.open("wb")
         stderr_handle = stderr_log.open("wb")
+        child_env = os.environ.copy()
+        for key, value in spec.env:
+            child_env[str(key)] = str(value)
         process = subprocess.Popen(
             [
                 "powershell.exe",
@@ -263,6 +345,7 @@ class ProcessManager:
             cwd=str(self.config.repo_root),
             stdout=stdout_handle,
             stderr=stderr_handle,
+            env=child_env,
         )
         return ManagedProcess(
             spec=spec,

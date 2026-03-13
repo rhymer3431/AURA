@@ -212,7 +212,10 @@ class DashboardWebApp:
             session_request = parse_session_request(payload)
         except ValueError as exc:
             raise web.HTTPBadRequest(reason=str(exc)) from exc
-        await self.process_manager.start_session(session_request)
+        try:
+            await self.process_manager.start_session(session_request)
+        except RuntimeError as exc:
+            raise web.HTTPServiceUnavailable(reason=str(exc)) from exc
         await self.state_aggregator.force_refresh()
         return web.json_response(self.state_aggregator.snapshot())
 

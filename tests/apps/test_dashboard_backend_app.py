@@ -73,6 +73,16 @@ class _FakeProcessManager:
             )
         return records
 
+    @staticmethod
+    def service_urls(name: str) -> tuple[str, str]:
+        if name == "navdp":
+            return "http://127.0.0.1:8888/health", "http://127.0.0.1:8888/debug_last_input"
+        if name == "dual":
+            return "http://127.0.0.1:8890/health", "http://127.0.0.1:8890/dual_debug_state"
+        if name == "system2":
+            return "http://127.0.0.1:8080", ""
+        return "", ""
+
 
 class _FakeControlClient:
     def __init__(self) -> None:
@@ -284,6 +294,54 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert response.status == 200
                 stopped = await response.json()
                 assert stopped["session"]["active"] is False
+        finally:
+            await runner.cleanup()
+
+    asyncio.run(scenario())
+
+
+def test_dashboard_backend_returns_service_unavailable_when_process_start_fails() -> None:
+    pytest.importorskip("aiohttp")
+
+    class _FailingProcessManager(_FakeProcessManager):
+        async def start_session(self, request: DashboardSessionRequest) -> None:
+            _ = request
+            raise RuntimeError("navdp failed to start: bind error")
+
+    async def scenario() -> None:
+        from aiohttp import ClientSession, web
+
+        app = DashboardWebApp(
+            DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
+            process_manager=_FailingProcessManager(),
+            control_client=_FakeControlClient(),
+            subscriber=_FakeSubscriber(),
+            session_manager=_FakeSessionManager(),
+            log_tailer=_FakeLogTailer(),
+            state_aggregator=_FakeStateAggregator(_FakeProcessManager()),
+        ).create_app()
+        runner = web.AppRunner(app)
+        await runner.setup()
+        port = _free_tcp_port()
+        site = web.TCPSite(runner, "127.0.0.1", port)
+        await site.start()
+
+        try:
+            async with ClientSession() as client:
+                response = await client.post(
+                    f"http://127.0.0.1:{port}/api/session/start",
+                    json={
+                        "plannerMode": "interactive",
+                        "launchMode": "gui",
+                        "scenePreset": "warehouse",
+                        "viewerEnabled": True,
+                        "showDepth": True,
+                        "memoryStore": True,
+                        "detectionEnabled": True,
+                    },
+                )
+                assert response.status == 503
+                assert "navdp failed to start" in await response.text()
         finally:
             await runner.cleanup()
 

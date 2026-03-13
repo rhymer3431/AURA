@@ -127,16 +127,18 @@ class StateAggregator:
     async def _refresh_external_services(self) -> None:
         request = self.process_manager.current_request
         required = set() if request is None else request.required_process_names()
+        navdp_health_url, navdp_debug_url = self.process_manager.service_urls("navdp")
         self._service_state["navdp"] = await self._service_snapshot(
             name="navdp",
-            health_url="http://127.0.0.1:8888/health",
-            debug_url="http://127.0.0.1:8888/debug_last_input",
+            health_url=navdp_health_url,
+            debug_url=navdp_debug_url,
             required="navdp" in required,
         )
+        dual_health_url, dual_debug_url = self.process_manager.service_urls("dual")
         self._service_state["dual"] = await self._service_snapshot(
             name="dual",
-            health_url="http://127.0.0.1:8890/health",
-            debug_url="http://127.0.0.1:8890/dual_debug_state",
+            health_url=dual_health_url,
+            debug_url=dual_debug_url,
             required="dual" in required,
         )
 
