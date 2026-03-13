@@ -9,7 +9,7 @@ from .capabilities import DetectorRuntimeReport, DetectorSelection
 from .stub_or_onnx_fallback import ColorSegFallbackConfig, ColorSegFallbackDetector
 from .ultralytics_yolo import UltralyticsYoloDetector
 
-DEFAULT_ULTRALYTICS_MODEL_NAME = "yoloe-26s-seg-pf.engine"
+DEFAULT_ULTRALYTICS_MODEL_NAME = "yolo26s.pt"
 
 
 @dataclass(frozen=True)

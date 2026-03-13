@@ -176,10 +176,10 @@ Process 2:
 
 ## Detector Backend
 - Preferred backend order:
-  1. `artifacts/models/yoloe-26s-seg-pf.engine`
-  2. TensorRT backend if runtime-compatible
+  1. `artifacts/models/yolo26s.pt`
+  2. Ultralytics PyTorch detection backend
   3. color-seg fallback otherwise
-- TensorRT mismatch remains a graceful fallback, not a forced workaround.
+- Default detector path now prefers the base detection model instead of the segmentation export.
 
 ## Current Limits
 - `editor_assisted` and `extension_mode` require in-editor execution. External process attach is not implemented.

@@ -34,6 +34,13 @@ class _DummyResult:
         self.names = {0: "apple"}
 
 
+class _DummyDetectionResult:
+    def __init__(self) -> None:
+        self.boxes = _DummyBoxes()
+        self.masks = None
+        self.names = {0: "apple"}
+
+
 class _DummyModel:
     def __init__(self, path: str) -> None:
         self.path = path
@@ -46,6 +53,14 @@ class _DummyModel:
         self.last_source_shape = tuple(int(v) for v in source.shape)
         self.last_conf = float(conf)
         return [_DummyResult()]
+
+
+class _DummyDetectionModel(_DummyModel):
+    def predict(self, *, source, conf, iou, max_det, device, verbose):  # noqa: ANN001
+        _ = iou, max_det, device, verbose
+        self.last_source_shape = tuple(int(v) for v in source.shape)
+        self.last_conf = float(conf)
+        return [_DummyDetectionResult()]
 
 
 def test_ultralytics_detector_decodes_scaled_boxes_and_masks(tmp_path: Path) -> None:
@@ -81,6 +96,30 @@ def test_ultralytics_detector_reports_missing_model(tmp_path: Path) -> None:
     assert detector.ready is False
     assert detector.probe().selected_reason == "model_missing"
     assert detector.info.warning != ""
+
+
+def test_ultralytics_detector_decodes_boxes_without_segmentation_masks(tmp_path: Path) -> None:
+    model_path = tmp_path / "dummy.pt"
+    model_path.write_text("stub", encoding="utf-8")
+    detector = UltralyticsYoloDetector(
+        str(model_path),
+        imgsz=640,
+        device="cpu",
+        yolo_cls=_DummyDetectionModel,
+    )
+
+    rgb = np.zeros((96, 192, 3), dtype=np.uint8)
+    results = detector.detect(rgb, timestamp=1.23, metadata={"target_class_hint": "apple"})
+
+    assert detector.ready is True
+    assert detector.model is not None
+    assert detector.model.last_conf == 0.6
+    assert len(results) == 1
+    assert results[0].class_name == "apple"
+    assert results[0].bbox_xyxy == (19, 10, 96, 48)
+    assert results[0].mask is None
+    assert results[0].centroid_xy == (57.5, 29.0)
+    assert "mask_area_px" not in results[0].metadata
 
 
 def test_load_tensorrt_engine_bytes_skips_ultralytics_metadata_header(tmp_path: Path) -> None:
