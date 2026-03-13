@@ -48,11 +48,15 @@ class StateAggregator:
         if self._client is not None:
             return
         self._client = ClientSession()
-        self._tasks = [
-            asyncio.create_task(self._event_loop(), name="dashboard-state-events"),
-            asyncio.create_task(self._poll_loop(), name="dashboard-state-poll"),
-        ]
-        await self.force_refresh()
+        try:
+            self._tasks = [
+                asyncio.create_task(self._event_loop(), name="dashboard-state-events"),
+                asyncio.create_task(self._poll_loop(), name="dashboard-state-poll"),
+            ]
+            await self.force_refresh()
+        except Exception:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         self.subscriber.remove_listener(self._listener)

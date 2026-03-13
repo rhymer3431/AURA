@@ -32,7 +32,7 @@ class RuntimeControlClient:
         return request
 
     def transport_health_snapshot(self) -> dict[str, object]:
-        return self._bus.health().snapshot()
+        return self._bus.health.snapshot()
 
     def close(self) -> None:
         self._bus.close()
