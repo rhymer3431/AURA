@@ -78,3 +78,18 @@ def test_supervisor_can_disable_memory_storage_while_processing_frames() -> None
 
     assert supervisor.memory_service.spatial_store.objects == {}
     assert list(supervisor.memory_service.temporal_store) == []
+
+
+def test_supervisor_can_skip_detection_while_processing_frames() -> None:
+    supervisor = Supervisor(
+        config=SupervisorConfig(
+            detector_model_path="artifacts/models/__missing__.engine",
+            detector_device="",
+            skip_detection=True,
+        )
+    )
+
+    enriched = supervisor.process_frame(_synthetic_batch(), publish=False)
+
+    assert enriched.observations == []
+    assert supervisor.memory_service.spatial_store.objects == {}

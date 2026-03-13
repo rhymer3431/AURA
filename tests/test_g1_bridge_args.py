@@ -114,3 +114,9 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
 
     assert args.viewer_control_endpoint == DEFAULT_VIEWER_CONTROL_ENDPOINT
     assert args.viewer_shm_name == DEFAULT_VIEWER_SHM_NAME
+
+
+def test_build_arg_parser_accepts_skip_detection_flag():
+    args = _parse_args("--skip-detection")
+
+    assert args.skip_detection is True

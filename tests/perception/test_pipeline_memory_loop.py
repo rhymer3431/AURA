@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from services.memory_service import MemoryService
+from inference.detectors.base import DetectionResult, DetectorBackend, DetectorInfo
 from perception.pipeline import PerceptionPipeline
 
 
@@ -48,3 +49,41 @@ def test_detector_results_flow_into_spatial_memory_association() -> None:
     assert results[0].object_node.last_place_id == results[0].place_node.place_id
     assert "bearing_yaw_rad" in frame.observations[0].metadata
     assert frame.observations[0].metadata["frame_source"] == "synthetic"
+
+
+class _FailOnDetectBackend(DetectorBackend):
+    @property
+    def info(self) -> DetectorInfo:
+        return DetectorInfo(backend_name="fail_on_detect", selected_reason="unit_test")
+
+    def detect(
+        self,
+        rgb_image: np.ndarray,
+        *,
+        timestamp: float,
+        metadata: dict[str, object] | None = None,
+    ) -> list[DetectionResult]:
+        _ = rgb_image, timestamp, metadata
+        raise AssertionError("detect should not be called when skip_detection is enabled")
+
+
+def test_skip_detection_bypasses_detector_and_returns_empty_frame() -> None:
+    pipeline = PerceptionPipeline(detector=_FailOnDetectBackend(), skip_detection=True)
+    rgb = np.zeros((32, 32, 3), dtype=np.uint8)
+    depth = np.ones((32, 32), dtype=np.float32)
+    intrinsic = np.asarray([[32.0, 0.0, 16.0], [0.0, 32.0, 16.0], [0.0, 0.0, 1.0]], dtype=np.float32)
+
+    frame = pipeline.process_frame(
+        rgb_image=rgb,
+        depth_image_m=depth,
+        timestamp=1.0,
+        camera_pose_xyz=(0.0, 0.0, 1.0),
+        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
+        camera_intrinsic=intrinsic,
+    )
+
+    assert frame.detections == []
+    assert frame.tracked_detections == []
+    assert frame.projected_detections == []
+    assert frame.observations == []
+    assert frame.metadata["detection_skipped"] is True

@@ -41,6 +41,7 @@ class NavDPCommandSource:
             detector_model_path=str(getattr(args, "detector_model_path", "")),
             detector_device=str(getattr(args, "detector_device", "")),
             memory_store=bool(getattr(args, "memory_store", True)),
+            skip_detection=bool(getattr(args, "skip_detection", False)),
         )
         self._supervisor = supervisor
         self._runtime_io: RuntimeIo | None = None

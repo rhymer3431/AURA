@@ -33,11 +33,13 @@ class PerceptionPipeline:
         detector: DetectorBackend | None = None,
         *,
         detector_config: DetectorFactoryConfig | None = None,
+        skip_detection: bool = False,
         tracker: SimpleTrackManager | None = None,
         projector: DepthProjector | None = None,
         mapper: ObjectMapper | None = None,
         fuser: ObservationFuser | None = None,
     ) -> None:
+        self.skip_detection = bool(skip_detection)
         self.detector = detector or create_detector_backend(detector_config)
         self.tracker = tracker or SimpleTrackManager()
         self.projector = projector or DepthProjector()
@@ -56,7 +58,7 @@ class PerceptionPipeline:
         metadata: dict[str, Any] | None = None,
     ) -> PerceptionFrameResult:
         metadata = dict(metadata or {})
-        detections = self.detector.detect(rgb_image, timestamp=timestamp, metadata=metadata)
+        detections = [] if self.skip_detection else self.detector.detect(rgb_image, timestamp=timestamp, metadata=metadata)
         tracked = self.tracker.update(detections)
         projected: list[ProjectedDetection] = []
         observations: list[ObsObject] = []
@@ -101,6 +103,7 @@ class PerceptionPipeline:
                 "detector_runtime_report": None
                 if self.detector.runtime_report is None
                 else self.detector.runtime_report.as_dict(),
+                "detection_skipped": self.skip_detection,
                 **metadata,
             },
         )

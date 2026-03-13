@@ -27,6 +27,7 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
     memory_store_group.add_argument("--memory-store", dest="memory_store", action="store_true")
     memory_store_group.add_argument("--no-memory-store", dest="memory_store", action="store_false")
     parser.set_defaults(memory_store=True)
+    parser.add_argument("--skip-detection", dest="skip_detection", action="store_true")
     parser.add_argument("--detector-model-path", dest="detector_model_path", type=str, default="")
     parser.add_argument("--detector-device", dest="detector_device", type=str, default="")
     parser.add_argument("--navdp-backend", dest="navdp_backend", type=str, choices=("auto", "policy", "heuristic"), default="auto")

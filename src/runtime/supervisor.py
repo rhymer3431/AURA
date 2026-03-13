@@ -20,6 +20,7 @@ class SupervisorConfig:
     detector_model_path: str = ""
     detector_device: str = ""
     memory_store: bool = True
+    skip_detection: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,7 +51,8 @@ class Supervisor:
             detector_config=DetectorFactoryConfig(
                 model_path=self.config.detector_model_path,
                 device=self.config.detector_device,
-            )
+            ),
+            skip_detection=self.config.skip_detection,
         )
         self.bridge = IsaacBridgeAdapter(self.bus, IsaacBridgeAdapterConfig(), shm_ring=shm_ring)
 
