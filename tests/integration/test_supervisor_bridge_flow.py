@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
 from apps.runtime_common import build_runtime_io
-from runtime.g1_bridge import NavDPCommandSource
+from runtime.aura_runtime import AuraRuntimeCommandSource
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 
 
@@ -100,6 +100,9 @@ class _FakePlanningSession:
     def shutdown(self) -> None:
         return None
 
+    def active_memory_instruction(self) -> str:
+        return self.started_instructions[-1] if self.started_instructions else ""
+
 
 class _InteractivePlanningSession(_FakePlanningSession):
     def __init__(self) -> None:
@@ -112,6 +115,9 @@ class _InteractivePlanningSession(_FakePlanningSession):
 
     def cancel_interactive_task(self) -> bool:
         return True
+
+    def active_memory_instruction(self) -> str:
+        return self.submitted_instructions[-1] if self.submitted_instructions else ""
 
     def plan_with_observation(self, observation, *, action_command, robot_pos_world, robot_yaw, robot_quat_wxyz):  # noqa: ANN001
         _ = robot_pos_world, robot_yaw, robot_quat_wxyz
@@ -163,7 +169,7 @@ def _free_tcp_port() -> int:
 
 def test_dual_mode_bootstraps_planner_managed_command_flow() -> None:
     planning_session = _FakePlanningSession()
-    command_source = NavDPCommandSource(_args(), planning_session=planning_session)
+    command_source = AuraRuntimeCommandSource(_args(), planning_session=planning_session)
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     command_source.update(1)
 
@@ -180,8 +186,8 @@ def test_interactive_mode_uses_planning_session_control_flow(monkeypatch: pytest
     args = _args()
     args.planner_mode = "interactive"
     args.instruction = ""
-    monkeypatch.setattr(NavDPCommandSource, "_interactive_input_loop", lambda self: None)
-    command_source = NavDPCommandSource(args, planning_session=planning_session)
+    monkeypatch.setattr(AuraRuntimeCommandSource, "_interactive_input_loop", lambda self: None)
+    command_source = AuraRuntimeCommandSource(args, planning_session=planning_session)
 
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     command_source.planning_session.submit_interactive_instruction("go to the loading dock")
@@ -207,7 +213,7 @@ def test_g1_view_mode_publishes_overlay_metadata_over_zmq_and_shm() -> None:
     args.viewer_shm_name = f"g1_view_test_{uuid.uuid4().hex[:12]}"
     args.viewer_shm_slot_size = 2 * 1024 * 1024
     args.viewer_shm_capacity = 4
-    command_source = NavDPCommandSource(args, planning_session=planning_session)
+    command_source = AuraRuntimeCommandSource(args, planning_session=planning_session)
     viewer_io = None
     try:
         command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())

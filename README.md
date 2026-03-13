@@ -28,8 +28,8 @@ AURA는 인간의 인지 파이프라인을 모방한 인지 아키텍처를 구
 - `perception`: detector, tracker, depth projection, object mapping, observation fusion
 - `memory`: spatial/temporal/episodic/semantic memory와 working memory
 - `services`: object search, follow, attention, task orchestration, semantic consolidation
-- `runtime`: Isaac bridge, planning session, supervisor, live smoke runner
-- `apps`: 로컬 스택, 메모리 에이전트, Isaac bridge, live smoke, viewer 실행 진입점
+- `runtime`: AURA runtime, planning session, supervisor, internal frame bridge, live smoke runner
+- `apps`: 로컬 스택, 메모리 에이전트, internal frame bridge, live smoke, viewer 실행 진입점
 - `ipc`: in-process, ZMQ, shared memory transport
 - `tests`: 서비스/메모리/인퍼런스/통합 테스트
 
@@ -83,23 +83,15 @@ AURA는 실제 로봇에 이식 가능한 구조를 지향하며, 검증은 두 
 .\scripts\powershell\run_memory_agent.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --serve
 ```
 
-### 3. Isaac Bridge
-
-Isaac Sim과 연결되는 런타임 진입점입니다. 라이브 부트스트랩이 가능하면 Isaac 경로를 사용하고, 아니면 synthetic fallback으로 내려갑니다.
-
-```powershell
-.\scripts\powershell\run_isaac_bridge.ps1 --command "아까 봤던 사과를 찾아가"
-```
-
-### 4. G1 Pipeline / Dual System
+### 3. AURA Runtime
 
 G1 런타임에서 no-goal roaming, point-goal, 자연어 지시 이후 dual-system 경로를 다룹니다.
 
 ```powershell
-.\scripts\powershell\run_pipeline.ps1
+.\scripts\powershell\run_aura_runtime.ps1
 ```
 
-### 5. Live Smoke
+### 4. Live Smoke
 
 Isaac 환경 호환성, D455 센서 마운트, perception ingress, memory ingress를 단계별로 점검하는 진단 경로입니다.
 
@@ -125,8 +117,7 @@ Isaac 환경 호환성, D455 센서 마운트, perception ingress, memory ingres
 
 - 구조만 빠르게 보려면 `run_local_stack.ps1`
 - Isaac 환경 점검이 먼저면 `run_live_smoke_preflight.ps1`
-- 실제 브리지 동작을 보려면 `run_isaac_bridge.ps1`
-- G1 dual-system 흐름까지 보려면 `run_pipeline.ps1`
+- G1 dual-system 흐름까지 보려면 `run_aura_runtime.ps1`
 
 ## 디렉터리 가이드
 

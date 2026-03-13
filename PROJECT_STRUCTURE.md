@@ -20,8 +20,7 @@
 │       ├── legacy/
 │       ├── run_g1_object_search_demo.ps1
 │       ├── run_g1_pointgoal.ps1
-│       ├── run_pipeline.ps1
-│       ├── run_isaac_bridge.ps1
+│       ├── run_aura_runtime.ps1
 │       ├── run_local_stack.ps1
 │       ├── run_live_smoke.ps1
 │       ├── run_live_smoke_attach.ps1
@@ -40,8 +39,8 @@
 │   ├── apps/
 │   │   ├── legacy_http/
 │   │   ├── editor_smoke_entry.py
-│   │   ├── isaac_bridge_app.py
-│   │   ├── isaac_bridge_editor_app.py
+│   │   ├── frame_bridge_app.py
+│   │   ├── frame_bridge_editor_app.py
 │   │   ├── live_smoke_app.py
 │   │   ├── local_stack_app.py
 │   │   ├── memory_agent_app.py
@@ -103,10 +102,10 @@
   - direct in-process NavDP facade for point-goal and no-goal execution
 - `src/runtime/subgoal_executor.py`
   - shared low-level execution helper for `PlanningSession`, `TrajectoryTracker`, and `ActionStatus`
-- `src/runtime/g1_bridge.py`
-  - low-level subgoal executor
-- `src/runtime/isaac_bridge_runtime.py`
-  - standalone Isaac live bridge bootstrap
+- `src/runtime/aura_runtime.py`
+  - end-to-end G1 runtime entry coordinating planning, memory ingress, and execution
+- `src/runtime/frame_bridge_runtime.py`
+  - internal frame bridge bootstrap for live frame publishing
 - `src/runtime/live_smoke_runner.py`
   - phase-based live smoke diagnostics, smoke tier aggregation, and minimal perception/memory ingress validation
 - `src/runtime/bootstrap_profiles.py`
@@ -121,8 +120,8 @@
   - preflight/smoke CLI entrypoint
 - `src/apps/editor_smoke_entry.py`
   - official in-editor smoke callable reused by editor-assisted and extension mode
-- `src/apps/isaac_bridge_editor_app.py`
-  - bridge attach helper for existing Kit/Isaac sessions
+- `src/apps/frame_bridge_editor_app.py`
+  - internal frame bridge attach helper for existing Kit/Isaac sessions
 - `src/adapters/sensors/d455_mount.py`
   - D455 asset resolution and stage mount helper
 - `exts/isaac.aura.live_smoke`
@@ -133,7 +132,7 @@
   - `apps.local_stack_app`
 - Two-process:
   - `apps.memory_agent_app`
-  - `apps.isaac_bridge_app`
+  - internal `apps.frame_bridge_app`
 - Live smoke diagnostics:
   - `apps.live_smoke_app`
 - In-editor smoke:

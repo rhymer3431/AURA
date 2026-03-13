@@ -12,7 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ipc.inproc_bus import InprocBus
-from runtime.isaac_editor_bridge import AttachedIsaacBridgeRuntime
+from runtime.frame_editor_bridge import AttachedFrameBridgeRuntime
 
 
 class _FakeController:
@@ -67,9 +67,9 @@ def _args() -> Namespace:
     )
 
 
-def test_attached_editor_bridge_runtime_ticks_existing_controller() -> None:
+def test_attached_frame_bridge_runtime_ticks_existing_controller() -> None:
     controller = _FakeController()
-    runtime = AttachedIsaacBridgeRuntime(
+    runtime = AttachedFrameBridgeRuntime(
         args=_args(),
         controller=controller,
         bus=InprocBus(),

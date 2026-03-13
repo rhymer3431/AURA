@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
-$EntryModule = "runtime.g1_bridge"
+$EntryModule = "runtime.aura_runtime"
 $ViewerScript = Join-Path $ScriptDir "run_g1_viewer.ps1"
 $ProcessLogDir = Join-Path $RepoDir "tmp\process_logs"
 $SrcDir = Join-Path $RepoDir "src"
@@ -250,81 +250,81 @@ $DefaultEnvUrl = [string]$ResolvedScene.EnvUrl
 $EffectiveSceneDescription = [string]$ResolvedScene.Description
 
 if ($EffectivePlannerMode -notin @("interactive", "pointgoal")) {
-    Write-Host "[Pipeline] unsupported planner-mode=$EffectivePlannerMode"
-    Write-Host "[Pipeline] supported planner modes: interactive, pointgoal"
+    Write-Host "[AURA Runtime] unsupported planner-mode=$EffectivePlannerMode"
+    Write-Host "[AURA Runtime] supported planner modes: interactive, pointgoal"
     exit 1
 }
 
 if (-not (Test-Path -LiteralPath $IsaacPython)) {
-    Write-Host "[Pipeline] Isaac python launcher not found: `"$IsaacPython`""
-    Write-Host "[Pipeline] Set ISAAC_SIM_PYTHON to your python.bat path."
+    Write-Host "[AURA Runtime] Isaac python launcher not found: `"$IsaacPython`""
+    Write-Host "[AURA Runtime] Set ISAAC_SIM_PYTHON to your python.bat path."
     exit 1
 }
 
 if ((-not $HasPolicyOverride) -and (-not (Test-Path -LiteralPath $PolicyPath))) {
-    Write-Host "[Pipeline] policy file not found: `"$PolicyPath`""
+    Write-Host "[AURA Runtime] policy file not found: `"$PolicyPath`""
     exit 1
 }
 
 if ((-not $HasRobotOverride) -and (-not (Test-Path -LiteralPath $RobotUsd))) {
-    Write-Host "[Pipeline] G1 USD not found: `"$RobotUsd`""
+    Write-Host "[AURA Runtime] G1 USD not found: `"$RobotUsd`""
     exit 1
 }
 
 if (-not $HasSceneOverride) {
     if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
         if (-not (Test-Path -LiteralPath $SceneUsd)) {
-            Write-Host "[Pipeline] Scene USD not found: `"$SceneUsd`""
-            Write-Host "[Pipeline] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent, or pass --scene-usd/--env-url explicitly."
+            Write-Host "[AURA Runtime] Scene USD not found: `"$SceneUsd`""
+            Write-Host "[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent, or pass --scene-usd/--env-url explicitly."
             exit 1
         }
     } elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd) -and (-not (Test-Path -LiteralPath $DefaultSceneUsd))) {
-        Write-Host "[Pipeline] Scene preset path not found for ${EffectiveScenePreset}: `"$DefaultSceneUsd`""
+        Write-Host "[AURA Runtime] Scene preset path not found for ${EffectiveScenePreset}: `"$DefaultSceneUsd`""
         exit 1
     }
 }
 
-Write-Host "[Pipeline] Starting runtime.g1_bridge"
-Write-Host "[Pipeline] python=`"$IsaacPython`""
-Write-Host "[Pipeline] module=`"$EntryModule`""
-Write-Host "[Pipeline] default policy=`"$PolicyPath`""
-Write-Host "[Pipeline] default robot-usd=`"$RobotUsd`""
-Write-Host "[Pipeline] default scene-preset=$ScenePreset"
-Write-Host "[Pipeline] effective scene-preset=$EffectiveScenePreset"
+Write-Host "[AURA Runtime] Starting runtime.aura_runtime"
+Write-Host "[AURA Runtime] python=`"$IsaacPython`""
+Write-Host "[AURA Runtime] module=`"$EntryModule`""
+Write-Host "[AURA Runtime] default policy=`"$PolicyPath`""
+Write-Host "[AURA Runtime] default robot-usd=`"$RobotUsd`""
+Write-Host "[AURA Runtime] default scene-preset=$ScenePreset"
+Write-Host "[AURA Runtime] effective scene-preset=$EffectiveScenePreset"
 if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
-    Write-Host "[Pipeline] default scene-usd=`"$SceneUsd`""
+    Write-Host "[AURA Runtime] default scene-usd=`"$SceneUsd`""
 } elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd)) {
-    Write-Host "[Pipeline] default scene-usd=`"$DefaultSceneUsd`" ($EffectiveSceneDescription)"
+    Write-Host "[AURA Runtime] default scene-usd=`"$DefaultSceneUsd`" ($EffectiveSceneDescription)"
 } elseif (-not [string]::IsNullOrWhiteSpace($DefaultEnvUrl)) {
-    Write-Host "[Pipeline] default env-url=`"$DefaultEnvUrl`" ($EffectiveSceneDescription)"
+    Write-Host "[AURA Runtime] default env-url=`"$DefaultEnvUrl`" ($EffectiveSceneDescription)"
 } else {
-    Write-Host "[Pipeline] default scene-usd=<flat ground only>"
+    Write-Host "[AURA Runtime] default scene-usd=<flat ground only>"
 }
-Write-Host "[Pipeline] default planner-mode=$PlannerMode"
-Write-Host "[Pipeline] effective planner-mode=$EffectivePlannerMode"
-Write-Host "[Pipeline] default goal=($GoalX, $GoalY)"
+Write-Host "[AURA Runtime] default planner-mode=$PlannerMode"
+Write-Host "[AURA Runtime] effective planner-mode=$EffectivePlannerMode"
+Write-Host "[AURA Runtime] default goal=($GoalX, $GoalY)"
 if ([string]::IsNullOrWhiteSpace($LaunchMode)) {
-    Write-Host "[Pipeline] default launch-mode=<legacy>"
+    Write-Host "[AURA Runtime] default launch-mode=<legacy>"
 } else {
-    Write-Host "[Pipeline] default launch-mode=$LaunchMode"
+    Write-Host "[AURA Runtime] default launch-mode=$LaunchMode"
 }
-Write-Host "[Pipeline] default server-url=$ServerUrl"
-Write-Host "[Pipeline] default viewer-control-endpoint=$ViewerControlEndpoint"
-Write-Host "[Pipeline] default viewer-telemetry-endpoint=$ViewerTelemetryEndpoint"
-Write-Host "[Pipeline] default viewer-shm-name=$ViewerShmName"
-Write-Host "[Pipeline] default force-runtime-camera=$ForceRuntimeCamera"
-Write-Host "[Pipeline] default memory-store=on"
-Write-Host "[Pipeline] default detection=on"
-Write-Host "[Pipeline] user args override defaults when repeated."
-Write-Host "[Pipeline] examples:"
-Write-Host "[Pipeline]   interactive: .\\run_pipeline.ps1 --planner-mode interactive --launch-mode gui"
-Write-Host "[Pipeline]   warehouse  : .\\run_pipeline.ps1 --scene-preset warehouse --planner-mode interactive"
-Write-Host "[Pipeline]   interior   : .\\run_pipeline.ps1 --scene-preset interioragent --planner-mode interactive"
-Write-Host "[Pipeline]   pointgoal  : .\\run_pipeline.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
-Write-Host "[Pipeline]   pointgoal+v: .\\run_pipeline.ps1 --planner-mode pointgoal --launch-mode g1_view --goal-x 2.0 --goal-y 0.0"
-Write-Host "[Pipeline]   interac+d  : .\\run_pipeline.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"
-Write-Host "[Pipeline]   no memory : .\\run_pipeline.ps1 --no-memory-store"
-Write-Host "[Pipeline]   no detect: .\\run_pipeline.ps1 --skip-detection"
+Write-Host "[AURA Runtime] default server-url=$ServerUrl"
+Write-Host "[AURA Runtime] default viewer-control-endpoint=$ViewerControlEndpoint"
+Write-Host "[AURA Runtime] default viewer-telemetry-endpoint=$ViewerTelemetryEndpoint"
+Write-Host "[AURA Runtime] default viewer-shm-name=$ViewerShmName"
+Write-Host "[AURA Runtime] default force-runtime-camera=$ForceRuntimeCamera"
+Write-Host "[AURA Runtime] default memory-store=on"
+Write-Host "[AURA Runtime] default detection=on"
+Write-Host "[AURA Runtime] user args override defaults when repeated."
+Write-Host "[AURA Runtime] examples:"
+Write-Host "[AURA Runtime]   interactive: .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode gui"
+Write-Host "[AURA Runtime]   warehouse  : .\\run_aura_runtime.ps1 --scene-preset warehouse --planner-mode interactive"
+Write-Host "[AURA Runtime]   interior   : .\\run_aura_runtime.ps1 --scene-preset interioragent --planner-mode interactive"
+Write-Host "[AURA Runtime]   pointgoal  : .\\run_aura_runtime.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
+Write-Host "[AURA Runtime]   pointgoal+v: .\\run_aura_runtime.ps1 --planner-mode pointgoal --launch-mode g1_view --goal-x 2.0 --goal-y 0.0"
+Write-Host "[AURA Runtime]   interac+d  : .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"
+Write-Host "[AURA Runtime]   no memory : .\\run_aura_runtime.ps1 --no-memory-store"
+Write-Host "[AURA Runtime]   no detect: .\\run_aura_runtime.ps1 --skip-detection"
 
 $LaunchArgs = @(
     "-m", $EntryModule,
@@ -368,7 +368,7 @@ if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
 try {
     if ($EffectiveLaunchMode -eq "g1_view") {
         if (-not (Test-Path -LiteralPath $ViewerScript)) {
-            Write-Host "[Pipeline] viewer launcher not found: `"$ViewerScript`""
+            Write-Host "[AURA Runtime] viewer launcher not found: `"$ViewerScript`""
             exit 1
         }
         $ViewerArgs = @(

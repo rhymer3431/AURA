@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
 
 from ipc.inproc_bus import InprocBus
 from ipc.messages import ActionCommand
-from runtime.isaac_bridge_runtime import IsaacBridgeCommandSource
+from runtime.frame_bridge_runtime import FrameBridgeCommandSource
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 
 
@@ -138,10 +138,10 @@ def _args(tmp_path: Path | None = None) -> Namespace:
     )
 
 
-def test_isaac_bridge_command_source_publishes_live_frame_and_status(tmp_path: Path) -> None:
+def test_frame_bridge_command_source_publishes_live_frame_and_status(tmp_path: Path) -> None:
     bus = InprocBus()
     planning_session = _FakePlanningSession()
-    command_source = IsaacBridgeCommandSource(_args(tmp_path), bus=bus, planning_session=planning_session)
+    command_source = FrameBridgeCommandSource(_args(tmp_path), bus=bus, planning_session=planning_session)
 
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     bus.publish("isaac.command", ActionCommand(action_type="NAV_TO_POSE", target_pose_xyz=(1.0, 0.0, 0.0)))

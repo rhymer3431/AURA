@@ -10,7 +10,7 @@ from common.cv2_compat import cv2
 from common.depth_visualization import build_rgb_depth_panel, compute_depth_display_range
 from ipc.shm_ring import SharedMemoryRing
 from ipc.zmq_bus import ZmqBus
-from runtime.g1_bridge_args import (
+from runtime.aura_runtime_args import (
     DEFAULT_VIEWER_CONTROL_ENDPOINT,
     DEFAULT_VIEWER_SHM_CAPACITY,
     DEFAULT_VIEWER_SHM_NAME,

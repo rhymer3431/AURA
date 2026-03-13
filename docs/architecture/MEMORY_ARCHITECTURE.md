@@ -111,7 +111,7 @@ dual / interactive task-active 상태에서만 memory retrieval을 켠다.
 
 메모리 조회 결과는 System 2에만 직접 들어간다.
 
-- `NavDPCommandSource`가 current frame 처리 직후 `build_memory_context(...)`를 호출한다.
+- `AuraRuntimeCommandSource`가 current frame 처리 직후 `build_memory_context(...)`를 호출한다.
 - 결과는 `ExecutionObservation.memory_context`에 붙는다.
 - `DualPlannerInput` -> dual HTTP -> `DualOrchestrator` -> `System2Session` 순서로 그대로 전달된다.
 - S1/NavDP 쪽 `sensor_meta`에는 memory payload를 섞지 않는다.

@@ -1,5 +1,5 @@
 {
-  "run_pipeline.ps1": {
+  "run_aura_runtime.ps1": {
     "env_vars": [
       "G1_POINTGOAL_FORCE_RUNTIME_CAMERA",
       "G1_POINTGOAL_GOAL_X",
@@ -12,7 +12,7 @@
       "ISAAC_SIM_PYTHON",
       "PYTHONPATH"
     ],
-    "line_count": 274
+    "line_count": 405
   },
   "run_g1_pointgoal.ps1": {
     "env_vars": [],
@@ -55,7 +55,7 @@
       "DUAL_VLM_URL",
       "PYTHONPATH"
     ],
-    "line_count": 155
+    "line_count": 165
   },
   "run_internvla_system2.ps1": {
     "env_vars": [

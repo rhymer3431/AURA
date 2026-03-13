@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from runtime.g1_bridge import build_launch_config
-from runtime.g1_bridge_args import (
+from runtime.aura_runtime import build_launch_config
+from runtime.aura_runtime_args import (
     DEFAULT_OBJECT_SEARCH_INSTRUCTION,
     DEFAULT_VIEWER_CONTROL_ENDPOINT,
     DEFAULT_VIEWER_SHM_NAME,

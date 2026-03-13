@@ -21,15 +21,8 @@
 - Periodically republishes diagnostics and snapshots SQLite memory state.
 
 ## Two-Process Local Stack
-Process 1:
-```powershell
-.\scripts\powershell\run_memory_agent.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --serve
-```
-
-Process 2:
-```powershell
-.\scripts\powershell\run_isaac_bridge.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --frame-source live --headless --command "아까 봤던 사과를 찾아가"
-```
+- The old public bridge launcher was removed.
+- Two-process frame wiring remains as an internal frame-bridge path for IPC/runtime work, not a recommended public execution flow.
 - Control plane: ZMQ `ROUTER/DEALER`
 - Telemetry plane: ZMQ `PUB/SUB`
 - RGB/depth should use `SharedMemoryRing` in 2-process mode.

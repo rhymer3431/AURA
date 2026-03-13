@@ -17,7 +17,7 @@ from .planning_session import ExecutionObservation, PlanningSession
 from .subgoal_executor import SubgoalExecutionResult, SubgoalExecutor
 
 
-class IsaacBridgeCommandSource:
+class FrameBridgeCommandSource:
     def __init__(
         self,
         args,
@@ -56,7 +56,7 @@ class IsaacBridgeCommandSource:
             robot_pose_provider=lambda: self._last_robot_pose_xyz,
             robot_yaw_provider=lambda: self._last_robot_yaw,
             config=IsaacLiveSourceConfig(
-                source_name="isaac_bridge_live",
+                source_name="frame_bridge_live",
                 strict_live=bool(getattr(self.args, "strict_live", False)),
                 image_width=int(getattr(self.args, "image_width", 640)),
                 image_height=int(getattr(self.args, "image_height", 640)),
@@ -70,7 +70,7 @@ class IsaacBridgeCommandSource:
             raise RuntimeError(report.notice or "live frame source unavailable")
         self._bridge.publish_notice(
             RuntimeNotice(
-                component="isaac_bridge",
+                component="frame_bridge",
                 level="warning" if report.fallback_used else "info",
                 notice=report.notice or f"live frame source status={report.status}",
                 details={
@@ -87,7 +87,7 @@ class IsaacBridgeCommandSource:
 
     def update(self, frame_idx: int) -> None:
         if self._controller is None:
-            raise RuntimeError("IsaacBridgeCommandSource.initialize() must be called before update().")
+            raise RuntimeError("FrameBridgeCommandSource.initialize() must be called before update().")
 
         base_state = self._controller.get_base_state()
         robot_pos_world = np.asarray(base_state.position_w, dtype=np.float32)
@@ -161,7 +161,7 @@ class IsaacBridgeCommandSource:
                 frame_header=FrameHeader(
                     frame_id=int(observation.frame_id),
                     timestamp_ns=time.time_ns(),
-                    source="isaac_bridge_sensor",
+                    source="frame_bridge_sensor",
                     width=int(observation.rgb.shape[1]),
                     height=int(observation.rgb.shape[0]),
                     camera_pose_xyz=tuple(float(v) for v in observation.cam_pos[:3]),
@@ -185,7 +185,7 @@ class IsaacBridgeCommandSource:
     def _publish_startup_health(self) -> None:
         self._bridge.publish_health(
             HealthPing(
-                component="isaac_bridge",
+                component="frame_bridge",
                 details={
                     "bus_topics": {
                         "observation": self._bridge.config.observation_topic,
@@ -208,7 +208,7 @@ class IsaacBridgeCommandSource:
         has_full_camera = bool(sensor is not None and sensor.rgb_prim_path and sensor.depth_prim_path)
         status = "ready" if has_full_camera else "fallback"
         print(
-            "[ISAAC_BRIDGE] "
+            "[FRAME_BRIDGE] "
             f"sensor_status={status} runtime_mount={details.get('runtime_mount', False)} "
             f"rgb={details.get('camera_prim_path', '') or capture_report.get('camera_prim_path', '')} "
             f"depth={details.get('depth_camera_prim_path', '') or capture_report.get('depth_camera_prim_path', '')}"
@@ -225,7 +225,7 @@ class IsaacBridgeCommandSource:
         )
         self._bridge.publish_notice(
             RuntimeNotice(
-                component="isaac_bridge",
+                component="frame_bridge",
                 level="info" if status == "ready" else "warning",
                 notice=str(init_report.get("message", "sensor initialized")),
                 details=details,
@@ -257,7 +257,7 @@ class IsaacBridgeCommandSource:
     def _publish_health(self, *, frame_idx: int) -> None:
         self._bridge.publish_health(
             HealthPing(
-                component="isaac_bridge",
+                component="frame_bridge",
                 details={
                     "frame_idx": int(frame_idx),
                     "robot_pose_xyz": list(self._last_robot_pose_xyz),
@@ -275,7 +275,7 @@ class IsaacBridgeCommandSource:
         if self._active_command is not None and self._active_command.action_type == "LOOK_AT":
             distance_note = f" yaw_error={evaluation.yaw_error_rad:.3f}rad"
         print(
-            "[ISAAC_BRIDGE] "
+            "[FRAME_BRIDGE] "
             f"step={frame_idx} command={command_type}{distance_note} "
             f"cmd=({float(self._command[0]):.3f},{float(self._command[1]):.3f},{float(self._command[2]):.3f}) "
             f"status={None if execution.status is None else execution.status.state}"
@@ -317,7 +317,7 @@ class IsaacBridgeCommandSource:
         return float(frame_idx) * float(getattr(self.args, "physics_dt", 1.0 / 60.0))
 
 
-def run_live_isaac_bridge(
+def run_live_frame_bridge(
     args,
     *,
     bus: MessageBus,
@@ -334,7 +334,7 @@ def run_live_isaac_bridge(
         return run_locomotion_runtime(
             args,
             simulation_app,
-            command_source=IsaacBridgeCommandSource(args, bus=bus, shm_ring=shm_ring),
+            command_source=FrameBridgeCommandSource(args, bus=bus, shm_ring=shm_ring),
         )
     finally:
         simulation_app.close()

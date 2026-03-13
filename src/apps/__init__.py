@@ -4,14 +4,14 @@ from importlib import import_module
 
 
 _EXPORTS = {
-    "create_dual_server_app": ("apps.legacy_http.dual_server_app", "create_app"),
-    "create_navdp_server_app": ("apps.legacy_http.navdp_server_app", "create_app"),
-    "dual_server_main": ("apps.legacy_http.dual_server_app", "main"),
-    "navdp_server_main": ("apps.legacy_http.navdp_server_app", "main"),
-    "parse_dual_args": ("apps.legacy_http.dual_server_app", "parse_args"),
-    "parse_navdp_args": ("apps.legacy_http.navdp_server_app", "parse_args"),
-    "isaac_bridge_main": ("apps.isaac_bridge_app", "main"),
-    "isaac_bridge_editor_attach": ("apps.isaac_bridge_editor_app", "attach_current_stage"),
+    "create_dual_server_app": ("apps.dual_server_app", "create_app"),
+    "create_navdp_server_app": ("apps.navdp_server_app", "create_app"),
+    "dual_server_main": ("apps.dual_server_app", "main"),
+    "navdp_server_main": ("apps.navdp_server_app", "main"),
+    "parse_dual_args": ("apps.dual_server_app", "parse_args"),
+    "parse_navdp_args": ("apps.navdp_server_app", "parse_args"),
+    "frame_bridge_main": ("apps.frame_bridge_app", "main"),
+    "frame_bridge_editor_attach": ("apps.frame_bridge_editor_app", "attach_current_stage"),
     "editor_smoke_main": ("apps.editor_smoke_entry", "main"),
     "editor_smoke_run": ("apps.editor_smoke_entry", "run_editor_smoke"),
     "editor_depth_viewer_main": ("apps.editor_depth_viewer_entry", "main"),

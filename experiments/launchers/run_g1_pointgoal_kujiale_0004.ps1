@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
-$EntryModule = "runtime.g1_bridge"
+$EntryModule = "runtime.aura_runtime"
 $SrcDir = Join-Path $RepoDir "src"
 $PathSep = [System.IO.Path]::PathSeparator
 $DefaultIsaacPython = "C:\isaac-sim\python.bat"

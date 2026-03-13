@@ -7,7 +7,7 @@ import numpy as np
 from ipc.base import MessageBus
 from ipc.shm_ring import SharedMemoryRing
 
-from .isaac_bridge_runtime import IsaacBridgeCommandSource
+from .frame_bridge_runtime import FrameBridgeCommandSource
 
 
 class _NoopSimulationApp:
@@ -24,12 +24,12 @@ def editor_bridge_available() -> tuple[bool, str]:
 
 
 @dataclass
-class AttachedIsaacBridgeRuntime:
+class AttachedFrameBridgeRuntime:
     args: object
     controller: object
     bus: MessageBus
     shm_ring: SharedMemoryRing | None = None
-    command_source_factory: object = IsaacBridgeCommandSource
+    command_source_factory: object = FrameBridgeCommandSource
 
     def __post_init__(self) -> None:
         self._command_source = None
@@ -49,7 +49,7 @@ class AttachedIsaacBridgeRuntime:
 
     def tick(self, frame_idx: int | None = None) -> np.ndarray:
         if not self._started or self._command_source is None:
-            raise RuntimeError("AttachedIsaacBridgeRuntime.start() must be called before tick().")
+            raise RuntimeError("AttachedFrameBridgeRuntime.start() must be called before tick().")
         current_idx = self._frame_idx + 1 if frame_idx is None else int(frame_idx)
         self._frame_idx = current_idx
         self._command_source.update(current_idx)

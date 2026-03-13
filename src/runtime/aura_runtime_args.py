@@ -19,8 +19,8 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
     parser.add_argument("--strict-d455", dest="strict_d455", action="store_true")
     parser.add_argument("--force-runtime-camera", dest="force_runtime_camera", action="store_true")
     parser.add_argument("--use-trajectory-z", dest="use_trajectory_z", action="store_true")
-    parser.add_argument("--image-width", dest="image_width", type=int, default=640)
-    parser.add_argument("--image-height", dest="image_height", type=int, default=640)
+    parser.add_argument("--image-width", dest="image_width", type=int, default=448)
+    parser.add_argument("--image-height", dest="image_height", type=int, default=448)
     parser.add_argument("--depth-max-m", dest="depth_max_m", type=float, default=5.0)
     parser.add_argument("--memory-db-path", dest="memory_db_path", type=str, default="state/memory/memory.sqlite")
     memory_store_group = parser.add_mutually_exclusive_group()
@@ -52,7 +52,7 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run G1 NavDP navigation through the locomotion policy bridge in Isaac Sim.",
+        description="Run the AURA runtime for G1 navigation in Isaac Sim.",
         parents=[BOOTSTRAP_PARSER],
     )
     add_runtime_args(parser)

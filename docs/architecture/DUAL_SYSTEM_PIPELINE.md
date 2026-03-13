@@ -1,6 +1,6 @@
 # Dual-System Pipeline
 
-이 문서는 현재 저장소에서 구현된 memory-aware dual-system planning 경로를 설명한다. 대상은 `scripts/powershell/run_pipeline.ps1`로 실행하는 G1 런타임이며, 구현 기준은 현재 `llama.cpp` dual-server 경로다.
+이 문서는 현재 저장소에서 구현된 memory-aware dual-system planning 경로를 설명한다. 대상은 `scripts/powershell/run_aura_runtime.ps1`로 실행하는 G1 런타임이며, 구현 기준은 현재 `llama.cpp` dual-server 경로다.
 
 ## 핵심 원칙
 
@@ -32,7 +32,7 @@
 - Keyframe Bank
             |
             v
-[NavDPCommandSource]
+[AuraRuntimeCommandSource]
 - active dual task일 때 memory retrieval 수행
 - MemoryContextBundle 생성
             |
@@ -92,7 +92,7 @@
   - instruction을 semantic / spatial / temporal query로 분해
   - top-k memory line과 keyframe을 묶어 `MemoryContextBundle` 생성
 
-### 3. `runtime.g1_bridge.NavDPCommandSource`
+### 3. `runtime.aura_runtime.AuraRuntimeCommandSource`
 
 - `Supervisor.process_frame(...)` 직후 active dual task가 있으면 memory retrieval을 수행한다.
 - retrieval 결과를 `ExecutionObservation.memory_context`에 붙인다.

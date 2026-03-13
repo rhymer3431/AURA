@@ -8,40 +8,40 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from apps import isaac_bridge_app
+from apps import frame_bridge_app
 
 
 def test_live_mode_uses_standalone_branch(monkeypatch) -> None:
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(isaac_bridge_app, "isaac_bootstrap_available", lambda: (True, ""))
+    monkeypatch.setattr(frame_bridge_app, "isaac_bootstrap_available", lambda: (True, ""))
     def _run_live(args) -> int:  # noqa: ANN001
         called["live_frame_source"] = str(args.frame_source)
         return 0
 
-    monkeypatch.setattr(isaac_bridge_app, "run_live_bridge", _run_live)
+    monkeypatch.setattr(frame_bridge_app, "run_live_frame_bridge_app", _run_live)
     monkeypatch.setattr(
-        isaac_bridge_app,
-        "run_lightweight_bridge",
+        frame_bridge_app,
+        "run_lightweight_frame_bridge",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("lightweight bridge should not be selected")),
     )
     monkeypatch.setattr(
-        isaac_bridge_app,
+        frame_bridge_app,
         "build_frame_source",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("build_frame_source must not run before live bootstrap")),
     )
 
-    assert isaac_bridge_app.main(["--frame-source", "live"]) == 0
+    assert frame_bridge_app.main(["--frame-source", "live"]) == 0
     assert called["live_frame_source"] == "live"
 
 
 def test_auto_mode_falls_back_to_lightweight_bridge_when_isaac_unavailable(monkeypatch) -> None:
     called: dict[str, object] = {}
 
-    monkeypatch.setattr(isaac_bridge_app, "isaac_bootstrap_available", lambda: (False, "isaac unavailable"))
+    monkeypatch.setattr(frame_bridge_app, "isaac_bootstrap_available", lambda: (False, "isaac unavailable"))
     monkeypatch.setattr(
-        isaac_bridge_app,
-        "run_live_bridge",
+        frame_bridge_app,
+        "run_live_frame_bridge_app",
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("live bridge should not run when Isaac is unavailable")),
     )
 
@@ -51,9 +51,9 @@ def test_auto_mode_falls_back_to_lightweight_bridge_when_isaac_unavailable(monke
         called["frame_source"] = str(args.frame_source)
         return 0
 
-    monkeypatch.setattr(isaac_bridge_app, "run_lightweight_bridge", _run_lightweight)
+    monkeypatch.setattr(frame_bridge_app, "run_lightweight_frame_bridge", _run_lightweight)
 
-    assert isaac_bridge_app.main(["--frame-source", "auto"]) == 0
+    assert frame_bridge_app.main(["--frame-source", "auto"]) == 0
     assert called["force_synthetic"] is True
     assert called["frame_source"] == "auto"
     assert called["initial_notice"] == "isaac unavailable"

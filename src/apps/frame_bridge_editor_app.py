@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from apps.isaac_bridge_app import parse_args
+from apps.frame_bridge_app import parse_args
 from apps.runtime_common import RuntimeIo, build_runtime_io
-from runtime.isaac_editor_bridge import AttachedIsaacBridgeRuntime, editor_bridge_available
+from runtime.frame_editor_bridge import AttachedFrameBridgeRuntime, editor_bridge_available
 
 
 @dataclass
-class AttachedBridgeSession:
-    runtime: AttachedIsaacBridgeRuntime
+class AttachedFrameBridgeSession:
+    runtime: AttachedFrameBridgeRuntime
     runtime_io: RuntimeIo
     unlink_shm: bool = False
 
@@ -27,7 +27,7 @@ def attach_current_stage(
     argv: list[str] | None = None,
     simulation_app=None,
     stage=None,
-) -> AttachedBridgeSession:
+) -> AttachedFrameBridgeSession:
     available, reason = editor_bridge_available()
     if not available:
         raise RuntimeError(reason)
@@ -44,13 +44,13 @@ def attach_current_stage(
         control_endpoint=args.control_endpoint,
         telemetry_endpoint=args.telemetry_endpoint,
     )
-    runtime = AttachedIsaacBridgeRuntime(args=args, controller=controller, bus=runtime_io.bus, shm_ring=runtime_io.shm_ring)
+    runtime = AttachedFrameBridgeRuntime(args=args, controller=controller, bus=runtime_io.bus, shm_ring=runtime_io.shm_ring)
     try:
         runtime.start(simulation_app=simulation_app, stage=stage)
     except Exception:
         runtime_io.close(unlink_shm=bool((not args.connect) and args.bus == "zmq"))
         raise
-    return AttachedBridgeSession(
+    return AttachedFrameBridgeSession(
         runtime=runtime,
         runtime_io=runtime_io,
         unlink_shm=bool((not args.connect) and args.bus == "zmq"),

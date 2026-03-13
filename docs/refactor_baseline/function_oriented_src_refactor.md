@@ -73,12 +73,11 @@ g1_play/          # compatibility only
 
 | Surface | Canonical Target |
 | --- | --- |
-| `scripts/powershell/run_pipeline.ps1` | `python -m runtime.g1_bridge` |
-| `scripts/powershell/run_g1_pointgoal.ps1` | compatibility wrapper to `scripts/powershell/run_pipeline.ps1` |
+| `scripts/powershell/run_aura_runtime.ps1` | `python -m runtime.aura_runtime` |
+| `scripts/powershell/run_g1_pointgoal.ps1` | compatibility wrapper to `scripts/powershell/run_aura_runtime.ps1` |
 | `scripts/powershell/run_navdp_server.ps1` | `python -m apps.navdp_server_app` |
 | `scripts/powershell/run_vlm_dual_server.ps1` | `python -m apps.dual_server_app` |
 | `play_g1_keyboard_onnx.py` | `locomotion.entrypoint.main` |
-| `python -m navdp.g1_bridge` | compatibility wrapper to `runtime.g1_bridge` |
 | `navdp_sidecar/navdp_server.py` | compatibility wrapper to `apps.navdp_server_app` |
 | `navdp_sidecar/vlm_dual_server.py` | compatibility wrapper to `apps.dual_server_app` |
 
@@ -92,7 +91,6 @@ g1_play/          # compatibility only
 - Removed: canonical `src/navdp_app/` package tree.
 - Removed: duplicated `navdp_sidecar/depth_anything/` vendor tree.
 - Preserved: root PowerShell compatibility launchers.
-- Preserved: `python -m navdp.g1_bridge`.
 - Preserved: `navdp_sidecar/navdp_server.py`, `navdp_sidecar/vlm_dual_server.py`, and `play_g1_keyboard_onnx.py`.
 
 ## Follow-Up Cleanup Opportunities

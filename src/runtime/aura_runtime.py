@@ -12,13 +12,13 @@ from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from common.geometry import quat_wxyz_to_yaw
 from ipc.messages import ActionCommand, ActionStatus, FrameHeader
 
-from .g1_bridge_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
+from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
 from .planning_session import PlanningSession, TrajectoryUpdate
 from .subgoal_executor import CommandEvaluation, SubgoalExecutor
 from .supervisor import Supervisor, SupervisorConfig
 
 
-class NavDPCommandSource:
+class AuraRuntimeCommandSource:
     def __init__(
         self,
         args,
@@ -80,14 +80,14 @@ class NavDPCommandSource:
             self._print_interactive_help()
             self._interactive_input_thread = threading.Thread(
                 target=self._interactive_input_loop,
-                name="g1-interactive-stdin",
+                name="aura-runtime-stdin",
                 daemon=True,
             )
             self._interactive_input_thread.start()
 
     def update(self, frame_idx: int) -> None:
         if self._controller is None:
-            raise RuntimeError("NavDPCommandSource.initialize() must be called before update().")
+            raise RuntimeError("AuraRuntimeCommandSource.initialize() must be called before update().")
 
         base_state = self._controller.get_base_state()
         robot_pose = tuple(float(v) for v in np.asarray(base_state.position_w, dtype=np.float32).reshape(-1)[:3])
@@ -107,7 +107,7 @@ class NavDPCommandSource:
                 frame_header=FrameHeader(
                     frame_id=int(observation.frame_id),
                     timestamp_ns=time.time_ns(),
-                    source="g1_bridge",
+                    source="aura_runtime",
                     width=int(observation.rgb.shape[1]),
                     height=int(observation.rgb.shape[0]),
                     camera_pose_xyz=tuple(float(v) for v in observation.cam_pos[:3]),
@@ -193,7 +193,7 @@ class NavDPCommandSource:
                 task_id="pointgoal",
                 target_pose_xyz=(goal_x, goal_y, 0.0),
                 stop_radius_m=float(getattr(self.args, "goal_tolerance_m", 0.4)),
-                metadata={"source": "g1_bridge_pointgoal"},
+                metadata={"source": "aura_runtime_pointgoal"},
             )
             return
         if self._mode == "dual":
@@ -208,11 +208,11 @@ class NavDPCommandSource:
                     task_state="active",
                     task_id="dual",
                 )
-                self._manual_command = self._build_planner_managed_command(task_id="dual", source="g1_bridge_dual")
+                self._manual_command = self._build_planner_managed_command(task_id="dual", source="aura_runtime_dual")
             return
         if self._mode == "interactive":
             self.planning_session.ensure_navdp_service_ready(context="interactive startup")
-            self._manual_command = self._build_planner_managed_command(task_id="interactive", source="g1_bridge_interactive")
+            self._manual_command = self._build_planner_managed_command(task_id="interactive", source="aura_runtime_interactive")
 
     def _command_overlay_metadata(self) -> dict[str, object]:
         command = self._active_command or self._manual_command
@@ -452,7 +452,7 @@ def main() -> int:
     simulation_app = SimulationApp(launch_config=launch_config)
 
     try:
-        return run_g1_play(args, simulation_app, command_source=NavDPCommandSource(args))
+        return run_g1_play(args, simulation_app, command_source=AuraRuntimeCommandSource(args))
     except Exception as exc:  # noqa: BLE001
         print(f"[G1_POINTGOAL] unhandled exception: {type(exc).__name__}: {exc}")
         print(traceback.format_exc())
