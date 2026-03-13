@@ -6,7 +6,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from locomotion.controller import create_policy_session, infer_policy_backend
+from locomotion.controller import (
+    _build_height_scan_grid,
+    _extract_raycast_hit_position,
+    create_policy_session,
+    infer_policy_backend,
+)
 from locomotion.paths import resolve_default_policy_path
 
 
@@ -50,6 +55,33 @@ def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> Non
     onnx_path.write_bytes(b"onnx")
 
     assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
+
+
+def test_height_scan_grid_matches_official_layout() -> None:
+    grid = _build_height_scan_grid()
+
+    assert grid.shape == (187, 2)
+    assert len(np.unique(grid[:, 0])) == 17
+    assert len(np.unique(grid[:, 1])) == 11
+    np.testing.assert_allclose(grid[0], np.asarray([-0.8, -0.5], dtype=np.float32))
+    np.testing.assert_allclose(grid[-1], np.asarray([0.8, 0.5], dtype=np.float32))
+
+
+def test_extract_raycast_hit_position_supports_supported_shapes() -> None:
+    class _Hit:
+        def __init__(self, position) -> None:
+            self.position = position
+
+    np.testing.assert_allclose(
+        _extract_raycast_hit_position({"hit": True, "position": (1.0, 2.0, 3.0)}),
+        np.asarray([1.0, 2.0, 3.0], dtype=np.float32),
+    )
+    np.testing.assert_allclose(
+        _extract_raycast_hit_position((True, _Hit((4.0, 5.0, 6.0)))),
+        np.asarray([4.0, 5.0, 6.0], dtype=np.float32),
+    )
+    assert _extract_raycast_hit_position({"hit": False}) is None
+    assert _extract_raycast_hit_position((False, None)) is None
 
 
 def test_onnx_policy_session_runs_exported_policy() -> None:

@@ -9,12 +9,19 @@ from dataclasses import dataclass
 import numpy as np
 import onnxruntime as ort
 
+from common.geometry import quat_wxyz_to_yaw
+
 from .constants import (
     ACTION_SCALE,
     DAMPING_PATTERNS,
     DEFAULT_JOINT_POS_PATTERNS,
+    HEIGHT_SCAN_GRID_LENGTH,
+    HEIGHT_SCAN_GRID_RESOLUTION,
+    HEIGHT_SCAN_GRID_WIDTH,
     HEIGHT_SCAN_OFFSET,
     HEIGHT_SCAN_POINTS,
+    HEIGHT_SCAN_RAY_DISTANCE,
+    HEIGHT_SCAN_RAY_START_Z,
     STIFFNESS_PATTERNS,
 )
 
@@ -42,6 +49,201 @@ class RobotBaseState:
     quat_wxyz: np.ndarray
     lin_vel_w: np.ndarray
     ang_vel_w: np.ndarray
+
+
+def _build_height_scan_grid() -> np.ndarray:
+    x_count = int(round(HEIGHT_SCAN_GRID_LENGTH / HEIGHT_SCAN_GRID_RESOLUTION)) + 1
+    y_count = int(round(HEIGHT_SCAN_GRID_WIDTH / HEIGHT_SCAN_GRID_RESOLUTION)) + 1
+    x_coords = np.linspace(-0.5 * HEIGHT_SCAN_GRID_LENGTH, 0.5 * HEIGHT_SCAN_GRID_LENGTH, num=x_count, dtype=np.float32)
+    y_coords = np.linspace(-0.5 * HEIGHT_SCAN_GRID_WIDTH, 0.5 * HEIGHT_SCAN_GRID_WIDTH, num=y_count, dtype=np.float32)
+    grid = np.asarray([[x, y] for y in y_coords for x in x_coords], dtype=np.float32)
+    if grid.shape != (HEIGHT_SCAN_POINTS, 2):
+        raise RuntimeError(f"Height scan grid mismatch: expected {(HEIGHT_SCAN_POINTS, 2)}, got {grid.shape}.")
+    return grid
+
+
+def _extract_raycast_hit_position(hit_result: object) -> np.ndarray | None:
+    if isinstance(hit_result, tuple) and len(hit_result) == 2 and isinstance(hit_result[0], bool):
+        if not hit_result[0]:
+            return None
+        return _extract_raycast_hit_position(hit_result[1])
+
+    if isinstance(hit_result, dict):
+        if not bool(hit_result.get("hit", False)):
+            return None
+        if "position" in hit_result:
+            pos = np.asarray(hit_result["position"], dtype=np.float32).reshape(-1)
+            if pos.shape[0] >= 3:
+                return pos[:3].copy()
+        return None
+
+    if hit_result is None:
+        return None
+
+    for attr_name in ("position", "point", "hit_position"):
+        pos = getattr(hit_result, attr_name, None)
+        if pos is None:
+            continue
+        pos_np = np.asarray(pos, dtype=np.float32).reshape(-1)
+        if pos_np.shape[0] >= 3:
+            return pos_np[:3].copy()
+
+    if hasattr(hit_result, "hit") and not bool(getattr(hit_result, "hit")):
+        return None
+    return None
+
+
+class _HeightScanner:
+    """Standalone replacement for the Isaac Lab height scanner observation."""
+
+    def __init__(self, robot_prim_path: str) -> None:
+        self.robot_prim_path = str(robot_prim_path).rstrip("/")
+        self.sensor_prim_path = f"{self.robot_prim_path}/torso_link"
+        self.pattern_xy = _build_height_scan_grid()
+        self._query_interface = None
+        self._vector_type = None
+
+    def _resolve_query_interface(self):
+        if self._query_interface is not None:
+            return self._query_interface
+
+        try:
+            from omni.physx import get_physx_scene_query_interface
+        except Exception:  # noqa: BLE001
+            get_physx_scene_query_interface = None
+
+        if get_physx_scene_query_interface is not None:
+            try:
+                self._query_interface = get_physx_scene_query_interface()
+                return self._query_interface
+            except Exception:  # noqa: BLE001
+                self._query_interface = None
+
+        try:
+            from omni.physics.core import get_physics_scene_query_interface
+        except Exception:  # noqa: BLE001
+            get_physics_scene_query_interface = None
+
+        if get_physics_scene_query_interface is not None:
+            self._query_interface = get_physics_scene_query_interface()
+        return self._query_interface
+
+    def _vector(self, xyz: np.ndarray):
+        if self._vector_type is False:
+            return tuple(float(v) for v in xyz)
+        if self._vector_type is None:
+            try:
+                import carb
+
+                self._vector_type = carb.Float3
+            except Exception:  # noqa: BLE001
+                self._vector_type = False
+        if self._vector_type is False:
+            return tuple(float(v) for v in xyz)
+        return self._vector_type(float(xyz[0]), float(xyz[1]), float(xyz[2]))
+
+    @staticmethod
+    def _prim_pose(stage, prim_path: str) -> tuple[np.ndarray | None, np.ndarray | None]:
+        try:
+            from pxr import Usd, UsdGeom
+        except Exception:  # noqa: BLE001
+            return None, None
+
+        try:
+            prim = stage.GetPrimAtPath(prim_path)
+            if not prim.IsValid():
+                return None, None
+            xform = UsdGeom.Xformable(prim)
+            world_tf = xform.ComputeLocalToWorldTransform(Usd.TimeCode.Default())
+            trans = world_tf.ExtractTranslation()
+            quat_gf = world_tf.ExtractRotationQuat()
+            imag = quat_gf.GetImaginary()
+            pos = np.asarray([trans[0], trans[1], trans[2]], dtype=np.float32)
+            quat = np.asarray([quat_gf.GetReal(), imag[0], imag[1], imag[2]], dtype=np.float32)
+            return pos, quat
+        except Exception:  # noqa: BLE001
+            return None, None
+
+    def _sensor_pose(self, base_state: RobotBaseState) -> tuple[np.ndarray, float]:
+        try:
+            import omni.usd
+        except Exception:  # noqa: BLE001
+            return base_state.position_w[:3].copy(), float(quat_wxyz_to_yaw(base_state.quat_wxyz))
+
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            return base_state.position_w[:3].copy(), float(quat_wxyz_to_yaw(base_state.quat_wxyz))
+
+        pos, quat = self._prim_pose(stage, self.sensor_prim_path)
+        if pos is None or quat is None:
+            pos, quat = self._prim_pose(stage, self.robot_prim_path)
+        if pos is None or quat is None:
+            return base_state.position_w[:3].copy(), float(quat_wxyz_to_yaw(base_state.quat_wxyz))
+        return pos, float(quat_wxyz_to_yaw(quat))
+
+    def _raycast(self, origin: np.ndarray):
+        scene_query = self._resolve_query_interface()
+        if scene_query is None:
+            return None
+        direction = np.asarray([0.0, 0.0, -1.0], dtype=np.float32)
+        first_valid_hit = None
+
+        def _report(hit) -> bool:
+            nonlocal first_valid_hit
+            rigid_body = str(getattr(hit, "rigid_body", "") or "")
+            collision = str(getattr(hit, "collision", "") or "")
+            hit_path = rigid_body or collision
+            if hit_path.startswith(self.robot_prim_path):
+                return True
+            first_valid_hit = hit
+            return False
+
+        try:
+            scene_query.raycast_all(self._vector(origin), self._vector(direction), HEIGHT_SCAN_RAY_DISTANCE, _report)
+            if first_valid_hit is not None:
+                return first_valid_hit
+        except TypeError:
+            try:
+                scene_query.raycast_all(tuple(float(v) for v in origin), (0.0, 0.0, -1.0), HEIGHT_SCAN_RAY_DISTANCE, _report)
+                if first_valid_hit is not None:
+                    return first_valid_hit
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception:  # noqa: BLE001
+            pass
+
+        try:
+            return scene_query.raycast_closest(self._vector(origin), self._vector(direction), HEIGHT_SCAN_RAY_DISTANCE)
+        except TypeError:
+            return scene_query.raycast_closest(tuple(float(v) for v in origin), (0.0, 0.0, -1.0), HEIGHT_SCAN_RAY_DISTANCE)
+        except Exception:  # noqa: BLE001
+            return None
+
+    def fallback_scan(self, base_state: RobotBaseState) -> np.ndarray:
+        height_value = np.clip(float(base_state.position_w[2]) - HEIGHT_SCAN_OFFSET, -1.0, 1.0)
+        return np.full(HEIGHT_SCAN_POINTS, height_value, dtype=np.float32)
+
+    def scan(self, base_state: RobotBaseState) -> np.ndarray:
+        if self._resolve_query_interface() is None:
+            return self.fallback_scan(base_state)
+
+        sensor_pos_w, sensor_yaw = self._sensor_pose(base_state)
+        cos_yaw = float(np.cos(sensor_yaw))
+        sin_yaw = float(np.sin(sensor_yaw))
+
+        scan = np.empty(HEIGHT_SCAN_POINTS, dtype=np.float32)
+        origin_xy = np.empty((HEIGHT_SCAN_POINTS, 2), dtype=np.float32)
+        origin_xy[:, 0] = sensor_pos_w[0] + (self.pattern_xy[:, 0] * cos_yaw) - (self.pattern_xy[:, 1] * sin_yaw)
+        origin_xy[:, 1] = sensor_pos_w[1] + (self.pattern_xy[:, 0] * sin_yaw) + (self.pattern_xy[:, 1] * cos_yaw)
+
+        for idx in range(HEIGHT_SCAN_POINTS):
+            origin = np.asarray([origin_xy[idx, 0], origin_xy[idx, 1], sensor_pos_w[2] + HEIGHT_SCAN_RAY_START_Z], dtype=np.float32)
+            hit_pos = _extract_raycast_hit_position(self._raycast(origin))
+            if hit_pos is None:
+                scan[idx] = 1.0
+                continue
+            scan[idx] = float(sensor_pos_w[2]) - float(hit_pos[2]) - HEIGHT_SCAN_OFFSET
+        return np.clip(scan, -1.0, 1.0)
 
 
 def _normalize_static_shape(shape: object) -> tuple[object, ...]:
@@ -256,6 +458,7 @@ class G1PolicyController:
         self.output_name = self.policy_session.output_name
         self.backend_name = self.policy_session.backend_name
         self.decimation = max(1, int(decimation))
+        self.prim_path = prim_path
 
         self.default_pos = np.zeros(0, dtype=np.float32)
         self.default_vel = np.zeros(0, dtype=np.float32)
@@ -267,6 +470,7 @@ class G1PolicyController:
         self.action = np.zeros(0, dtype=np.float32)
         self.previous_action = np.zeros(0, dtype=np.float32)
         self.policy_counter = 0
+        self.height_scanner: _HeightScanner | None = None
 
     def initialize(self):
         from omni.physx import get_physx_simulation_interface
@@ -301,6 +505,7 @@ class G1PolicyController:
         self.action = np.zeros(len(dof_names), dtype=np.float32)
         self.previous_action = np.zeros(len(dof_names), dtype=np.float32)
         self.policy_counter = 0
+        self.height_scanner = _HeightScanner(robot_prim_path=self.prim_path)
         self._validate_io()
 
     def reset(self):
@@ -357,8 +562,10 @@ class G1PolicyController:
 
         joint_pos = np.asarray(self.robot.get_joint_positions(), dtype=np.float32)
         joint_vel = np.asarray(self.robot.get_joint_velocities(), dtype=np.float32)
-        height_value = np.clip(float(pos_w[2]) - HEIGHT_SCAN_OFFSET, -1.0, 1.0)
-        height_scan = np.full(HEIGHT_SCAN_POINTS, height_value, dtype=np.float32)
+        if self.height_scanner is None:
+            height_scan = np.full(HEIGHT_SCAN_POINTS, np.clip(float(pos_w[2]) - HEIGHT_SCAN_OFFSET, -1.0, 1.0), dtype=np.float32)
+        else:
+            height_scan = self.height_scanner.scan(base_state)
 
         return np.concatenate(
             (
