@@ -8,7 +8,9 @@ import pytest
 
 from locomotion.controller import (
     _build_height_scan_grid,
+    _extract_raycast_hit_path,
     _extract_raycast_hit_position,
+    _path_has_ground_token,
     create_policy_session,
     infer_policy_backend,
 )
@@ -82,6 +84,18 @@ def test_extract_raycast_hit_position_supports_supported_shapes() -> None:
     )
     assert _extract_raycast_hit_position({"hit": False}) is None
     assert _extract_raycast_hit_position((False, None)) is None
+
+
+def test_extract_raycast_hit_path_and_ground_token_detection() -> None:
+    class _Hit:
+        def __init__(self, collision: str) -> None:
+            self.collision = collision
+
+    assert _extract_raycast_hit_path({"collision": "/World/Environment/floor/collider"}) == "/World/Environment/floor/collider"
+    assert _extract_raycast_hit_path((True, _Hit("/World/ground/mesh"))) == "/World/ground/mesh"
+    assert _path_has_ground_token("/World/ground")
+    assert _path_has_ground_token("/World/Environment/FloorMesh")
+    assert not _path_has_ground_token("/World/Environment/Wall")
 
 
 def test_onnx_policy_session_runs_exported_policy() -> None:

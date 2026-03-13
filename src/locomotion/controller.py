@@ -93,6 +93,38 @@ def _extract_raycast_hit_position(hit_result: object) -> np.ndarray | None:
     return None
 
 
+def _extract_raycast_hit_path(hit_result: object) -> str:
+    if isinstance(hit_result, tuple) and len(hit_result) == 2 and isinstance(hit_result[0], bool):
+        if not hit_result[0]:
+            return ""
+        return _extract_raycast_hit_path(hit_result[1])
+
+    if isinstance(hit_result, dict):
+        for key in ("collision", "collisionPath", "rigid_body", "rigidBody", "collider", "body"):
+            value = hit_result.get(key)
+            if value:
+                return str(value)
+        return ""
+
+    if hit_result is None:
+        return ""
+
+    for attr_name in ("collision", "collisionPath", "rigid_body", "rigidBody", "collider", "body"):
+        value = getattr(hit_result, attr_name, None)
+        if value:
+            return str(value)
+    return ""
+
+
+def _path_has_ground_token(path: str) -> bool:
+    normalized = str(path).replace("\\", "/").strip().lower()
+    if normalized == "":
+        return False
+    tokens = [token for token in normalized.replace("-", "_").split("/") if token]
+    ground_keywords = ("ground", "terrain", "floor", "plane", "walkway", "walkable")
+    return any(any(keyword in token for keyword in ground_keywords) for token in tokens)
+
+
 class _HeightScanner:
     """Standalone replacement for the Isaac Lab height scanner observation."""
 
@@ -102,6 +134,9 @@ class _HeightScanner:
         self.pattern_xy = _build_height_scan_grid()
         self._query_interface = None
         self._vector_type = None
+        self._allowed_hit_path_prefixes: tuple[str, ...] | None = None
+        self._last_scan: np.ndarray | None = None
+        self._warned_ground_filter = False
 
     def _resolve_query_interface(self):
         if self._query_interface is not None:
@@ -181,6 +216,39 @@ class _HeightScanner:
             return base_state.position_w[:3].copy(), float(quat_wxyz_to_yaw(base_state.quat_wxyz))
         return pos, float(quat_wxyz_to_yaw(quat))
 
+    def _resolve_allowed_hit_path_prefixes(self) -> tuple[str, ...]:
+        if self._allowed_hit_path_prefixes is not None:
+            return self._allowed_hit_path_prefixes
+
+        prefixes: set[str] = {"/World/ground", "/World/defaultGroundPlane"}
+        try:
+            import omni.usd
+        except Exception:  # noqa: BLE001
+            self._allowed_hit_path_prefixes = tuple(sorted(prefixes))
+            return self._allowed_hit_path_prefixes
+
+        stage = omni.usd.get_context().get_stage()
+        if stage is not None:
+            try:
+                for prim in stage.Traverse():
+                    prim_path = str(prim.GetPath())
+                    if _path_has_ground_token(prim_path):
+                        prefixes.add(prim_path)
+            except Exception:  # noqa: BLE001
+                pass
+
+        self._allowed_hit_path_prefixes = tuple(sorted(prefixes))
+        return self._allowed_hit_path_prefixes
+
+    def _is_allowed_hit(self, hit_result: object) -> bool:
+        hit_path = _extract_raycast_hit_path(hit_result)
+        if hit_path.startswith(self.robot_prim_path):
+            return False
+        prefixes = self._resolve_allowed_hit_path_prefixes()
+        if hit_path == "":
+            return False
+        return any(hit_path.startswith(prefix) for prefix in prefixes)
+
     def _raycast(self, origin: np.ndarray):
         scene_query = self._resolve_query_interface()
         if scene_query is None:
@@ -190,10 +258,7 @@ class _HeightScanner:
 
         def _report(hit) -> bool:
             nonlocal first_valid_hit
-            rigid_body = str(getattr(hit, "rigid_body", "") or "")
-            collision = str(getattr(hit, "collision", "") or "")
-            hit_path = rigid_body or collision
-            if hit_path.startswith(self.robot_prim_path):
+            if not self._is_allowed_hit(hit):
                 return True
             first_valid_hit = hit
             return False
@@ -213,9 +278,11 @@ class _HeightScanner:
             pass
 
         try:
-            return scene_query.raycast_closest(self._vector(origin), self._vector(direction), HEIGHT_SCAN_RAY_DISTANCE)
+            hit = scene_query.raycast_closest(self._vector(origin), self._vector(direction), HEIGHT_SCAN_RAY_DISTANCE)
+            return hit if self._is_allowed_hit(hit) else None
         except TypeError:
-            return scene_query.raycast_closest(tuple(float(v) for v in origin), (0.0, 0.0, -1.0), HEIGHT_SCAN_RAY_DISTANCE)
+            hit = scene_query.raycast_closest(tuple(float(v) for v in origin), (0.0, 0.0, -1.0), HEIGHT_SCAN_RAY_DISTANCE)
+            return hit if self._is_allowed_hit(hit) else None
         except Exception:  # noqa: BLE001
             return None
 
@@ -227,11 +294,16 @@ class _HeightScanner:
         if self._resolve_query_interface() is None:
             return self.fallback_scan(base_state)
 
+        allowed_prefixes = self._resolve_allowed_hit_path_prefixes()
+        if len(allowed_prefixes) == 0:
+            return self._last_scan.copy() if self._last_scan is not None else self.fallback_scan(base_state)
+
         sensor_pos_w, sensor_yaw = self._sensor_pose(base_state)
         cos_yaw = float(np.cos(sensor_yaw))
         sin_yaw = float(np.sin(sensor_yaw))
 
         scan = np.empty(HEIGHT_SCAN_POINTS, dtype=np.float32)
+        valid_hits = 0
         origin_xy = np.empty((HEIGHT_SCAN_POINTS, 2), dtype=np.float32)
         origin_xy[:, 0] = sensor_pos_w[0] + (self.pattern_xy[:, 0] * cos_yaw) - (self.pattern_xy[:, 1] * sin_yaw)
         origin_xy[:, 1] = sensor_pos_w[1] + (self.pattern_xy[:, 0] * sin_yaw) + (self.pattern_xy[:, 1] * cos_yaw)
@@ -242,8 +314,16 @@ class _HeightScanner:
             if hit_pos is None:
                 scan[idx] = 1.0
                 continue
+            valid_hits += 1
             scan[idx] = float(sensor_pos_w[2]) - float(hit_pos[2]) - HEIGHT_SCAN_OFFSET
-        return np.clip(scan, -1.0, 1.0)
+        if valid_hits < max(1, int(0.6 * HEIGHT_SCAN_POINTS)):
+            if not self._warned_ground_filter:
+                print("[WARN] Height scan found too few ground hits; using fallback scan for stability.")
+                self._warned_ground_filter = True
+            return self._last_scan.copy() if self._last_scan is not None else self.fallback_scan(base_state)
+        clipped = np.clip(scan, -1.0, 1.0)
+        self._last_scan = clipped.copy()
+        return clipped
 
 
 def _normalize_static_shape(shape: object) -> tuple[object, ...]:
