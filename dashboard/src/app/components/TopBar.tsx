@@ -5,8 +5,9 @@ import {
 } from "lucide-react";
 
 import { useDashboard } from "../state";
+import type { DashboardPage } from "../navigation";
 
-export function TopBar() {
+export function TopBar({ page }: { page: DashboardPage }) {
   const { state } = useDashboard();
 
   return (
@@ -19,9 +20,9 @@ export function TopBar() {
           <Star className="size-[18px]" />
         </button>
         <div className="flex items-center gap-2 text-[14px]">
-          <span className="text-black/40">Dashboards</span>
+          <span className="text-black/40">{page.groupTitle}</span>
           <span className="text-black/20">/</span>
-          <span className="text-black/90">Pipeline Overview</span>
+          <span className="text-black/90">{page.label}</span>
         </div>
       </div>
 
