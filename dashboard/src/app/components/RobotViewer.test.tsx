@@ -62,23 +62,28 @@ const mockDashboard = {
 const mockHookValue = {
   rgbVideoRef: { current: null },
   depthVideoRef: { current: null },
+  snapshotRef: {
+    current: {
+      type: "snapshot",
+      source: "aura_runtime",
+      image: { width: 320, height: 180 },
+      detector_backend: "stub",
+      activeTarget: { nav_goal_pixel: [160, 90] },
+    },
+  },
+  telemetryRef: {
+    current: {
+      type: "frame_meta",
+      detections: [{ class_name: "apple", confidence: 0.9, bbox_xyxy: [10, 20, 120, 140] }],
+      trajectoryPixels: [[10, 10], [20, 20], [30, 30]],
+      activeTarget: { nav_goal_pixel: [160, 90] },
+    },
+  },
   connected: true,
   error: "",
   session: { type: "session_ready", trackRoles: ["rgb", "depth"] },
-  snapshot: {
-    type: "snapshot",
-    source: "aura_runtime",
-    image: { width: 320, height: 180 },
-    detector_backend: "stub",
-    activeTarget: { nav_goal_pixel: [160, 90] },
-  },
-  telemetry: {
-    type: "frame_meta",
-    detections: [{ class_name: "apple", confidence: 0.9, bbox_xyxy: [10, 20, 120, 140] }],
-    trajectoryPixels: [[10, 10], [20, 20], [30, 30]],
-    activeTarget: { nav_goal_pixel: [160, 90] },
-  },
   trackRoles: ["rgb", "depth"],
+  hudVersion: 1,
 };
 
 vi.mock("../state", () => ({

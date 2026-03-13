@@ -87,8 +87,8 @@ function HookProbe() {
     <div>
       <div data-testid="connected">{String(viewer.connected)}</div>
       <div data-testid="tracks">{viewer.trackRoles.join(",")}</div>
-      <div data-testid="snapshot">{String(viewer.snapshot?.type ?? "")}</div>
-      <div data-testid="telemetry">{String(viewer.telemetry?.type ?? "")}</div>
+      <div data-testid="snapshot">{String(viewer.snapshotRef.current?.type ?? "")}</div>
+      <div data-testid="telemetry">{String(viewer.telemetryRef.current?.type ?? "")}</div>
     </div>
   );
 }

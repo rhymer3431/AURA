@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react";
-import { vi } from "vitest";
+import { beforeEach, vi } from "vitest";
 
 import { LogsWidget, ProcessesWidget } from "./SystemStatusWidgets";
 
@@ -59,6 +59,16 @@ vi.mock("../state", () => ({
 }));
 
 describe("SystemStatusWidgets", () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, "fetch", {
+      value: vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ logs: mockDashboard.state.logs }),
+      }),
+      writable: true,
+    });
+  });
+
   it("shows not required process state", () => {
     render(<ProcessesWidget />);
 
@@ -66,10 +76,10 @@ describe("SystemStatusWidgets", () => {
     expect(screen.getAllByText("not required").length).toBeGreaterThan(0);
   });
 
-  it("renders recent logs from dashboard state", () => {
+  it("renders recent logs from dashboard state", async () => {
     render(<LogsWidget />);
 
-    expect(screen.getByText("interactive task queued")).toBeInTheDocument();
-    expect(screen.getByText("timeout retry")).toBeInTheDocument();
+    expect(await screen.findByText("interactive task queued")).toBeInTheDocument();
+    expect(await screen.findByText("timeout retry")).toBeInTheDocument();
   });
 });

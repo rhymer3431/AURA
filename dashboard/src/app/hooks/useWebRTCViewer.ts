@@ -7,9 +7,8 @@ type ViewerState = {
   connected: boolean;
   error: string;
   session: ViewerStateMessage | null;
-  snapshot: ViewerStateMessage | null;
-  telemetry: ViewerTelemetryMessage | null;
   trackRoles: string[];
+  hudVersion: number;
 };
 
 type ViewerOptions = {
@@ -40,21 +39,52 @@ export function useWebRTCViewer({ basePath, enabled }: ViewerOptions) {
   const rgbVideoRef = useRef<HTMLVideoElement | null>(null);
   const depthVideoRef = useRef<HTMLVideoElement | null>(null);
   const peerRef = useRef<RTCPeerConnection | null>(null);
+  const snapshotRef = useRef<ViewerStateMessage | null>(null);
+  const telemetryRef = useRef<ViewerTelemetryMessage | null>(null);
+  const sessionRef = useRef<ViewerStateMessage | null>(null);
+  const trackRolesRef = useRef<string[]>([]);
+  const flushTimerRef = useRef<number | null>(null);
   const [state, setState] = useState<ViewerState>({
     connected: false,
     error: "",
     session: null,
-    snapshot: null,
-    telemetry: null,
     trackRoles: [],
+    hudVersion: 0,
   });
 
+  function clearScheduledFlush() {
+    if (flushTimerRef.current !== null) {
+      window.clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+  }
+
+  function scheduleFlush() {
+    if (flushTimerRef.current !== null) {
+      return;
+    }
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
+      setState((current) => ({
+        ...current,
+        session: sessionRef.current,
+        trackRoles: trackRolesRef.current,
+        hudVersion: current.hudVersion + 1,
+      }));
+    }, 250);
+  }
+
   useEffect(() => {
+    clearScheduledFlush();
     const peer = peerRef.current;
     if (peer !== null) {
       peer.close();
       peerRef.current = null;
     }
+    snapshotRef.current = null;
+    telemetryRef.current = null;
+    sessionRef.current = null;
+    trackRolesRef.current = [];
     if (rgbVideoRef.current !== null) {
       rgbVideoRef.current.srcObject = null;
     }
@@ -66,9 +96,8 @@ export function useWebRTCViewer({ basePath, enabled }: ViewerOptions) {
         connected: false,
         error: "",
         session: null,
-        snapshot: null,
-        telemetry: null,
         trackRoles: [],
+        hudVersion: 0,
       });
       return;
     }
@@ -119,25 +148,26 @@ export function useWebRTCViewer({ basePath, enabled }: ViewerOptions) {
         stateChannel.onmessage = (event) => {
           const payload = JSON.parse(String(event.data)) as ViewerStateMessage;
           const type = String(payload.type ?? "");
-          setState((current) => {
-            if (type === "session_ready") {
-              const trackRoles = Array.isArray(payload.trackRoles)
-                ? payload.trackRoles.map((item) => String(item))
-                : current.trackRoles;
-              return { ...current, session: payload, trackRoles };
-            }
-            if (type === "snapshot" || type === "waiting_for_frame") {
-              return { ...current, snapshot: payload };
-            }
-            return current;
-          });
+          if (type === "session_ready") {
+            sessionRef.current = payload;
+            trackRolesRef.current = Array.isArray(payload.trackRoles)
+              ? payload.trackRoles.map((item) => String(item))
+              : trackRolesRef.current;
+            scheduleFlush();
+            return;
+          }
+          if (type === "snapshot" || type === "waiting_for_frame") {
+            snapshotRef.current = payload;
+            scheduleFlush();
+          }
         };
         telemetryChannel.onmessage = (event) => {
           const payload = JSON.parse(String(event.data)) as ViewerTelemetryMessage;
           if (String(payload.type ?? "") !== "frame_meta") {
             return;
           }
-          setState((current) => ({ ...current, telemetry: payload }));
+          telemetryRef.current = payload;
+          scheduleFlush();
         };
 
         const offer = await connection.createOffer();
@@ -168,6 +198,7 @@ export function useWebRTCViewer({ basePath, enabled }: ViewerOptions) {
     void connect();
     return () => {
       cancelled = true;
+      clearScheduledFlush();
       if (peerRef.current !== null) {
         peerRef.current.close();
         peerRef.current = null;
@@ -175,5 +206,11 @@ export function useWebRTCViewer({ basePath, enabled }: ViewerOptions) {
     };
   }, [basePath, enabled]);
 
-  return { rgbVideoRef, depthVideoRef, ...state };
+  return {
+    rgbVideoRef,
+    depthVideoRef,
+    snapshotRef,
+    telemetryRef,
+    ...state,
+  };
 }

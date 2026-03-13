@@ -20,8 +20,12 @@ function drawOverlay(
   const sourceHeight = numberValue(image.height) ?? 1;
   const width = Math.max(canvas.clientWidth, 1);
   const height = Math.max(canvas.clientHeight, 1);
-  canvas.width = width;
-  canvas.height = height;
+  if (canvas.width !== width) {
+    canvas.width = width;
+  }
+  if (canvas.height !== height) {
+    canvas.height = height;
+  }
   context.clearRect(0, 0, width, height);
 
   const detections = asArray<Record<string, unknown>>(telemetry?.detections);
@@ -102,22 +106,28 @@ export function RobotViewer() {
   useEffect(() => {
     const canvas = canvasRef.current;
     if (canvas === null) {
-      return;
+      return undefined;
     }
     if (!showOverlay) {
       const context = canvas.getContext("2d");
       context?.clearRect(0, 0, canvas.width, canvas.height);
-      return;
+      return undefined;
     }
-    drawOverlay(
-      canvas,
-      (viewer.snapshot as Record<string, unknown> | null) ?? null,
-      (viewer.telemetry as Record<string, unknown> | null) ?? null,
-    );
-  }, [showOverlay, viewer.snapshot, viewer.telemetry]);
+    let frameId = 0;
+    const render = () => {
+      drawOverlay(
+        canvas,
+        (viewer.snapshotRef.current as Record<string, unknown> | null) ?? null,
+        (viewer.telemetryRef.current as Record<string, unknown> | null) ?? null,
+      );
+      frameId = window.requestAnimationFrame(render);
+    };
+    render();
+    return () => window.cancelAnimationFrame(frameId);
+  }, [showOverlay, viewer.snapshotRef, viewer.telemetryRef]);
 
-  const snapshot = asRecord(viewer.snapshot);
-  const telemetry = asRecord(viewer.telemetry);
+  const snapshot = asRecord(viewer.snapshotRef.current);
+  const telemetry = asRecord(viewer.telemetryRef.current);
   const image = asRecord(snapshot.image);
   const trackRoles = viewer.trackRoles.length > 0 ? viewer.trackRoles : asArray<string>(state?.transport.peerTrackRoles);
   const showDepth = state?.session.config?.showDepth === true && trackRoles.includes("depth");

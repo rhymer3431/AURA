@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Scan,
   Database,
@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 
 import { useDashboard } from "../state";
+import { requestJson } from "../network";
+import type { LogRecord } from "../types";
 import {
   asRecord,
   booleanValue,
@@ -258,7 +260,40 @@ export function IpcOrchestrationWidget() {
 export function LogsWidget() {
   const { state } = useDashboard();
   const [logsExpanded, setLogsExpanded] = useState(false);
-  const logs = recentLogs(state, logsExpanded ? 120 : 40);
+  const [remoteLogs, setRemoteLogs] = useState<LogRecord[]>([]);
+  const [logsError, setLogsError] = useState("");
+  const limit = logsExpanded ? 120 : 40;
+  const fallbackLogs = recentLogs(state, limit);
+  const logs = remoteLogs.length > 0 ? remoteLogs : fallbackLogs;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLogs() {
+      try {
+        const response = await requestJson<{ logs: LogRecord[] }>(`/api/logs?limit=${limit}`);
+        if (cancelled) {
+          return;
+        }
+        setRemoteLogs(Array.isArray(response.logs) ? [...response.logs].reverse() : []);
+        setLogsError("");
+      } catch (error) {
+        if (!cancelled) {
+          setLogsError(error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    void loadLogs();
+    const intervalId = window.setInterval(() => {
+      void loadLogs();
+    }, 1500);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [limit]);
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6 h-full flex flex-col">
@@ -275,6 +310,12 @@ export function LogsWidget() {
           {logsExpanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
         </button>
       </div>
+
+      {logsError !== "" && (
+        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+          log refresh degraded: {logsError}
+        </div>
+      )}
 
       <div className={`space-y-1 font-mono text-[11px] bg-white rounded-2xl p-3 flex-1 overflow-y-auto shadow-sm ${logsExpanded ? "max-h-[300px]" : "max-h-[140px]"}`}>
         {logs.length === 0 && (

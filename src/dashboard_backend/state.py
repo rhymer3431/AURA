@@ -86,8 +86,9 @@ class StateAggregator:
         event_logs = list(self._event_logs)[-max(limit, 1) :]
         return [*file_logs, *event_logs][-max(limit, 1) :]
 
-    async def force_refresh(self) -> None:
-        await self._refresh_external_services()
+    async def force_refresh(self, *, refresh_services: bool = True) -> None:
+        if refresh_services:
+            await self._refresh_external_services()
         self._state = self._build_state()
         self._broadcast_state()
 
@@ -95,13 +96,13 @@ class StateAggregator:
         while True:
             event = await self._listener.get()
             self._consume_gateway_event(event.kind, event.payload)
-            await self.force_refresh()
+            await self.force_refresh(refresh_services=False)
 
     async def _poll_loop(self) -> None:
         interval = max(float(self.config.health_poll_interval_sec), 0.2)
         while True:
             await asyncio.sleep(interval)
-            await self.force_refresh()
+            await self.force_refresh(refresh_services=True)
 
     def _consume_gateway_event(self, kind: str, payload: dict[str, object]) -> None:
         if kind == "health" and str(payload.get("component", "")) == "aura_runtime":
@@ -233,7 +234,9 @@ class StateAggregator:
             "memory": memory,
             "services": services,
             "transport": transport,
-            "logs": self.get_recent_logs(limit=200),
+            # File-backed logs are fetched on demand from /api/logs to avoid
+            # rescanning every log file for every telemetry/status event.
+            "logs": list(self._event_logs)[-20:],
         }
 
     def _broadcast_state(self) -> None:
