@@ -26,6 +26,10 @@ def _args() -> Namespace:
         obstacle_min_valid_fraction=0.05,
         obstacle_min_turn_wz=0.35,
         obstacle_forward_trigger_mps=0.05,
+        obstacle_slow_forward_vx_mps=0.08,
+        obstacle_backoff_vx_mps=0.18,
+        obstacle_lateral_nudge_vy_mps=0.12,
+        obstacle_recovery_hold_sec=0.75,
     )
 
 
@@ -208,14 +212,15 @@ def test_obstacle_defense_turns_toward_clearer_side() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
-    assert abs(float(result.command_vector[0])) < 1.0e-4
+    assert float(result.command_vector[0]) < 0.0
+    assert float(result.command_vector[1]) < 0.0
     assert float(result.command_vector[2]) < 0.0
     assert result.status is not None
     assert result.status.metadata["obstacle_defense"] is True
-    assert result.status.metadata["obstacle_defense_mode"] == "turn_in_place"
+    assert result.status.metadata["obstacle_defense_mode"] == "backoff_turn"
 
 
-def test_obstacle_defense_stops_when_both_sides_are_blocked() -> None:
+def test_obstacle_defense_backoffs_when_both_sides_are_blocked() -> None:
     update = TrajectoryUpdate(
         trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
         plan_version=6,
@@ -235,7 +240,76 @@ def test_obstacle_defense_stops_when_both_sides_are_blocked() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
-    assert np.allclose(result.command_vector, np.zeros(3, dtype=np.float32))
+    assert float(result.command_vector[0]) < 0.0
+    assert abs(float(result.command_vector[1])) < 1.0e-4
+    assert abs(float(result.command_vector[2])) < 1.0e-4
     assert result.status is not None
     assert result.status.metadata["obstacle_defense"] is True
-    assert result.status.metadata["obstacle_defense_mode"] == "stop"
+    assert result.status.metadata["obstacle_defense_mode"] == "backoff_hold"
+
+
+def test_obstacle_defense_holds_recovery_briefly_after_contact() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
+        plan_version=7,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    blocked_depth = np.full((18, 18), 1.2, dtype=np.float32)
+    blocked_depth[:, 7:11] = 0.20
+    blocked_depth[:, 11:15] = 2.0
+    clear_depth = np.full((18, 18), 2.5, dtype=np.float32)
+
+    first = executor.step(
+        frame_idx=1,
+        observation=_observation_with_depth(blocked_depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    second = executor.step(
+        frame_idx=2,
+        observation=_observation_with_depth(clear_depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert float(first.command_vector[0]) < 0.0
+    assert float(second.command_vector[0]) < 0.0
+    assert second.status is not None
+    assert second.status.metadata["obstacle_defense_mode"] == "backoff_recovery"
+    assert second.status.metadata["obstacle_recovery_active"] is True
+
+
+def test_obstacle_defense_slow_turn_adds_centering_bias() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
+        plan_version=8,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    depth = np.full((18, 18), 1.5, dtype=np.float32)
+    depth[:, 7:11] = 0.60
+    depth[:, 11:15] = 1.8
+
+    result = executor.step(
+        frame_idx=1,
+        observation=_observation_with_depth(depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert 0.0 <= float(result.command_vector[0]) <= 0.08 + 1.0e-4
+    assert float(result.command_vector[1]) < 0.0
+    assert float(result.command_vector[2]) < 0.0
+    assert result.status is not None
+    assert result.status.metadata["obstacle_defense_mode"] == "slow_turn"

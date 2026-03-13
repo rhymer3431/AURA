@@ -29,6 +29,10 @@ class ObstacleDefenseConfig:
     min_valid_fraction: float = 0.05
     min_turn_wz: float = 0.35
     forward_trigger_mps: float = 0.05
+    slow_forward_vx_mps: float = 0.08
+    backoff_vx_mps: float = 0.18
+    lateral_nudge_vy_mps: float = 0.12
+    recovery_hold_sec: float = 0.75
 
 
 @dataclass(frozen=True)
@@ -75,10 +79,16 @@ class SubgoalExecutor:
             min_valid_fraction=float(getattr(args, "obstacle_min_valid_fraction", 0.05)),
             min_turn_wz=float(getattr(args, "obstacle_min_turn_wz", 0.35)),
             forward_trigger_mps=float(getattr(args, "obstacle_forward_trigger_mps", 0.05)),
+            slow_forward_vx_mps=float(getattr(args, "obstacle_slow_forward_vx_mps", 0.08)),
+            backoff_vx_mps=float(getattr(args, "obstacle_backoff_vx_mps", 0.18)),
+            lateral_nudge_vy_mps=float(getattr(args, "obstacle_lateral_nudge_vy_mps", 0.12)),
+            recovery_hold_sec=float(getattr(args, "obstacle_recovery_hold_sec", 0.75)),
         )
         self._last_applied_plan_version = -1
         self._planner_yaw_target_rad: float | None = None
         self._command = np.zeros(3, dtype=np.float32)
+        self._obstacle_recovery_until = 0.0
+        self._obstacle_recovery_sign = 0
 
     @property
     def planning_session(self) -> PlanningSession:
@@ -145,7 +155,7 @@ class SubgoalExecutor:
                 force_stop=evaluation.force_stop,
             )
             self._command = tracker_result.command
-        defense = self._apply_obstacle_defense(observation, self._command)
+        defense = self._apply_obstacle_defense(observation, self._command, now=now)
         self._command = defense.command
 
         status = self.build_status(
@@ -341,7 +351,8 @@ class SubgoalExecutor:
         wz = np.clip(1.5 * float(yaw_error), -float(self.args.cmd_max_wz), float(self.args.cmd_max_wz))
         return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)
 
-    def _apply_obstacle_defense(self, observation, command: np.ndarray) -> ObstacleDefenseResult:  # noqa: ANN001
+    def _apply_obstacle_defense(self, observation, command: np.ndarray, *, now: float | None = None) -> ObstacleDefenseResult:  # noqa: ANN001
+        current_time = time.monotonic() if now is None else float(now)
         if not bool(self._obstacle_defense.enabled) or observation is None:
             return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
 
@@ -372,15 +383,7 @@ class SubgoalExecutor:
 
         base_command = np.asarray(command, dtype=np.float32).copy()
         moving_forward = float(base_command[0]) > float(self._obstacle_defense.forward_trigger_mps)
-        if not moving_forward and float(center_clearance) >= float(self._obstacle_defense.stop_distance_m):
-            return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
-
         turn_sign = self._clearer_side_turn_sign(left_clearance, right_clearance)
-        max_wz = max(float(getattr(self.args, "cmd_max_wz", 0.8)), 1.0e-3)
-        turn_wz = 0.0
-        if turn_sign != 0:
-            turn_wz = float(turn_sign) * min(max_wz, max(float(self._obstacle_defense.min_turn_wz), abs(float(base_command[2]))))
-
         metadata = {
             "obstacle_defense": True,
             "obstacle_left_clearance_m": round(left_clearance, 4),
@@ -389,21 +392,40 @@ class SubgoalExecutor:
         }
 
         if float(center_clearance) < float(self._obstacle_defense.stop_distance_m):
-            metadata["obstacle_defense_mode"] = "stop" if turn_wz == 0.0 else "turn_in_place"
-            return ObstacleDefenseResult(
-                command=np.asarray([0.0, 0.0, turn_wz], dtype=np.float32),
-                triggered=True,
+            preferred_sign = turn_sign if turn_sign != 0 else self._obstacle_recovery_sign
+            self._activate_obstacle_recovery(current_time, preferred_sign)
+            return self._build_backoff_command(
+                base_command,
+                turn_sign=preferred_sign,
                 metadata=metadata,
+                mode="backoff_turn" if preferred_sign != 0 else "backoff_hold",
+                recovery_active=False,
             )
+
+        if current_time < float(self._obstacle_recovery_until):
+            return self._build_backoff_command(
+                base_command,
+                turn_sign=self._obstacle_recovery_sign,
+                metadata=metadata,
+                mode="backoff_recovery",
+                recovery_active=True,
+            )
+
+        if not moving_forward and float(center_clearance) >= float(self._obstacle_defense.stop_distance_m):
+            self._clear_obstacle_recovery()
+            return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
 
         if moving_forward and float(center_clearance) < float(self._obstacle_defense.turn_distance_m):
-            metadata["obstacle_defense_mode"] = "slow_turn" if turn_wz != 0.0 else "hold"
+            self._clear_obstacle_recovery()
+            command_xyw = self._build_centering_command(base_command, turn_sign=turn_sign)
+            metadata["obstacle_defense_mode"] = "slow_turn" if (turn_sign != 0 or abs(float(command_xyw[1])) > 1.0e-5) else "hold"
             return ObstacleDefenseResult(
-                command=np.asarray([0.0, 0.0, turn_wz], dtype=np.float32),
+                command=command_xyw,
                 triggered=True,
                 metadata=metadata,
             )
 
+        self._clear_obstacle_recovery()
         return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
 
     @staticmethod
@@ -423,3 +445,54 @@ class SubgoalExecutor:
         if left_clearance > right_clearance + bias:
             return 1
         return 0
+
+    def _activate_obstacle_recovery(self, now: float, turn_sign: int) -> None:
+        self._obstacle_recovery_until = float(now) + float(self._obstacle_defense.recovery_hold_sec)
+        self._obstacle_recovery_sign = int(turn_sign)
+
+    def _clear_obstacle_recovery(self) -> None:
+        self._obstacle_recovery_until = 0.0
+        self._obstacle_recovery_sign = 0
+
+    def _build_centering_command(self, base_command: np.ndarray, *, turn_sign: int) -> np.ndarray:
+        max_vx = max(float(getattr(self.args, "cmd_max_vx", 0.0)), 0.0)
+        max_vy = max(float(getattr(self.args, "cmd_max_vy", 0.0)), 0.0)
+        max_wz = max(float(getattr(self.args, "cmd_max_wz", 0.0)), 1.0e-3)
+        slow_vx = min(float(self._obstacle_defense.slow_forward_vx_mps), max_vx)
+        lateral_vy = 0.0
+        turn_wz = 0.0
+        if turn_sign != 0:
+            lateral_vy = float(turn_sign) * min(float(self._obstacle_defense.lateral_nudge_vy_mps), max_vy)
+            turn_wz = float(turn_sign) * min(max_wz, max(float(self._obstacle_defense.min_turn_wz), abs(float(base_command[2]))))
+        commanded_vx = min(max(float(base_command[0]), 0.0), slow_vx)
+        return np.asarray([commanded_vx, lateral_vy, turn_wz], dtype=np.float32)
+
+    def _build_backoff_command(
+        self,
+        base_command: np.ndarray,
+        *,
+        turn_sign: int,
+        metadata: dict[str, object],
+        mode: str,
+        recovery_active: bool,
+    ) -> ObstacleDefenseResult:
+        max_vx = max(float(getattr(self.args, "cmd_max_vx", 0.0)), 0.0)
+        max_vy = max(float(getattr(self.args, "cmd_max_vy", 0.0)), 0.0)
+        max_wz = max(float(getattr(self.args, "cmd_max_wz", 0.0)), 1.0e-3)
+        backoff_vx = -min(float(self._obstacle_defense.backoff_vx_mps), max_vx)
+        lateral_vy = 0.0
+        turn_wz = 0.0
+        if turn_sign != 0:
+            lateral_vy = float(turn_sign) * min(float(self._obstacle_defense.lateral_nudge_vy_mps), max_vy)
+            turn_wz = float(turn_sign) * min(max_wz, max(float(self._obstacle_defense.min_turn_wz), abs(float(base_command[2]))))
+        payload = {
+            **metadata,
+            "obstacle_defense_mode": mode,
+        }
+        if recovery_active:
+            payload["obstacle_recovery_active"] = True
+        return ObstacleDefenseResult(
+            command=np.asarray([backoff_vx, lateral_vy, turn_wz], dtype=np.float32),
+            triggered=True,
+            metadata=payload,
+        )
