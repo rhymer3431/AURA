@@ -196,3 +196,54 @@ def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.
     assert "http://127.0.0.1:18888" in runtime_spec.args
     assert "--dual-server-url" in runtime_spec.args
     assert "http://127.0.0.1:18890" in runtime_spec.args
+
+
+def test_process_manager_uses_windows_process_tree_kill_for_running_processes(monkeypatch: pytest.MonkeyPatch) -> None:
+    lifecycle_events: list[tuple[str, str]] = []
+
+    def runner(spec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:  # noqa: ANN001
+        return ManagedProcess(
+            spec=spec,
+            process=_FakeProcess(spec.name, lifecycle_events),
+            started_at=time.time(),
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
+        )
+
+    async def no_wait(*_args, **_kwargs) -> None:
+        return None
+
+    config = DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard")
+    manager = ProcessManager(config, runner=runner)
+    monkeypatch.setattr(manager, "_wait_ready", no_wait)
+    monkeypatch.setattr(manager, "_reserve_port", lambda _host, preferred_port, reserved=None: preferred_port)
+    monkeypatch.setattr(manager, "_should_kill_process_tree", lambda: True)
+
+    killed_pids: list[int] = []
+
+    def fake_kill_process_tree(pid: int) -> bool:
+        killed_pids.append(pid)
+        return True
+
+    monkeypatch.setattr(manager, "_kill_process_tree", fake_kill_process_tree)
+
+    request = parse_session_request(
+        {
+            "plannerMode": "interactive",
+            "launchMode": "headless",
+            "scenePreset": "warehouse",
+            "viewerEnabled": True,
+            "showDepth": False,
+            "memoryStore": True,
+            "detectionEnabled": True,
+        }
+    )
+
+    asyncio.run(manager.start_session(request))
+    processes = [manager._processes[name] for name in ("runtime", "dual", "system2", "navdp")]  # noqa: SLF001
+    expected_pids = [managed.pid() for managed in processes]
+
+    asyncio.run(manager.stop_all())
+
+    assert killed_pids == expected_pids
+    assert [event for event in lifecycle_events if event[0] == "terminate"] == []

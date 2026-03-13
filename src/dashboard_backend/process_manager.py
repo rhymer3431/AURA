@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 import os
+import platform
 import subprocess
 import time
 from pathlib import Path
@@ -264,21 +265,51 @@ class ProcessManager:
     async def _stop_process(self, managed: ManagedProcess) -> None:
         process = managed.process
         if managed.poll() is None:
-            terminate = getattr(process, "terminate", None)
-            if callable(terminate):
-                terminate()
-            wait_fn = getattr(process, "wait", None)
-            if callable(wait_fn):
-                try:
-                    await asyncio.to_thread(wait_fn, 5.0)
-                except Exception:
-                    kill = getattr(process, "kill", None)
-                    if callable(kill):
-                        kill()
+            stopped = False
+            pid = managed.pid()
+            if pid is not None and self._should_kill_process_tree():
+                stopped = await asyncio.to_thread(self._kill_process_tree, pid)
+            if not stopped:
+                terminate = getattr(process, "terminate", None)
+                if callable(terminate):
+                    terminate()
+                wait_fn = getattr(process, "wait", None)
+                if callable(wait_fn):
+                    try:
+                        await asyncio.to_thread(wait_fn, 5.0)
+                        stopped = True
+                    except Exception:
+                        kill = getattr(process, "kill", None)
+                        if callable(kill):
+                            kill()
+            if stopped:
+                wait_fn = getattr(process, "wait", None)
+                if callable(wait_fn):
+                    try:
+                        await asyncio.to_thread(wait_fn, 5.0)
+                    except Exception:
+                        pass
         if managed.stdout_handle is not None:
             managed.stdout_handle.close()
         if managed.stderr_handle is not None:
             managed.stderr_handle.close()
+
+    @staticmethod
+    def _should_kill_process_tree() -> bool:
+        return platform.system().lower() == "windows"
+
+    @staticmethod
+    def _kill_process_tree(pid: int) -> bool:
+        try:
+            completed = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError:
+            return False
+        return completed.returncode == 0
 
     @staticmethod
     def _tcp_ready(host: str, port: int) -> bool:

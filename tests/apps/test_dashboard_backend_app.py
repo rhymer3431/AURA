@@ -31,12 +31,14 @@ class _FakeProcessManager:
     def __init__(self) -> None:
         self.current_request: DashboardSessionRequest | None = None
         self.session_started_at: float | None = None
+        self.stop_count = 0
 
     async def start_session(self, request: DashboardSessionRequest) -> None:
         self.current_request = request
         self.session_started_at = 123.0
 
     async def stop_all(self) -> None:
+        self.stop_count += 1
         self.current_request = None
         self.session_started_at = None
 
@@ -308,6 +310,7 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert response.status == 200
                 stopped = await response.json()
                 assert stopped["session"]["active"] is False
+                assert process_manager.stop_count == 1
         finally:
             await runner.cleanup()
 
