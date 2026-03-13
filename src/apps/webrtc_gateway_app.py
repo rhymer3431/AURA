@@ -18,7 +18,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--rgb-fps", type=float, default=15.0)
     parser.add_argument("--depth-fps", type=float, default=5.0)
     parser.add_argument("--telemetry-hz", type=float, default=10.0)
-    parser.add_argument("--cors-origin", type=str, default="*")
+    parser.add_argument("--cors-origin", action="append", default=[])
     parser.add_argument("--ice-server", action="append", default=[])
     return parser.parse_args(argv)
 
@@ -30,9 +30,10 @@ def create_app(
     session_manager=None,
 ):
     parsed_args = parse_args([]) if args is None else args
-    from webrtc.config import WebRTCGatewayConfig, build_ice_server_configs
+    from webrtc.config import WebRTCGatewayConfig, build_ice_server_configs, normalize_cors_origins
     from webrtc.gateway import WebRTCGateway
 
+    cors_origins = normalize_cors_origins(parsed_args.cors_origin or ["*"])
     config = WebRTCGatewayConfig(
         host=str(parsed_args.host),
         port=int(parsed_args.port),
@@ -45,7 +46,7 @@ def create_app(
         rgb_fps=float(parsed_args.rgb_fps),
         depth_fps=float(parsed_args.depth_fps),
         telemetry_hz=float(parsed_args.telemetry_hz),
-        cors_origin=str(parsed_args.cors_origin),
+        cors_origins=cors_origins,
         ice_servers=build_ice_server_configs(parsed_args.ice_server),
     )
     return WebRTCGateway(config, subscriber=subscriber, session_manager=session_manager).create_app()

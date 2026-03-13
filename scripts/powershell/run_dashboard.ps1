@@ -32,6 +32,17 @@ $SrcDir = Join-Path $RepoDir "src"
 $PowerShellExe = Join-Path $PSHOME "powershell.exe"
 $PythonExe = if ($env:AURA_DASHBOARD_PYTHON_EXE) { $env:AURA_DASHBOARD_PYTHON_EXE } else { "python" }
 $NpmCmd = if ($env:AURA_DASHBOARD_NPM_CMD) { $env:AURA_DASHBOARD_NPM_CMD } else { "npm.cmd" }
+$DefaultCargoPath = Join-Path $env:USERPROFILE ".cargo\bin\cargo.exe"
+$CargoCmd = if ($env:AURA_DASHBOARD_CARGO_CMD) {
+    $env:AURA_DASHBOARD_CARGO_CMD
+} elseif (Get-Command "cargo.exe" -ErrorAction SilentlyContinue) {
+    "cargo.exe"
+} elseif (Test-Path $DefaultCargoPath) {
+    $DefaultCargoPath
+} else {
+    "cargo.exe"
+}
+$CargoBinDir = Split-Path -Parent $CargoCmd
 $EntryModule = "apps.dashboard_backend_app"
 
 if (-not (Test-Path $DashboardDir)) {
@@ -46,12 +57,17 @@ if (-not (Get-Command $PythonExe -ErrorAction SilentlyContinue)) {
 if (-not (Get-Command $NpmCmd -ErrorAction SilentlyContinue)) {
     throw "npm executable not found: $NpmCmd"
 }
+if (-not (Test-Path $CargoCmd) -and -not (Get-Command $CargoCmd -ErrorAction SilentlyContinue)) {
+    throw "Rust cargo executable not found: $CargoCmd. Install the Rust toolchain before running the Tauri dashboard."
+}
 
 $RepoDirEsc = Quote-ForSingleQuotedString $RepoDir
 $DashboardDirEsc = Quote-ForSingleQuotedString $DashboardDir
 $SrcDirEsc = Quote-ForSingleQuotedString $SrcDir
 $PythonExeEsc = Quote-ForSingleQuotedString $PythonExe
 $NpmCmdEsc = Quote-ForSingleQuotedString $NpmCmd
+$CargoCmdEsc = Quote-ForSingleQuotedString $CargoCmd
+$CargoBinDirEsc = Quote-ForSingleQuotedString $CargoBinDir
 $BackendArgText = Join-SingleQuotedArgs $args
 
 $BackendCommand = @"
@@ -76,16 +92,23 @@ finally {
 }
 "@
 
-$FrontendCommand = @"
+$DesktopCommand = @"
 `$ErrorActionPreference = 'Stop'
 Set-Location '$DashboardDirEsc'
+if (Test-Path '$CargoBinDirEsc') {
+    `$env:PATH = '$CargoBinDirEsc' + [System.IO.Path]::PathSeparator + `$env:PATH
+}
 if (-not (Test-Path 'node_modules')) {
     & '$NpmCmdEsc' install
     if (`$LASTEXITCODE -ne 0) {
         exit `$LASTEXITCODE
     }
 }
-& '$NpmCmdEsc' run dev
+& '$CargoCmdEsc' -V
+if (`$LASTEXITCODE -ne 0) {
+    exit `$LASTEXITCODE
+}
+& '$NpmCmdEsc' run tauri:dev
 exit `$LASTEXITCODE
 "@
 
@@ -95,12 +118,12 @@ $BackendProcess = Start-Process `
     -WorkingDirectory $RepoDir `
     -PassThru
 
-$FrontendProcess = Start-Process `
+$DesktopProcess = Start-Process `
     -FilePath $PowerShellExe `
-    -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $FrontendCommand) `
+    -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $DesktopCommand) `
     -WorkingDirectory $DashboardDir `
     -PassThru
 
 Write-Host "[AURA_DASHBOARD] backend pid=$($BackendProcess.Id) url=http://127.0.0.1:8095"
-Write-Host "[AURA_DASHBOARD] frontend pid=$($FrontendProcess.Id) url=http://127.0.0.1:5173"
-Write-Host "[AURA_DASHBOARD] launched backend and frontend in separate PowerShell windows."
+Write-Host "[AURA_DASHBOARD] tauri pid=$($DesktopProcess.Id) dev-url=http://127.0.0.1:5173"
+Write-Host "[AURA_DASHBOARD] launched backend and Tauri dashboard in separate PowerShell windows."

@@ -16,6 +16,8 @@ venv/
 env/
 dashboard/node_modules/
 dashboard/dist/
+dashboard/src-tauri/target/
+dashboard/src-tauri/gen/
 dashboard/src/assets/
 dashboard/src/imports/
 agents.md

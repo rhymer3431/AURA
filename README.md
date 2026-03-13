@@ -91,7 +91,17 @@ G1 런타임에서 no-goal roaming, point-goal, 자연어 지시 이후 dual-sys
 .\scripts\powershell\run_aura_runtime.ps1
 ```
 
-### 4. Live Smoke
+### 4. AURA Dashboard
+
+Tauri desktop app으로 AURA runtime stack을 제어하고, WebRTC viewer를 브라우저 대신 데스크톱 셸 안에서 띄웁니다.
+
+```powershell
+.\scripts\powershell\run_dashboard.ps1
+```
+
+이 런처는 로컬 backend(`127.0.0.1:8095`)와 Tauri dashboard를 함께 실행합니다.
+
+### 5. Live Smoke
 
 Isaac 환경 호환성, D455 센서 마운트, perception ingress, memory ingress를 단계별로 점검하는 진단 경로입니다.
 

@@ -129,7 +129,15 @@ describe("useWebRTCViewer", () => {
     });
 
     expect(FakePeerConnection.instance?.transceivers).toHaveLength(2);
-    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, "/api/webrtc/config", undefined);
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(
+      1,
+      "/api/webrtc/config",
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
     expect(globalThis.fetch).toHaveBeenNthCalledWith(
       2,
       "/api/webrtc/offer",

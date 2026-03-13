@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from .config import WebRTCGatewayConfig
+from .config import WebRTCGatewayConfig, cors_header_for_origin
 from .session import PeerSessionManager
 from .subscriber import ObservationSubscriber
 
@@ -52,7 +52,11 @@ class WebRTCGateway:
                 response = self._web.Response(status=200)
             else:
                 response = await handler(request)
-            response.headers["Access-Control-Allow-Origin"] = str(self.config.cors_origin)
+            origin_header = cors_header_for_origin(request.headers.get("Origin", ""), self.config.cors_origins)
+            if origin_header is not None:
+                response.headers["Access-Control-Allow-Origin"] = origin_header
+                if origin_header != "*":
+                    response.headers["Vary"] = "Origin"
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type"
             return response

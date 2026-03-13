@@ -16,6 +16,7 @@ import type {
   NumericSeries,
   SessionForm,
 } from "./types";
+import { createDashboardEventSource, requestJson } from "./network";
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
@@ -104,20 +105,6 @@ export function dashboardReducer(model: StateModel, action: Action): StateModel 
       dualLatency: appendSeries(model.history.dualLatency, dualLatency, timestamp),
     },
   };
-}
-
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return (await response.json()) as T;
 }
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
@@ -222,7 +209,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const source = new EventSource("/api/events");
+    const source = createDashboardEventSource("/api/events");
     eventSourceRef.current = source;
     source.addEventListener("state", (event) => {
       const nextState = JSON.parse((event as MessageEvent).data) as DashboardState;

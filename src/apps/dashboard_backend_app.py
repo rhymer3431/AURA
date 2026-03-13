@@ -10,6 +10,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=8095)
     parser.add_argument("--dashboard-dir", type=str, default="dashboard")
     parser.add_argument("--dev-origin", type=str, default="http://127.0.0.1:5173")
+    parser.add_argument("--allow-origin", action="append", default=[])
     parser.add_argument("--control-endpoint", type=str, default="tcp://127.0.0.1:5580")
     parser.add_argument("--telemetry-endpoint", type=str, default="tcp://127.0.0.1:5581")
     parser.add_argument("--shm-name", type=str, default="g1_view_frames")
@@ -29,7 +30,7 @@ def create_app(args: argparse.Namespace | None = None):
     parsed_args = parse_args([]) if args is None else args
     from dashboard_backend.app import DashboardWebApp
     from dashboard_backend.config import DashboardBackendConfig
-    from webrtc.config import build_ice_server_configs
+    from webrtc.config import DEFAULT_CORS_ORIGINS, build_ice_server_configs, normalize_cors_origins
 
     config = DashboardBackendConfig(
         host=str(parsed_args.host),
@@ -37,6 +38,7 @@ def create_app(args: argparse.Namespace | None = None):
         repo_root=Path(__file__).resolve().parents[2],
         dashboard_dir=(Path(__file__).resolve().parents[2] / str(parsed_args.dashboard_dir)).resolve(),
         dev_origin=str(parsed_args.dev_origin),
+        allowed_origins=normalize_cors_origins((*DEFAULT_CORS_ORIGINS, *parsed_args.allow_origin)),
         control_endpoint=str(parsed_args.control_endpoint),
         telemetry_endpoint=str(parsed_args.telemetry_endpoint),
         shm_name=str(parsed_args.shm_name),

@@ -6,6 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
+    "tauri:build": "tauri build",
+    "tauri:dev": "tauri dev",
     "test": "vitest",
     "test:run": "vitest run"
   },
@@ -75,6 +77,7 @@
     "@types/react": "18.3.24",
     "@types/react-dom": "18.3.7",
     "@tailwindcss/vite": "4.1.12",
+    "@tauri-apps/cli": "2.10.1",
     "@vitejs/plugin-react": "4.7.0",
     "jsdom": "26.1.0",
     "tailwindcss": "4.1.12",

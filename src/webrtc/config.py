@@ -3,6 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable
 
+DEFAULT_CORS_ORIGINS: tuple[str, ...] = (
+    "http://127.0.0.1:5173",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+    "tauri://localhost",
+)
+
 
 @dataclass(frozen=True)
 class IceServerConfig:
@@ -22,6 +29,30 @@ def build_ice_server_configs(urls: Iterable[str]) -> tuple[IceServerConfig, ...]
     return tuple(configs)
 
 
+def normalize_cors_origins(origins: Iterable[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for raw_origin in origins:
+        origin = str(raw_origin).strip()
+        if origin == "" or origin in seen:
+            continue
+        seen.add(origin)
+        normalized.append(origin)
+    return tuple(normalized)
+
+
+def cors_header_for_origin(request_origin: str, allowed_origins: Iterable[str]) -> str | None:
+    origin = str(request_origin).strip()
+    allowed = normalize_cors_origins(allowed_origins)
+    if origin == "":
+        return "*"
+    if "*" in allowed:
+        return "*"
+    if origin in allowed:
+        return origin
+    return None
+
+
 @dataclass(frozen=True)
 class WebRTCGatewayConfig:
     host: str = "127.0.0.1"
@@ -38,7 +69,7 @@ class WebRTCGatewayConfig:
     state_snapshot_hz: float = 1.0
     poll_interval_ms: int = 20
     stale_frame_timeout_sec: float = 2.0
-    cors_origin: str = "*"
+    cors_origins: tuple[str, ...] = ("*",)
     identity: str = "webrtc_gateway"
     observe_only: bool = True
     peer_model: str = "single"

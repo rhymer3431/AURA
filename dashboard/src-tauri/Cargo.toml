@@ -1,0 +1,16 @@
+[package]
+name = "aura_dashboard"
+version = "0.1.0"
+description = "Desktop shell for the AURA dashboard"
+authors = ["AURA"]
+edition = "2021"
+
+[lib]
+name = "aura_dashboard_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }

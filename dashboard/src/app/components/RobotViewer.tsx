@@ -4,6 +4,7 @@ import { Maximize2, Eye, EyeOff, Video, SignalHigh } from "lucide-react";
 import { useDashboard } from "../state";
 import { useWebRTCViewer } from "../hooks/useWebRTCViewer";
 import { asArray, asRecord, formatMs, numberValue, stringValue } from "../selectors";
+import { buildApiUrl } from "../network";
 
 function drawOverlay(
   canvas: HTMLCanvasElement,
@@ -94,7 +95,7 @@ export function RobotViewer() {
 
   const viewerEnabled = state?.session.active === true && Boolean(state?.transport.viewerEnabled);
   const viewer = useWebRTCViewer({
-    basePath: bootstrap?.webrtcBasePath ?? "/api/webrtc",
+    basePath: bootstrap?.webrtcBasePath ?? buildApiUrl("/api/webrtc"),
     enabled: viewerEnabled,
   });
 

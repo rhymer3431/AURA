@@ -6,7 +6,7 @@ import json
 
 from aiohttp import web
 
-from webrtc.config import WebRTCGatewayConfig
+from webrtc.config import WebRTCGatewayConfig, cors_header_for_origin
 from webrtc.gateway import WebRTCGateway
 from webrtc.session import PeerSessionManager
 from webrtc.subscriber import ObservationSubscriber
@@ -49,7 +49,7 @@ class DashboardWebApp:
                 depth_fps=config.depth_fps,
                 telemetry_hz=config.telemetry_hz,
                 ice_servers=config.ice_servers,
-                cors_origin=config.dev_origin,
+                cors_origins=config.effective_allowed_origins,
             )
         )
         webrtc_config = WebRTCGatewayConfig(
@@ -63,7 +63,7 @@ class DashboardWebApp:
             depth_fps=config.depth_fps,
             telemetry_hz=config.telemetry_hz,
             ice_servers=config.ice_servers,
-            cors_origin=config.dev_origin,
+            cors_origins=config.effective_allowed_origins,
         )
         self.session_manager = session_manager or PeerSessionManager(webrtc_config, self.subscriber)
         self.log_tailer = log_tailer or LogTailer(config.process_log_dir)
@@ -101,7 +101,7 @@ class DashboardWebApp:
                     depth_fps=self.config.depth_fps,
                     telemetry_hz=self.config.telemetry_hz,
                     ice_servers=self.config.ice_servers,
-                    cors_origin=self.config.dev_origin,
+                    cors_origins=self.config.effective_allowed_origins,
                 ),
                 subscriber=self.subscriber,
                 session_manager=self.session_manager,
@@ -122,16 +122,21 @@ class DashboardWebApp:
                 response = web.Response(status=200)
             else:
                 response = await handler(request)
-            origin = request.headers.get("Origin", "")
-            if origin == self.config.dev_origin:
-                response.headers["Access-Control-Allow-Origin"] = origin
-            elif origin == "":
-                response.headers["Access-Control-Allow-Origin"] = "*"
+            self._apply_cors_headers(request, response)
             response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Content-Type"
             return response
 
         return middleware
+
+    def _apply_cors_headers(self, request, response) -> None:  # noqa: ANN001
+        origin = request.headers.get("Origin", "")
+        origin_header = cors_header_for_origin(origin, self.config.effective_allowed_origins)
+        if origin_header is None:
+            return
+        response.headers["Access-Control-Allow-Origin"] = origin_header
+        if origin_header != "*":
+            response.headers["Vary"] = "Origin"
 
     async def _on_startup(self, app) -> None:  # noqa: ANN001
         _ = app
@@ -151,8 +156,9 @@ class DashboardWebApp:
                 "plannerModes": ["interactive", "pointgoal"],
                 "launchModes": ["gui", "headless"],
                 "scenePresets": ["warehouse", "interioragent"],
+                "apiBaseUrl": self.config.api_base_url,
                 "devOrigin": self.config.dev_origin,
-                "webrtcBasePath": "/api/webrtc",
+                "webrtcBasePath": self.config.webrtc_base_url,
             }
         )
 
@@ -174,10 +180,12 @@ class DashboardWebApp:
                 "Connection": "keep-alive",
             },
         )
+        self._apply_cors_headers(request, response)
         await response.prepare(request)
         queue = self.state_aggregator.add_listener()
         try:
-            await response.write(self._sse_message("state", self.state_aggregator.snapshot()).encode("utf-8"))
+            if not await self._write_sse_chunk(response, self._sse_message("state", self.state_aggregator.snapshot()).encode("utf-8")):
+                return response
             while True:
                 transport = request.transport
                 if transport is None or transport.is_closing():
@@ -185,9 +193,11 @@ class DashboardWebApp:
                 try:
                     state = await asyncio.wait_for(queue.get(), timeout=15.0)
                 except asyncio.TimeoutError:
-                    await response.write(b": keepalive\n\n")
+                    if not await self._write_sse_chunk(response, b": keepalive\n\n"):
+                        break
                     continue
-                await response.write(self._sse_message("state", state).encode("utf-8"))
+                if not await self._write_sse_chunk(response, self._sse_message("state", state).encode("utf-8")):
+                    break
         finally:
             self.state_aggregator.remove_listener(queue)
             with suppress(Exception):
@@ -251,3 +261,11 @@ class DashboardWebApp:
     @staticmethod
     def _sse_message(event: str, payload: dict[str, object]) -> str:
         return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=True, separators=(',', ':'))}\n\n"
+
+    @staticmethod
+    async def _write_sse_chunk(response, payload: bytes) -> bool:  # noqa: ANN001
+        try:
+            await response.write(payload)
+        except Exception:  # noqa: BLE001
+            return False
+        return True

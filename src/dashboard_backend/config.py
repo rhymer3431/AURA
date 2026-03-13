@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from webrtc.config import IceServerConfig
+from webrtc.config import DEFAULT_CORS_ORIGINS, IceServerConfig, normalize_cors_origins
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,7 @@ class DashboardBackendConfig:
     repo_root: Path = Path(".")
     dashboard_dir: Path = Path("dashboard")
     dev_origin: str = "http://127.0.0.1:5173"
+    allowed_origins: tuple[str, ...] = DEFAULT_CORS_ORIGINS
     control_endpoint: str = "tcp://127.0.0.1:5580"
     telemetry_endpoint: str = "tcp://127.0.0.1:5581"
     shm_name: str = "g1_view_frames"
@@ -32,3 +33,15 @@ class DashboardBackendConfig:
     @property
     def process_log_dir(self) -> Path:
         return self.repo_root / "tmp" / "process_logs" / "dashboard"
+
+    @property
+    def api_base_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+    @property
+    def webrtc_base_url(self) -> str:
+        return f"{self.api_base_url}/api/webrtc"
+
+    @property
+    def effective_allowed_origins(self) -> tuple[str, ...]:
+        return normalize_cors_origins((self.dev_origin, *self.allowed_origins))

@@ -4,7 +4,14 @@ import { vi } from "vitest";
 import { ControlStrip } from "./ControlStrip";
 
 const mockContext: any = {
-  bootstrap: { plannerModes: ["interactive", "pointgoal"], launchModes: ["gui", "headless"], scenePresets: ["warehouse"], devOrigin: "", webrtcBasePath: "/api/webrtc" },
+  bootstrap: {
+    plannerModes: ["interactive", "pointgoal"],
+    launchModes: ["gui", "headless"],
+    scenePresets: ["warehouse"],
+    apiBaseUrl: "http://127.0.0.1:8095",
+    devOrigin: "",
+    webrtcBasePath: "http://127.0.0.1:8095/api/webrtc",
+  },
   state: {
     timestamp: 0,
     session: { active: false, startedAt: null, config: null, lastEvent: null },

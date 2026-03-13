@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ViewerStateMessage, ViewerTelemetryMessage } from "../types";
+import { requestJson } from "../network";
 
 type ViewerState = {
   connected: boolean;
@@ -15,14 +16,6 @@ type ViewerOptions = {
   basePath: string;
   enabled: boolean;
 };
-
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return (await response.json()) as T;
-}
 
 async function waitForIceGatheringComplete(peer: RTCPeerConnection): Promise<void> {
   if (peer.iceGatheringState === "complete") {

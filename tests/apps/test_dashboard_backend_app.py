@@ -182,6 +182,7 @@ def test_parse_args_exposes_dashboard_defaults() -> None:
 
     assert args.host == "127.0.0.1"
     assert args.port == 8095
+    assert args.allow_origin == []
     assert args.control_endpoint == "tcp://127.0.0.1:5580"
     assert args.telemetry_endpoint == "tcp://127.0.0.1:5581"
     assert args.enable_depth_track is True
@@ -198,8 +199,9 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
         subscriber = _FakeSubscriber()
         session_manager = _FakeSessionManager()
         state_aggregator = _FakeStateAggregator(process_manager)
+        port = _free_tcp_port()
         app = DashboardWebApp(
-            DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
+            DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard", port=port),
             process_manager=process_manager,
             control_client=control_client,
             subscriber=subscriber,
@@ -209,20 +211,28 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
         ).create_app()
         runner = web.AppRunner(app)
         await runner.setup()
-        port = _free_tcp_port()
         site = web.TCPSite(runner, "127.0.0.1", port)
         await site.start()
 
         try:
             async with ClientSession() as client:
-                response = await client.get(f"http://127.0.0.1:{port}/api/bootstrap")
+                response = await client.get(
+                    f"http://127.0.0.1:{port}/api/bootstrap",
+                    headers={"Origin": "http://tauri.localhost"},
+                )
                 assert response.status == 200
+                assert response.headers["Access-Control-Allow-Origin"] == "http://tauri.localhost"
                 bootstrap = await response.json()
-                assert bootstrap["webrtcBasePath"] == "/api/webrtc"
+                assert bootstrap["apiBaseUrl"] == f"http://127.0.0.1:{port}"
+                assert bootstrap["webrtcBasePath"] == f"http://127.0.0.1:{port}/api/webrtc"
 
-                events_response = await client.get(f"http://127.0.0.1:{port}/api/events")
+                events_response = await client.get(
+                    f"http://127.0.0.1:{port}/api/events",
+                    headers={"Origin": "http://tauri.localhost"},
+                )
                 first_event = await events_response.content.readuntil(b"\n\n")
                 assert b"event: state" in first_event
+                assert events_response.headers["Access-Control-Allow-Origin"] == "http://tauri.localhost"
                 payload = json.loads(first_event.decode("utf-8").split("data:", 1)[1].strip())
                 assert payload["session"]["active"] is False
                 events_response.close()

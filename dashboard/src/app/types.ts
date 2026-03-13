@@ -69,6 +69,7 @@ export type BootstrapData = {
   plannerModes: PlannerMode[];
   launchModes: LaunchMode[];
   scenePresets: string[];
+  apiBaseUrl: string;
   devOrigin: string;
   webrtcBasePath: string;
 };

@@ -4,7 +4,14 @@ import { vi } from "vitest";
 import { RobotViewer } from "./RobotViewer";
 
 const mockDashboard = {
-  bootstrap: { plannerModes: ["interactive"], launchModes: ["gui"], scenePresets: ["warehouse"], devOrigin: "", webrtcBasePath: "/api/webrtc" },
+  bootstrap: {
+    plannerModes: ["interactive"],
+    launchModes: ["gui"],
+    scenePresets: ["warehouse"],
+    apiBaseUrl: "http://127.0.0.1:8095",
+    devOrigin: "",
+    webrtcBasePath: "http://127.0.0.1:8095/api/webrtc",
+  },
   state: {
     timestamp: 0,
     session: {
