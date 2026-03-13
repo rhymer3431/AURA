@@ -42,6 +42,7 @@ class MemoryAgentRuntime:
                 memory_db_path=str(getattr(args, "memory_db_path", "state/memory/memory.sqlite")),
                 detector_model_path=str(getattr(args, "detector_model_path", "")),
                 detector_device=str(getattr(args, "detector_device", "")),
+                memory_store=bool(getattr(args, "memory_store", True)),
             ),
         )
         self.bridge = IsaacBridgeAdapter(bus, IsaacBridgeAdapterConfig(), shm_ring=shm_ring)

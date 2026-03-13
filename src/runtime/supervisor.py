@@ -19,6 +19,7 @@ class SupervisorConfig:
     memory_db_path: str = "state/memory/memory.sqlite"
     detector_model_path: str = ""
     detector_device: str = ""
+    memory_store: bool = True
 
 
 @dataclass(frozen=True)
@@ -96,13 +97,14 @@ class Supervisor:
                 "capture_report": dict(batch.capture_report),
             },
         )
-        self.memory_service.record_perception_frame(
-            frame_id=int(batch.frame_header.frame_id),
-            rgb_image=batch.rgb_image,
-            observations=frame_result.observations,
-            robot_pose_xyz=tuple(float(v) for v in batch.robot_pose_xyz[:3]),
-            robot_yaw_rad=float(batch.robot_yaw_rad),
-        )
+        if self.config.memory_store:
+            self.memory_service.record_perception_frame(
+                frame_id=int(batch.frame_header.frame_id),
+                rgb_image=batch.rgb_image,
+                observations=frame_result.observations,
+                robot_pose_xyz=tuple(float(v) for v in batch.robot_pose_xyz[:3]),
+                robot_yaw_rad=float(batch.robot_yaw_rad),
+            )
         enriched_header = replace(
             batch.frame_header,
             metadata={

@@ -313,6 +313,7 @@ Write-Host "[Pipeline] default viewer-control-endpoint=$ViewerControlEndpoint"
 Write-Host "[Pipeline] default viewer-telemetry-endpoint=$ViewerTelemetryEndpoint"
 Write-Host "[Pipeline] default viewer-shm-name=$ViewerShmName"
 Write-Host "[Pipeline] default force-runtime-camera=$ForceRuntimeCamera"
+Write-Host "[Pipeline] default memory-store=on"
 Write-Host "[Pipeline] user args override defaults when repeated."
 Write-Host "[Pipeline] examples:"
 Write-Host "[Pipeline]   interactive: .\\run_pipeline.ps1 --planner-mode interactive --launch-mode gui"
@@ -321,6 +322,7 @@ Write-Host "[Pipeline]   interior   : .\\run_pipeline.ps1 --scene-preset interio
 Write-Host "[Pipeline]   pointgoal  : .\\run_pipeline.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
 Write-Host "[Pipeline]   pointgoal+v: .\\run_pipeline.ps1 --planner-mode pointgoal --launch-mode g1_view --goal-x 2.0 --goal-y 0.0"
 Write-Host "[Pipeline]   interac+d  : .\\run_pipeline.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"
+Write-Host "[Pipeline]   no memory : .\\run_pipeline.ps1 --no-memory-store"
 
 $LaunchArgs = @(
     "-m", $EntryModule,

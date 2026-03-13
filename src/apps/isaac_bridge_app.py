@@ -107,6 +107,7 @@ def run_lightweight_bridge(
                     memory_db_path=args.memory_db_path,
                     detector_model_path=args.detector_model_path,
                     detector_device=args.detector_device,
+                    memory_store=bool(getattr(args, "memory_store", True)),
                 ),
             )
             bridge.publish_task_request(TaskRequest(command_text=str(args.command)))

@@ -11,6 +11,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Direct local stack scaffold using the in-process bus.")
     parser.add_argument("--command", type=str, default="아까 봤던 사과를 찾아가")
     parser.add_argument("--memory-db-path", type=str, default="state/memory/memory.sqlite")
+    memory_store_group = parser.add_mutually_exclusive_group()
+    memory_store_group.add_argument("--memory-store", dest="memory_store", action="store_true")
+    memory_store_group.add_argument("--no-memory-store", dest="memory_store", action="store_false")
+    parser.set_defaults(memory_store=True)
     parser.add_argument("--scene", type=str, default="")
     parser.add_argument("--detector-model-path", type=str, default="")
     parser.add_argument("--detector-device", type=str, default="")
@@ -26,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
             memory_db_path=args.memory_db_path,
             detector_model_path=args.detector_model_path,
             detector_device=args.detector_device,
+            memory_store=bool(getattr(args, "memory_store", True)),
         )
     )
     scene = str(args.scene).strip() or infer_demo_scene(args.command)
