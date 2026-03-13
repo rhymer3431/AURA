@@ -39,10 +39,12 @@ class _DummyModel:
         self.path = path
         self.names = {0: "apple"}
         self.last_source_shape: tuple[int, ...] | None = None
+        self.last_conf: float | None = None
 
     def predict(self, *, source, conf, iou, max_det, device, verbose):  # noqa: ANN001
-        _ = conf, iou, max_det, device, verbose
+        _ = iou, max_det, device, verbose
         self.last_source_shape = tuple(int(v) for v in source.shape)
+        self.last_conf = float(conf)
         return [_DummyResult()]
 
 
@@ -62,6 +64,7 @@ def test_ultralytics_detector_decodes_scaled_boxes_and_masks(tmp_path: Path) -> 
     assert detector.ready is True
     assert detector.model is not None
     assert detector.model.last_source_shape == (1, 3, 640, 640)
+    assert detector.model.last_conf == 0.6
     assert len(results) == 1
     assert results[0].class_name == "apple"
     assert results[0].bbox_xyxy == (19, 10, 96, 48)

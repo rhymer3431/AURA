@@ -66,7 +66,7 @@ class UltralyticsYoloDetector(DetectorBackend):
         model_path: str,
         *,
         imgsz: int = 640,
-        conf: float = 0.25,
+        conf: float = 0.60,
         iou: float = 0.7,
         max_det: int = 300,
         device: str = "",
