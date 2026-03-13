@@ -32,7 +32,7 @@ export function ControlStrip() {
   const isPointGoalValid =
     form.plannerMode !== "pointgoal" ||
     (Number.isFinite(Number(form.goalX)) && Number.isFinite(Number(form.goalY)));
-  const scenePresets = bootstrap?.scenePresets ?? ["warehouse", "interioragent"];
+  const scenePresets = bootstrap?.scenePresets ?? ["warehouse", "interioragent", "interior agent kujiale 3"];
   const lastEvent = state?.session.lastEvent?.message ?? "";
 
   return (

@@ -33,6 +33,7 @@ $RobotUsd = if ($env:G1_POINTGOAL_ROBOT_USD) {
 }
 $DefaultSceneEnvUrl = "/Isaac/Environments/Simple_Warehouse/warehouse.usd"
 $DefaultInteriorAgentSceneUsd = Join-Path $RepoDir "datasets\InteriorAgent\kujiale_0004\kujiale_0004_navila_sanitized.usda"
+$DefaultInteriorAgentKujiale3SceneUsd = Join-Path $RepoDir "datasets\InteriorAgent\kujiale_0003\kujiale_0003.usda"
 $ScenePreset = if ($env:G1_POINTGOAL_SCENE_PRESET) { $env:G1_POINTGOAL_SCENE_PRESET } else { "warehouse" }
 $SceneUsd = if ($env:G1_POINTGOAL_SCENE_USD) { $env:G1_POINTGOAL_SCENE_USD } else { "" }
 $PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "interactive" }
@@ -142,6 +143,8 @@ function Resolve-SceneSelection {
         [Parameter(Mandatory = $true)]
         [string]$InteriorAgentSceneUsd,
         [Parameter(Mandatory = $true)]
+        [string]$InteriorAgentKujiale3SceneUsd,
+        [Parameter(Mandatory = $true)]
         [string]$WarehouseEnvUrl
     )
 
@@ -195,8 +198,40 @@ function Resolve-SceneSelection {
                 Description = "datasets\\InteriorAgent"
             }
         }
+        "interior agent kujiale 3" {
+            return @{
+                Preset = "interior agent kujiale 3"
+                SceneUsd = $InteriorAgentKujiale3SceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent\\kujiale_0003"
+            }
+        }
+        "interioragent kujiale 3" {
+            return @{
+                Preset = "interior agent kujiale 3"
+                SceneUsd = $InteriorAgentKujiale3SceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent\\kujiale_0003"
+            }
+        }
+        "interioragent_kujiale3" {
+            return @{
+                Preset = "interior agent kujiale 3"
+                SceneUsd = $InteriorAgentKujiale3SceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent\\kujiale_0003"
+            }
+        }
+        "interioragent-kujiale3" {
+            return @{
+                Preset = "interior agent kujiale 3"
+                SceneUsd = $InteriorAgentKujiale3SceneUsd
+                EnvUrl = ""
+                Description = "datasets\\InteriorAgent\\kujiale_0003"
+            }
+        }
         default {
-            throw "unsupported scene preset: $SelectedPreset. Supported values: warehouse, interioragent"
+            throw "unsupported scene preset: $SelectedPreset. Supported values: warehouse, interioragent, interior agent kujiale 3"
         }
     }
 }
@@ -262,6 +297,7 @@ $ViewerPublishEnabled = $EffectiveViewerPublish -notin @("0", "false", "False", 
 $ResolvedScene = Resolve-SceneSelection `
     -SelectedPreset $EffectiveScenePreset `
     -InteriorAgentSceneUsd $DefaultInteriorAgentSceneUsd `
+    -InteriorAgentKujiale3SceneUsd $DefaultInteriorAgentKujiale3SceneUsd `
     -WarehouseEnvUrl $DefaultSceneEnvUrl
 
 $DefaultSceneUsd = [string]$ResolvedScene.SceneUsd
@@ -294,7 +330,7 @@ if (-not $HasSceneOverride) {
     if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
         if (-not (Test-Path -LiteralPath $SceneUsd)) {
             Write-Host "[AURA Runtime] Scene USD not found: `"$SceneUsd`""
-            Write-Host "[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent, or pass --scene-usd/--env-url explicitly."
+            Write-Host "[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent|\"interior agent kujiale 3\", or pass --scene-usd/--env-url explicitly."
             exit 1
         }
     } elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd) -and (-not (Test-Path -LiteralPath $DefaultSceneUsd))) {
@@ -342,6 +378,7 @@ Write-Host "[AURA Runtime] examples:"
 Write-Host "[AURA Runtime]   interactive: .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode gui"
 Write-Host "[AURA Runtime]   warehouse  : .\\run_aura_runtime.ps1 --scene-preset warehouse --planner-mode interactive"
 Write-Host "[AURA Runtime]   interior   : .\\run_aura_runtime.ps1 --scene-preset interioragent --planner-mode interactive"
+Write-Host "[AURA Runtime]   kujiale 3  : .\\run_aura_runtime.ps1 --scene-preset \"interior agent kujiale 3\" --planner-mode interactive"
 Write-Host "[AURA Runtime]   pointgoal  : .\\run_aura_runtime.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
 Write-Host "[AURA Runtime]   pointgoal+v: .\\run_aura_runtime.ps1 --planner-mode pointgoal --launch-mode g1_view --goal-x 2.0 --goal-y 0.0"
 Write-Host "[AURA Runtime]   interac+d  : .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"

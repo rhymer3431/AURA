@@ -158,7 +158,7 @@ class DashboardWebApp:
             {
                 "plannerModes": ["interactive", "pointgoal"],
                 "launchModes": ["gui", "headless"],
-                "scenePresets": ["warehouse", "interioragent"],
+                "scenePresets": ["warehouse", "interioragent", "interior agent kujiale 3"],
                 "apiBaseUrl": self.config.api_base_url,
                 "devOrigin": self.config.dev_origin,
                 "webrtcBasePath": self.config.webrtc_base_url,

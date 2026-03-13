@@ -237,6 +237,7 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 bootstrap = await response.json()
                 assert bootstrap["apiBaseUrl"] == f"http://127.0.0.1:{port}"
                 assert bootstrap["webrtcBasePath"] == f"http://127.0.0.1:{port}/api/webrtc"
+                assert bootstrap["scenePresets"] == ["warehouse", "interioragent", "interior agent kujiale 3"]
 
                 events_response = await client.get(
                     f"http://127.0.0.1:{port}/api/events",

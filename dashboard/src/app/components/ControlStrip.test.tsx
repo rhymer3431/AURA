@@ -7,7 +7,7 @@ const mockContext: any = {
   bootstrap: {
     plannerModes: ["interactive", "pointgoal"],
     launchModes: ["gui", "headless"],
-    scenePresets: ["warehouse"],
+    scenePresets: ["warehouse", "interior agent kujiale 3"],
     apiBaseUrl: "http://127.0.0.1:8095",
     devOrigin: "",
     webrtcBasePath: "http://127.0.0.1:8095/api/webrtc",
@@ -90,5 +90,24 @@ describe("ControlStrip", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit task/i }));
 
     expect(mockContext.submitTask).toHaveBeenCalledWith("go to the loading dock");
+  });
+
+  it("renders and selects the kujiale 3 scene preset", () => {
+    mockContext.form = {
+      ...mockContext.form,
+      plannerMode: "interactive",
+      scenePreset: "warehouse",
+      goalX: "1",
+      goalY: "2",
+    };
+
+    render(<ControlStrip />);
+
+    expect(screen.getByRole("option", { name: "interior agent kujiale 3" })).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("warehouse"), {
+      target: { value: "interior agent kujiale 3" },
+    });
+
+    expect(mockContext.setForm).toHaveBeenCalledWith({ scenePreset: "interior agent kujiale 3" });
   });
 });
