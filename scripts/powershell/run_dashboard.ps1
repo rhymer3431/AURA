@@ -62,7 +62,6 @@ $CargoCmd = if ($env:AURA_DASHBOARD_CARGO_CMD) {
 } else {
     "cargo.exe"
 }
-$CargoBinDir = Split-Path -Parent $CargoCmd
 $EntryModule = "apps.dashboard_backend_app"
 
 if (-not (Test-Path $DashboardDir)) {
@@ -77,8 +76,24 @@ if (-not (Test-Path $PythonExe) -and -not (Get-Command $PythonExe -ErrorAction S
 if (-not (Get-Command $NpmCmd -ErrorAction SilentlyContinue)) {
     throw "npm executable not found: $NpmCmd"
 }
-if (-not (Test-Path $CargoCmd) -and -not (Get-Command $CargoCmd -ErrorAction SilentlyContinue)) {
+$CargoCmdIsPath = Test-Path $CargoCmd
+$CargoCommandInfo = if ($CargoCmdIsPath) {
+    $null
+} else {
+    Get-Command $CargoCmd -ErrorAction SilentlyContinue
+}
+if (-not $CargoCmdIsPath -and -not $CargoCommandInfo) {
     throw "Rust cargo executable not found: $CargoCmd. Install the Rust toolchain before running the Tauri dashboard."
+}
+# Resolve a concrete cargo path when possible so nested Tauri calls can inherit the toolchain PATH.
+$CargoCommandToInvoke = $CargoCmd
+$CargoBinDir = $null
+if ($CargoCmdIsPath) {
+    $CargoCommandToInvoke = [System.IO.Path]::GetFullPath($CargoCmd)
+    $CargoBinDir = Split-Path -Parent $CargoCommandToInvoke
+} elseif (-not [string]::IsNullOrWhiteSpace($CargoCommandInfo.Path)) {
+    $CargoCommandToInvoke = $CargoCommandInfo.Path
+    $CargoBinDir = Split-Path -Parent $CargoCommandToInvoke
 }
 if (-not (Test-PythonModules -PythonPath $PythonExe -Modules @("aiohttp", "aiortc", "av"))) {
     Write-Host "[AURA_DASHBOARD] installing missing backend Python modules: aiohttp aiortc av"
@@ -93,8 +108,16 @@ $DashboardDirEsc = Quote-ForSingleQuotedString $DashboardDir
 $SrcDirEsc = Quote-ForSingleQuotedString $SrcDir
 $PythonExeEsc = Quote-ForSingleQuotedString $PythonExe
 $NpmCmdEsc = Quote-ForSingleQuotedString $NpmCmd
-$CargoCmdEsc = Quote-ForSingleQuotedString $CargoCmd
-$CargoBinDirEsc = Quote-ForSingleQuotedString $CargoBinDir
+$CargoCmdEsc = Quote-ForSingleQuotedString $CargoCommandToInvoke
+$CargoPathBootstrap = ""
+if (-not [string]::IsNullOrWhiteSpace($CargoBinDir)) {
+    $CargoBinDirEsc = Quote-ForSingleQuotedString $CargoBinDir
+    $CargoPathBootstrap = @"
+if (Test-Path '$CargoBinDirEsc') {
+    `$env:PATH = '$CargoBinDirEsc' + [System.IO.Path]::PathSeparator + `$env:PATH
+}
+"@
+}
 $BackendArgText = Join-SingleQuotedArgs $args
 
 $BackendCommand = @"
@@ -122,9 +145,7 @@ finally {
 $DesktopCommand = @"
 `$ErrorActionPreference = 'Stop'
 Set-Location '$DashboardDirEsc'
-if (Test-Path '$CargoBinDirEsc') {
-    `$env:PATH = '$CargoBinDirEsc' + [System.IO.Path]::PathSeparator + `$env:PATH
-}
+$CargoPathBootstrap
 if (-not (Test-Path 'node_modules')) {
     & '$NpmCmdEsc' install
     if (`$LASTEXITCODE -ne 0) {
