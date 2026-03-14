@@ -1,0 +1,39 @@
+model_name_or_path: C:/models/InternVLA-N1-System2-HF
+dataset_dir: artifacts/datasets/system2_memory_lora_seed
+train_file: train.jsonl
+eval_file: val.jsonl
+output_dir: artifacts/checkpoints/system2_memory_lora
+trust_remote_code: true
+max_length: 4096
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 8
+num_train_epochs: 2
+learning_rate: 0.0002
+warmup_ratio: 0.03
+logging_steps: 5
+save_steps: 50
+eval_steps: 50
+save_total_limit: 2
+lr_scheduler_type: cosine
+weight_decay: 0.0
+max_grad_norm: 1.0
+bf16: true
+fp16: false
+gradient_checkpointing: true
+seed: 7
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  modules_to_save:
+    - multi_modal_projector
+    - lm_head

@@ -21,4 +21,7 @@ dashboard/src-tauri/gen/
 dashboard/src/assets/
 dashboard/src/imports/
 datasets/
+!artifacts/datasets/
+!artifacts/datasets/system2_memory_lora_seed/
+!artifacts/datasets/system2_memory_lora_seed/**
 agents.md
