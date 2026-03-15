@@ -27,9 +27,12 @@ function ModeBadge({
 export function ExecutionModesPanel() {
   const { bootstrap, form, state } = useDashboard();
   const liveConfig = state?.session.config;
-  const plannerModes = bootstrap?.plannerModes ?? ["interactive"];
-  const launchModes = bootstrap?.launchModes ?? ["headless"];
-  const goalText = "submit `/pointgoal x y` while interactive is running";
+  const plannerModes = bootstrap?.plannerModes ?? ["interactive", "pointgoal"];
+  const launchModes = bootstrap?.launchModes ?? ["gui", "headless"];
+  const goalText =
+    form.plannerMode === "pointgoal"
+      ? `${form.goalX || "?"}, ${form.goalY || "?"}`
+      : "not used";
   const locomotionText = [
     `action ${form.locomotionConfig.actionScale}`,
     form.locomotionConfig.onnxDevice,
@@ -37,7 +40,10 @@ export function ExecutionModesPanel() {
     `vy ${form.locomotionConfig.cmdMaxVy}`,
     `wz ${form.locomotionConfig.cmdMaxWz}`,
   ].join(" / ");
-  const liveGoalText = liveConfig?.goal === undefined ? "command-driven" : `${liveConfig.goal.x.toFixed(2)}, ${liveConfig.goal.y.toFixed(2)}`;
+  const liveGoalText =
+    liveConfig?.goal === undefined
+      ? "not used"
+      : `${liveConfig.goal.x.toFixed(2)}, ${liveConfig.goal.y.toFixed(2)}`;
   const liveLocomotionText =
     liveConfig == null
         ? "inactive"

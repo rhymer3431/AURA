@@ -303,7 +303,6 @@ class AuraRuntimeCommandSource:
     def _print_interactive_help(self) -> None:
         print("[G1_INTERACTIVE][ROAM] terminal natural-language control")
         print("[G1_INTERACTIVE][ROAM]   text      : submit a System2 navigation request")
-        print("[G1_INTERACTIVE][ROAM]   /pointgoal x y : submit a System1-only world-frame point goal")
         print("[G1_INTERACTIVE][ROAM]   /help     : show this help")
         print("[G1_INTERACTIVE][ROAM]   /cancel   : cancel the active task and resume roaming")
         print("[G1_INTERACTIVE][ROAM]   /quit     : exit the runtime")
@@ -337,16 +336,16 @@ class AuraRuntimeCommandSource:
             if lowered == "/quit":
                 self._arm_exit(0, "interactive quit requested")
                 return
-            if lowered.startswith("/") and self._parse_interactive_pointgoal_command(text) is None:
+            if lowered.startswith("/"):
                 print(f"[G1_INTERACTIVE][ROAM] unknown command: {text}")
                 continue
 
             try:
-                command_id, queued_label = self._submit_interactive_request(text, source="stdin")
+                command_id = self._submit_interactive_instruction(text, source="stdin")
             except Exception as exc:  # noqa: BLE001
                 print(f"[G1_INTERACTIVE][TASK] rejected instruction={text!r} error={type(exc).__name__}: {exc}")
                 continue
-            print(f"[G1_INTERACTIVE][TASK] command_id={command_id} queued instruction={queued_label!r}")
+            print(f"[G1_INTERACTIVE][TASK] command_id={command_id} queued instruction={text!r}")
 
     def _ensure_runtime_bridge(self) -> None:
         if self._runtime_io is not None:
@@ -410,59 +409,12 @@ class AuraRuntimeCommandSource:
             },
         )
 
-    @staticmethod
-    def _parse_interactive_pointgoal_command(text: str) -> tuple[float, float] | None:
-        tokens = str(text).strip().split()
-        if len(tokens) == 0:
-            return None
-        command = tokens[0].strip().lower()
-        if command not in {"/pointgoal", "/pg"}:
-            return None
-        if len(tokens) != 3:
-            raise ValueError("point goal command format: /pointgoal <x> <y>")
-        try:
-            goal_x = float(tokens[1])
-            goal_y = float(tokens[2])
-        except ValueError as exc:
-            raise ValueError("point goal command requires numeric x and y values") from exc
-        return goal_x, goal_y
-
-    def _submit_interactive_request(self, text: str, *, source: str, task_id: str = "") -> tuple[int, str]:
+    def _submit_interactive_instruction(self, text: str, *, source: str, task_id: str = "") -> int:
         if self._mode != "interactive":
             raise RuntimeError("interactive instruction requires planner-mode=interactive")
-        raw_text = str(text).strip()
-        if raw_text == "":
+        instruction = str(text).strip()
+        if instruction == "":
             raise ValueError("interactive instruction must be non-empty")
-        pointgoal = self._parse_interactive_pointgoal_command(raw_text)
-        if pointgoal is not None:
-            goal_x, goal_y = pointgoal
-            label = f"/pointgoal {goal_x:.3f} {goal_y:.3f}"
-            self.planning_session.ensure_navdp_service_ready(context=f"interactive pointgoal ({source})")
-            command_id = int(
-                self.planning_session.submit_interactive_point_goal(
-                    (goal_x, goal_y),
-                    label=label,
-                )
-            )
-            self.supervisor.memory_service.set_planner_task(
-                instruction=label,
-                planner_mode="interactive",
-                task_state="pending",
-                task_id=str(task_id or "interactive"),
-                command_id=command_id,
-            )
-            self._publish_notice(
-                level="info",
-                notice="interactive point goal queued",
-                details={
-                    "source": source,
-                    "taskId": str(task_id or "interactive"),
-                    "commandId": command_id,
-                    "goal": {"x": goal_x, "y": goal_y},
-                },
-            )
-            return command_id, label
-        instruction = raw_text
         self.planning_session.ensure_navdp_service_ready(context=f"interactive task ({source})")
         self.planning_session.ensure_dual_service_ready(context=f"interactive task ({source})")
         command_id = int(self.planning_session.submit_interactive_instruction(instruction))
@@ -483,10 +435,6 @@ class AuraRuntimeCommandSource:
                 "instruction": instruction,
             },
         )
-        return command_id, instruction
-
-    def _submit_interactive_instruction(self, text: str, *, source: str, task_id: str = "") -> int:
-        command_id, _queued_label = self._submit_interactive_request(text, source=source, task_id=task_id)
         return command_id
 
     def _cancel_interactive_task(self, *, source: str) -> bool:
@@ -533,7 +481,7 @@ class AuraRuntimeCommandSource:
             )
             return
         try:
-            self._submit_interactive_request(instruction, source="dashboard", task_id=str(request.task_id))
+            self._submit_interactive_instruction(instruction, source="dashboard", task_id=str(request.task_id))
         except Exception as exc:  # noqa: BLE001
             self._publish_notice(
                 level="error",
@@ -710,8 +658,8 @@ class AuraRuntimeCommandSource:
         if self._mode == "interactive":
             current_phase = str(update.interactive_phase or "")
             current_command_id = int(update.interactive_command_id)
-            if current_phase in {"task_active", "pointgoal_active"} and update.interactive_instruction.strip() != "":
-                if self._last_interactive_phase != current_phase or self._last_interactive_command_id != current_command_id:
+            if current_phase == "task_active" and update.interactive_instruction.strip() != "":
+                if self._last_interactive_phase != "task_active" or self._last_interactive_command_id != current_command_id:
                     self.supervisor.memory_service.set_planner_task(
                         instruction=update.interactive_instruction,
                         planner_mode="interactive",
@@ -719,12 +667,9 @@ class AuraRuntimeCommandSource:
                         task_id="interactive",
                         command_id=current_command_id,
                     )
-            elif self._last_interactive_phase in {"task_active", "pointgoal_active"} and current_phase == "roaming":
+            elif self._last_interactive_phase == "task_active" and current_phase == "roaming":
                 clear_state = "completed" if bool(update.stop) else "idle"
-                if self._last_interactive_phase == "pointgoal_active":
-                    clear_reason = "interactive point goal complete" if bool(update.stop) else "interactive point goal cleared"
-                else:
-                    clear_reason = "interactive task complete" if bool(update.stop) else "interactive task cleared"
+                clear_reason = "interactive task complete" if bool(update.stop) else "interactive task cleared"
                 if update.stats.last_error != "":
                     clear_state = "failed"
                     clear_reason = str(update.stats.last_error)

@@ -142,25 +142,23 @@ class _FakePlanner:
         return self.status
 
 
-def _make_session() -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeDualClient]:
+def _make_session() -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeDualClient]:
     session = PlanningSession(_args())
     session._intrinsic = np.eye(3, dtype=np.float32)
-    pointgoal_planner = _FakePlanner()
     nogoal_planner = _FakePlanner()
     dual_planner = _FakePlanner()
     navdp_client = _FakeNavDPClient()
     dual_client = _FakeDualClient()
     session.navdp_client = navdp_client
-    session.pointgoal_planner = pointgoal_planner
     session.nogoal_planner = nogoal_planner
     session.dual_planner = dual_planner
     session._dual_client = dual_client
     assert session._activate_roaming("test startup") is True
-    return session, pointgoal_planner, nogoal_planner, dual_planner, navdp_client, dual_client
+    return session, nogoal_planner, dual_planner, navdp_client, dual_client
 
 
 def test_interactive_roaming_uses_nogoal_planner() -> None:
-    session, _pointgoal_planner, nogoal_planner, _dual_planner, navdp_client, _dual_client = _make_session()
+    session, nogoal_planner, _dual_planner, navdp_client, _dual_client = _make_session()
     nogoal_planner.outputs = [
         PlannerOutput(
             plan_version=0,
@@ -183,7 +181,7 @@ def test_interactive_roaming_uses_nogoal_planner() -> None:
 
 
 def test_interactive_command_switches_to_task_mode_and_resets_dual() -> None:
-    session, _pointgoal_planner, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session()
+    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -217,7 +215,7 @@ def test_interactive_command_switches_to_task_mode_and_resets_dual() -> None:
 
 
 def test_interactive_completion_returns_to_roaming() -> None:
-    session, _pointgoal_planner, nogoal_planner, dual_planner, navdp_client, dual_client = _make_session()
+    session, nogoal_planner, dual_planner, navdp_client, dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -287,7 +285,7 @@ def test_interactive_completion_returns_to_roaming() -> None:
 
 
 def test_interactive_new_instruction_preempts_active_task() -> None:
-    session, _pointgoal_planner, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session()
+    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -340,7 +338,7 @@ def test_interactive_new_instruction_preempts_active_task() -> None:
 
 
 def test_interactive_cancel_returns_to_roaming() -> None:
-    session, _pointgoal_planner, _nogoal_planner, dual_planner, navdp_client, _dual_client = _make_session()
+    session, _nogoal_planner, dual_planner, navdp_client, _dual_client = _make_session()
     dual_planner.outputs = [
         DualPlannerOutput(
             plan_version=0,
@@ -372,82 +370,6 @@ def test_interactive_cancel_returns_to_roaming() -> None:
     assert cancel_update.interactive_phase == "roaming"
     assert cancel_update.interactive_command_id == -1
     assert navdp_client.reset_calls == 2
-
-
-def test_interactive_pointgoal_uses_navdp_pointgoal_without_dual_reset() -> None:
-    session, pointgoal_planner, _nogoal_planner, _dual_planner, navdp_client, dual_client = _make_session()
-    pointgoal_planner.outputs = [
-        PlannerOutput(
-            plan_version=0,
-            source_frame_id=1,
-            trajectory_world=np.asarray([[0.2, 0.0, 0.0], [0.4, 0.0, 0.0]], dtype=np.float32),
-            latency_ms=3.0,
-            successful_calls=1,
-            failed_calls=0,
-            last_error="",
-        )
-    ]
-    pointgoal_planner.status = (1, 0, "", 3.0)
-    command_id = session.submit_interactive_point_goal((1.5, 0.0), label="/pointgoal 1.500 0.000")
-
-    update = _step(session, 1)
-
-    assert command_id == 1
-    assert dual_client.instructions == []
-    assert navdp_client.reset_calls == 2
-    assert len(pointgoal_planner.submitted) == 1
-    assert update.interactive_phase == "pointgoal_active"
-    assert update.interactive_command_id == 1
-    assert np.allclose(update.goal_local_xy, np.asarray([1.5, 0.0], dtype=np.float32))
-
-
-def test_interactive_pointgoal_completion_returns_to_roaming() -> None:
-    session, pointgoal_planner, nogoal_planner, _dual_planner, navdp_client, dual_client = _make_session()
-    pointgoal_planner.outputs = [
-        PlannerOutput(
-            plan_version=0,
-            source_frame_id=1,
-            trajectory_world=np.asarray([[0.1, 0.0, 0.0], [0.2, 0.0, 0.0]], dtype=np.float32),
-            latency_ms=2.0,
-            successful_calls=1,
-            failed_calls=0,
-            last_error="",
-        )
-    ]
-    pointgoal_planner.status = (1, 0, "", 2.0)
-    session.submit_interactive_point_goal((0.6, 0.0), label="/pointgoal 0.600 0.000")
-
-    first_update = _step(session, 1)
-    second_update = session.plan_with_observation(
-        _observation(session, 2),
-        action_command=_planner_managed_command(),
-        robot_pos_world=np.asarray([0.6, 0.0, 0.0], dtype=np.float32),
-        robot_yaw=0.0,
-        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-    )
-
-    assert first_update.interactive_phase == "pointgoal_active"
-    assert second_update.interactive_phase == "roaming"
-    assert second_update.stop is True
-    assert dual_client.instructions == []
-    assert navdp_client.reset_calls == 3
-
-    nogoal_planner.outputs = [
-        PlannerOutput(
-            plan_version=0,
-            source_frame_id=3,
-            trajectory_world=np.asarray([[0.1, 0.0, 0.0]], dtype=np.float32),
-            latency_ms=2.0,
-            successful_calls=1,
-            failed_calls=0,
-            last_error="",
-        )
-    ]
-    nogoal_planner.status = (1, 0, "", 2.0)
-
-    roaming_update = _step(session, 3)
-
-    assert roaming_update.interactive_phase == "roaming"
 
 
 def test_dual_mode_uses_dual_server_for_trajectory_generation() -> None:

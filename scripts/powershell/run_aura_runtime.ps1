@@ -31,7 +31,7 @@ $RobotUsd = if ($env:G1_POINTGOAL_ROBOT_USD) {
 } else {
     $DefaultRobotUsd
 }
-$DefaultWarehouseSceneUsd = Join-Path $RepoDir "datasets\warehouse.usd"
+$DefaultSceneEnvUrl = "/Isaac/Environments/Simple_Warehouse/warehouse.usd"
 $DefaultInteriorAgentSceneUsd = Join-Path $RepoDir "datasets\InteriorAgent\kujiale_0004\kujiale_0004_navila_sanitized.usda"
 $DefaultInteriorAgentKujiale3SceneUsd = Join-Path $RepoDir "datasets\InteriorAgent\kujiale_0003\kujiale_0003.usda"
 $ScenePreset = if ($env:G1_POINTGOAL_SCENE_PRESET) { $env:G1_POINTGOAL_SCENE_PRESET } else { "warehouse" }
@@ -145,7 +145,7 @@ function Resolve-SceneSelection {
         [Parameter(Mandatory = $true)]
         [string]$InteriorAgentKujiale3SceneUsd,
         [Parameter(Mandatory = $true)]
-        [string]$WarehouseSceneUsd
+        [string]$WarehouseEnvUrl
     )
 
     $normalized = ("" + $SelectedPreset).Trim().ToLowerInvariant()
@@ -153,19 +153,17 @@ function Resolve-SceneSelection {
         "" {
             return @{
                 Preset = "warehouse"
-                SceneUsd = $WarehouseSceneUsd
-                EnvUrl = ""
-                Description = "datasets\\warehouse.usd"
-                RobotPosition = @("0.0", "0.0", "0.8")
+                SceneUsd = ""
+                EnvUrl = $WarehouseEnvUrl
+                Description = "Isaac Simple_Warehouse"
             }
         }
         "warehouse" {
             return @{
                 Preset = "warehouse"
-                SceneUsd = $WarehouseSceneUsd
-                EnvUrl = ""
-                Description = "datasets\\warehouse.usd"
-                RobotPosition = @("0.0", "0.0", "0.8")
+                SceneUsd = ""
+                EnvUrl = $WarehouseEnvUrl
+                Description = "Isaac Simple_Warehouse"
             }
         }
         "interioragent" {
@@ -174,7 +172,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentSceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent"
-                RobotPosition = @("0.0", "0.0", "0.8")
             }
         }
         "interior" {
@@ -183,7 +180,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentSceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent"
-                RobotPosition = @("0.0", "0.0", "0.8")
             }
         }
         "datasets\\interioragent" {
@@ -192,7 +188,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentSceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent"
-                RobotPosition = @("0.0", "0.0", "0.8")
             }
         }
         "datasets/interioragent" {
@@ -201,7 +196,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentSceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent"
-                RobotPosition = @("0.0", "0.0", "0.8")
             }
         }
         "interior agent kujiale 3" {
@@ -210,7 +204,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentKujiale3SceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent\\kujiale_0003"
-                RobotPosition = @("-1.0", "0.0", "0.8")
             }
         }
         "interioragent kujiale 3" {
@@ -219,7 +212,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentKujiale3SceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent\\kujiale_0003"
-                RobotPosition = @("-1.0", "0.0", "0.8")
             }
         }
         "interioragent_kujiale3" {
@@ -228,7 +220,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentKujiale3SceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent\\kujiale_0003"
-                RobotPosition = @("-1.0", "0.0", "0.8")
             }
         }
         "interioragent-kujiale3" {
@@ -237,7 +228,6 @@ function Resolve-SceneSelection {
                 SceneUsd = $InteriorAgentKujiale3SceneUsd
                 EnvUrl = ""
                 Description = "datasets\\InteriorAgent\\kujiale_0003"
-                RobotPosition = @("-1.0", "0.0", "0.8")
             }
         }
         default {
@@ -274,9 +264,8 @@ function Start-BackgroundPowerShell {
 
 $HasPolicyOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--policy")
 $HasRobotOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--robot_usd", "--robot-usd", "--usd-path")
-$HasRobotPositionOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--robot_position", "--robot-position")
 $HasSceneOverride = Test-LaunchArgPresent -InputArgs $args -Names @("--scene-usd", "--scene_usd", "--env-url")
-$ForwardArgs = Remove-LaunchArgs -InputArgs $args -Names @("--scene-preset", "--scene", "--goal-x", "--goal-y")
+$ForwardArgs = Remove-LaunchArgs -InputArgs $args -Names @("--scene-preset", "--scene")
 $EffectiveScenePreset = Get-LaunchArgValue -InputArgs $args -Names @("--scene-preset", "--scene") -DefaultValue $ScenePreset
 $EffectiveLaunchMode = Get-LaunchArgValue -InputArgs $args -Names @("--launch-mode") -DefaultValue $LaunchMode
 $EffectivePlannerMode = Get-LaunchArgValue -InputArgs $args -Names @("--planner-mode") -DefaultValue $PlannerMode
@@ -309,16 +298,15 @@ $ResolvedScene = Resolve-SceneSelection `
     -SelectedPreset $EffectiveScenePreset `
     -InteriorAgentSceneUsd $DefaultInteriorAgentSceneUsd `
     -InteriorAgentKujiale3SceneUsd $DefaultInteriorAgentKujiale3SceneUsd `
-    -WarehouseSceneUsd $DefaultWarehouseSceneUsd
+    -WarehouseEnvUrl $DefaultSceneEnvUrl
 
 $DefaultSceneUsd = [string]$ResolvedScene.SceneUsd
 $DefaultEnvUrl = [string]$ResolvedScene.EnvUrl
 $EffectiveSceneDescription = [string]$ResolvedScene.Description
-$DefaultRobotPosition = [string[]]$ResolvedScene.RobotPosition
 
-if ($EffectivePlannerMode -notin @("interactive", "dual")) {
+if ($EffectivePlannerMode -notin @("interactive", "pointgoal")) {
     Write-Host "[AURA Runtime] unsupported planner-mode=$EffectivePlannerMode"
-    Write-Host "[AURA Runtime] supported planner modes: interactive, dual"
+    Write-Host "[AURA Runtime] supported planner modes: interactive, pointgoal"
     exit 1
 }
 
@@ -342,7 +330,7 @@ if (-not $HasSceneOverride) {
     if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
         if (-not (Test-Path -LiteralPath $SceneUsd)) {
             Write-Host "[AURA Runtime] Scene USD not found: `"$SceneUsd`""
-            Write-Host '[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent|"interior agent kujiale 3", or pass --scene-usd/--env-url explicitly.'
+            Write-Host "[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent|\"interior agent kujiale 3\", or pass --scene-usd/--env-url explicitly."
             exit 1
         }
     } elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd) -and (-not (Test-Path -LiteralPath $DefaultSceneUsd))) {
@@ -369,7 +357,7 @@ if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
 }
 Write-Host "[AURA Runtime] default planner-mode=$PlannerMode"
 Write-Host "[AURA Runtime] effective planner-mode=$EffectivePlannerMode"
-Write-Host "[AURA Runtime] interactive point goal command=/pointgoal <x> <y>"
+Write-Host "[AURA Runtime] default goal=($GoalX, $GoalY)"
 if ([string]::IsNullOrWhiteSpace($LaunchMode)) {
     Write-Host "[AURA Runtime] default launch-mode=<legacy>"
 } else {
@@ -388,12 +376,11 @@ Write-Host "[AURA Runtime] default detection=on"
 Write-Host "[AURA Runtime] user args override defaults when repeated."
 Write-Host "[AURA Runtime] examples:"
 Write-Host "[AURA Runtime]   interactive: .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode gui"
-Write-Host '[AURA Runtime]   dual       : .\\run_aura_runtime.ps1 --planner-mode dual --instruction "go to the loading dock"'
 Write-Host "[AURA Runtime]   warehouse  : .\\run_aura_runtime.ps1 --scene-preset warehouse --planner-mode interactive"
 Write-Host "[AURA Runtime]   interior   : .\\run_aura_runtime.ps1 --scene-preset interioragent --planner-mode interactive"
-Write-Host '[AURA Runtime]   kujiale 3  : .\\run_aura_runtime.ps1 --scene-preset "interior agent kujiale 3" --planner-mode interactive'
-Write-Host '[AURA Runtime]   pointgoal  : start interactive, then type /pointgoal 2.0 0.0 in the terminal'
-Write-Host '[AURA Runtime]   pointgoal+v: .\\run_aura_runtime.ps1 --launch-mode g1_view  # then type /pointgoal 2.0 0.0'
+Write-Host "[AURA Runtime]   kujiale 3  : .\\run_aura_runtime.ps1 --scene-preset \"interior agent kujiale 3\" --planner-mode interactive"
+Write-Host "[AURA Runtime]   pointgoal  : .\\run_aura_runtime.ps1 --planner-mode pointgoal --goal-x 2.0 --goal-y 0.0"
+Write-Host "[AURA Runtime]   pointgoal+v: .\\run_aura_runtime.ps1 --planner-mode pointgoal --launch-mode g1_view --goal-x 2.0 --goal-y 0.0"
 Write-Host "[AURA Runtime]   interac+d  : .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"
 Write-Host "[AURA Runtime]   no memory : .\\run_aura_runtime.ps1 --no-memory-store"
 Write-Host "[AURA Runtime]   no detect: .\\run_aura_runtime.ps1 --skip-detection"
@@ -403,6 +390,8 @@ $LaunchArgs = @(
     "--policy", $PolicyPath,
     "--robot_usd", $RobotUsd,
     "--planner-mode", $EffectivePlannerMode,
+    "--goal-x", $GoalX,
+    "--goal-y", $GoalY,
     "--server-url", $ServerUrl,
     "--viewer-control-endpoint", $ViewerControlEndpoint,
     "--viewer-telemetry-endpoint", $ViewerTelemetryEndpoint,
@@ -428,10 +417,6 @@ if (-not $HasSceneOverride -and -not [string]::IsNullOrWhiteSpace($SceneUsd)) {
     $LaunchArgs += @("--scene-usd", $DefaultSceneUsd)
 } elseif (-not $HasSceneOverride -and -not [string]::IsNullOrWhiteSpace($DefaultEnvUrl)) {
     $LaunchArgs += @("--env-url", $DefaultEnvUrl)
-}
-
-if (-not $HasRobotPositionOverride -and $null -ne $DefaultRobotPosition -and $DefaultRobotPosition.Count -eq 3) {
-    $LaunchArgs += @("--robot-position") + $DefaultRobotPosition
 }
 
 if ($ForceRuntimeCamera -notin @("0", "false", "False", "FALSE", "no", "No", "NO")) {

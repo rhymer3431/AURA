@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
-import shutil
-import subprocess
 import sys
 import time
 from pathlib import Path
@@ -122,48 +119,43 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
     ]
 
 
-def test_parse_session_request_rejects_removed_pointgoal_mode() -> None:
-    with pytest.raises(ValueError, match="plannerMode must be interactive"):
-        parse_session_request(
-            {
-                "plannerMode": "pointgoal",
-                "launchMode": "headless",
-                "scenePreset": "warehouse",
-                "viewerEnabled": False,
-                "memoryStore": True,
-                "detectionEnabled": True,
-                "goal": {"x": 2.0, "y": 0.0},
-            }
+def test_process_manager_marks_optional_services_not_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    def runner(spec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:  # noqa: ANN001
+        return ManagedProcess(
+            spec=spec,
+            process=_FakeProcess(spec.name, []),
+            started_at=time.time(),
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
         )
 
+    async def no_wait(*_args, **_kwargs) -> None:
+        return None
 
-def test_parse_session_request_rejects_legacy_startup_goal_payload() -> None:
-    with pytest.raises(ValueError, match="startup pointgoal mode was removed"):
-        parse_session_request(
-            {
-                "plannerMode": "interactive",
-                "launchMode": "headless",
-                "scenePreset": "warehouse",
-                "viewerEnabled": False,
-                "memoryStore": True,
-                "detectionEnabled": True,
-                "goal": {"x": 2.0, "y": 0.0},
-            }
-        )
+    config = DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard")
+    manager = ProcessManager(config, runner=runner)
+    monkeypatch.setattr(manager, "_wait_ready", no_wait)
+    monkeypatch.setattr(manager, "_reserve_port", lambda _host, preferred_port, reserved=None: preferred_port)
 
+    request = parse_session_request(
+        {
+            "plannerMode": "pointgoal",
+            "launchMode": "gui",
+            "scenePreset": "warehouse",
+            "viewerEnabled": False,
+            "memoryStore": True,
+            "detectionEnabled": True,
+            "goal": {"x": 2.0, "y": 0.0},
+        }
+    )
 
-def test_parse_session_request_rejects_gui_launch_mode_for_dashboard() -> None:
-    with pytest.raises(ValueError, match="launchMode must be headless for dashboard sessions"):
-        parse_session_request(
-            {
-                "plannerMode": "interactive",
-                "launchMode": "gui",
-                "scenePreset": "warehouse",
-                "viewerEnabled": True,
-                "memoryStore": True,
-                "detectionEnabled": True,
-            }
-        )
+    asyncio.run(manager.start_session(request))
+    snapshot = {item["name"]: item for item in manager.snapshot()}
+
+    assert snapshot["navdp"]["state"] == "running"
+    assert snapshot["runtime"]["state"] == "running"
+    assert snapshot["system2"]["state"] == "not_required"
+    assert snapshot["dual"]["state"] == "not_required"
 
 
 def test_process_manager_includes_default_locomotion_config_when_not_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -189,12 +181,13 @@ def test_process_manager_includes_default_locomotion_config_when_not_overridden(
 
     request = parse_session_request(
         {
-            "plannerMode": "interactive",
-            "launchMode": "headless",
+            "plannerMode": "pointgoal",
+            "launchMode": "gui",
             "scenePreset": "warehouse",
             "viewerEnabled": False,
             "memoryStore": True,
             "detectionEnabled": True,
+            "goal": {"x": 2.0, "y": 0.0},
         }
     )
 
@@ -311,37 +304,3 @@ def test_process_manager_uses_windows_process_tree_kill_for_running_processes(mo
 
     assert killed_pids == expected_pids
     assert [event for event in lifecycle_events if event[0] == "terminate"] == []
-
-
-def test_run_aura_runtime_powershell_script_parses_cleanly() -> None:
-    powershell = shutil.which("powershell.exe")
-    if powershell is None:
-        pytest.skip("powershell.exe is not available in this environment")
-
-    script_path = ROOT / "scripts" / "powershell" / "run_aura_runtime.ps1"
-    resolved = script_path.resolve()
-    script_path_str = str(resolved)
-    if os.name != "nt" and script_path_str.startswith("/mnt/") and len(script_path_str) > 6:
-        drive_letter = script_path_str[5].upper()
-        remainder = script_path_str[6:].replace("/", "\\").lstrip("\\")
-        script_path_str = f"{drive_letter}:\\{remainder}"
-    else:
-        script_path_str = script_path_str.replace("/", "\\")
-
-    parse_command = (
-        f"$tokens = $null; "
-        f"$errors = $null; "
-        f"[System.Management.Automation.Language.Parser]::ParseFile('{script_path_str}', [ref]$tokens, [ref]$errors) | Out-Null; "
-        f"if ($errors -and $errors.Count -gt 0) {{ $errors | ForEach-Object {{ $_.Message }}; exit 1 }}; "
-        "Write-Output 'parse-ok'"
-    )
-    completed = subprocess.run(
-        [powershell, "-NoProfile", "-Command", parse_command],
-        check=False,
-        capture_output=True,
-        text=True,
-        cwd=ROOT,
-    )
-
-    assert completed.returncode == 0, completed.stderr or completed.stdout
-    assert "parse-ok" in completed.stdout

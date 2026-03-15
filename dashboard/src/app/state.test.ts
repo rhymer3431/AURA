@@ -1,17 +1,20 @@
 import { buildSessionPayload, dashboardReducer, DEFAULT_FORM } from "./state";
 
 describe("dashboard state helpers", () => {
-  it("builds interactive payload without startup pointgoal coordinates", () => {
+  it("builds pointgoal payload with numeric coordinates", () => {
     const payload = buildSessionPayload({
       ...DEFAULT_FORM,
+      plannerMode: "pointgoal",
       locomotionConfig: {
         ...DEFAULT_FORM.locomotionConfig,
         actionScale: "0.65",
         onnxDevice: "cuda",
       },
+      goalX: "1.5",
+      goalY: "-2.25",
     });
 
-    expect(payload).not.toHaveProperty("goal");
+    expect(payload.goal).toEqual({ x: 1.5, y: -2.25 });
     expect(payload.locomotionConfig).toEqual({
       actionScale: 0.65,
       onnxDevice: "cuda",
@@ -19,6 +22,17 @@ describe("dashboard state helpers", () => {
       cmdMaxVy: 0.3,
       cmdMaxWz: 0.8,
     });
+  });
+
+  it("rejects invalid pointgoal coordinates", () => {
+    expect(() =>
+      buildSessionPayload({
+        ...DEFAULT_FORM,
+        plannerMode: "pointgoal",
+        goalX: "abc",
+        goalY: "0",
+      }),
+    ).toThrow("pointgoal goal must contain numeric x and y values");
   });
 
   it("rejects invalid locomotion config values", () => {

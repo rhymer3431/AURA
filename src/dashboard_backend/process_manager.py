@@ -239,6 +239,9 @@ class ProcessManager:
             "--cmd-max-wz",
             str(request.locomotion_config.cmd_max_wz),
         ]
+        if request.planner_mode == "pointgoal":
+            assert request.goal_x is not None and request.goal_y is not None
+            args += ["--goal-x", str(request.goal_x), "--goal-y", str(request.goal_y)]
         return args
 
     def service_urls(self, name: str) -> tuple[str, str]:

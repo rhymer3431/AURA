@@ -255,7 +255,7 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                     headers={"Origin": "tauri://localhost"},
                     json={
                         "plannerMode": "interactive",
-                        "launchMode": "headless",
+                        "launchMode": "gui",
                         "scenePreset": "warehouse",
                         "viewerEnabled": True,
                         "memoryStore": True,
@@ -360,7 +360,7 @@ def test_dashboard_backend_returns_service_unavailable_when_process_start_fails(
                     headers={"Origin": "tauri://localhost"},
                     json={
                         "plannerMode": "interactive",
-                        "launchMode": "headless",
+                        "launchMode": "gui",
                         "scenePreset": "warehouse",
                         "viewerEnabled": True,
                         "memoryStore": True,

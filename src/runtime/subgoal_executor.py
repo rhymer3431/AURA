@@ -267,16 +267,6 @@ class SubgoalExecutor:
                 )
             if planner_mode == "wait":
                 return CommandEvaluation(force_stop=True, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=False)
-            if trajectory_update is not None and trajectory_update.goal_local_xy is not None:
-                goal_local_xy = np.asarray(trajectory_update.goal_local_xy, dtype=np.float32).reshape(-1)
-                goal_distance = float(np.linalg.norm(goal_local_xy[:2])) if goal_local_xy.shape[0] >= 2 else -1.0
-                reached_goal = goal_distance >= 0.0 and goal_distance <= float(getattr(self.args, "goal_tolerance_m", 0.4))
-                return CommandEvaluation(
-                    force_stop=bool(reached_goal),
-                    goal_distance_m=float(goal_distance),
-                    yaw_error_rad=0.0,
-                    reached_goal=bool(reached_goal),
-                )
             planner_stop = bool(trajectory_update.stop) if trajectory_update is not None else False
             return CommandEvaluation(force_stop=planner_stop, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=planner_stop)
         if action_command.action_type == "STOP":

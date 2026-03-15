@@ -30,6 +30,9 @@ export function ControlStrip() {
   const sessionConfig = state?.session.config;
   const locomotionConfig = form.locomotionConfig;
   const isInteractiveSession = state?.session.active === true && sessionConfig?.plannerMode === "interactive";
+  const isPointGoalValid =
+    form.plannerMode !== "pointgoal" ||
+    (Number.isFinite(Number(form.goalX)) && Number.isFinite(Number(form.goalY)));
   const isLocomotionConfigValid =
     Number.isFinite(Number(locomotionConfig.actionScale)) &&
     Number(locomotionConfig.actionScale) > 0 &&
@@ -48,11 +51,25 @@ export function ControlStrip() {
         <div className="flex flex-wrap items-end gap-3">
           <div>
             <div className="text-[11px] text-black/40 mb-1">planner mode</div>
-            <div className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 min-w-[140px]">interactive</div>
+            <select
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
+              value={form.plannerMode}
+              onChange={(event) => setForm({ plannerMode: event.target.value as "interactive" | "pointgoal" })}
+            >
+              <option value="interactive">interactive</option>
+              <option value="pointgoal">pointgoal</option>
+            </select>
           </div>
           <div>
             <div className="text-[11px] text-black/40 mb-1">launch mode</div>
-            <div className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 min-w-[140px]">headless</div>
+            <select
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
+              value={form.launchMode}
+              onChange={(event) => setForm({ launchMode: event.target.value as "gui" | "headless" })}
+            >
+              <option value="gui">gui</option>
+              <option value="headless">headless</option>
+            </select>
           </div>
           <div>
             <div className="text-[11px] text-black/40 mb-1">scene preset</div>
@@ -68,10 +85,30 @@ export function ControlStrip() {
               ))}
             </select>
           </div>
+          {form.plannerMode === "pointgoal" && (
+            <>
+              <div>
+                <div className="text-[11px] text-black/40 mb-1">goal x</div>
+                <input
+                  className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-[100px]"
+                  value={form.goalX}
+                  onChange={(event) => setForm({ goalX: event.target.value })}
+                />
+              </div>
+              <div>
+                <div className="text-[11px] text-black/40 mb-1">goal y</div>
+                <input
+                  className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-[100px]"
+                  value={form.goalY}
+                  onChange={(event) => setForm({ goalY: event.target.value })}
+                />
+              </div>
+            </>
+          )}
           <div className="flex gap-2 ml-auto">
             <button
               onClick={() => void startSession()}
-              disabled={loading || !isLocomotionConfigValid}
+              disabled={loading || !isPointGoalValid || !isLocomotionConfigValid}
               className="inline-flex items-center gap-2 rounded-xl bg-black text-white px-4 py-2 text-[13px] disabled:opacity-50"
             >
               <Play className="size-4" />
@@ -97,6 +134,11 @@ export function ControlStrip() {
           </div>
         </div>
 
+        {!isPointGoalValid && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
+            pointgoal 모드에서는 numeric `goal x / goal y`가 필요합니다.
+          </div>
+        )}
         {!isLocomotionConfigValid && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             {"locomotion config는 `action scale > 0`, `cmd max vx/vy >= 0`, `cmd max wz > 0` 이어야 합니다."}
@@ -168,11 +210,7 @@ export function ControlStrip() {
         <div className="flex flex-wrap gap-3">
           <input
             className="flex-1 min-w-[280px] bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
-            placeholder={
-              isInteractiveSession
-                ? "자연어 task 또는 `/pointgoal x y`를 입력하세요"
-                : "running interactive 세션에서만 task를 제출할 수 있습니다"
-            }
+            placeholder={isInteractiveSession ? "자연어 task를 입력하세요" : "running interactive 세션에서만 task를 제출할 수 있습니다"}
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
             disabled={!isInteractiveSession}

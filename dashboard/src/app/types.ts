@@ -1,4 +1,4 @@
-export type PlannerMode = "interactive";
+export type PlannerMode = "interactive" | "pointgoal";
 export type LaunchMode = "gui" | "headless";
 export type OnnxDevice = "auto" | "cuda" | "cpu";
 

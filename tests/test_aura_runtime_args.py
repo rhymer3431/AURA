@@ -51,17 +51,17 @@ def test_apply_demo_defaults_preserves_custom_instruction():
 
 
 def test_validate_args_rejects_demo_object_outside_dual_mode():
-    args = _parse_args("--planner-mode", "interactive", "--spawn-demo-object")
+    args = _parse_args("--planner-mode", "pointgoal", "--goal-x", "2.0", "--goal-y", "0.0", "--spawn-demo-object")
 
     with pytest.raises(ValueError, match="--spawn-demo-object requires --planner-mode dual"):
         validate_args(args)
 
 
-def test_validate_args_rejects_legacy_startup_pointgoal_flags():
-    args = _parse_args("--planner-mode", "interactive", "--goal-x", "2.0", "--goal-y", "0.0")
+def test_validate_args_accepts_standard_pointgoal_mode():
+    args = _parse_args("--planner-mode", "pointgoal", "--goal-x", "2.0", "--goal-y", "0.0")
 
-    with pytest.raises(ValueError, match="startup pointgoal mode was removed"):
-        validate_args(args)
+    apply_demo_defaults(args)
+    validate_args(args)
 
 
 def test_validate_args_accepts_standard_dual_mode():

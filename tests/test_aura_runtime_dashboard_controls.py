@@ -32,11 +32,6 @@ class _FakePlanningSession:
         self.events.append(f"submit:{instruction}")
         return 7
 
-    def submit_interactive_point_goal(self, goal_world_xy, *, label: str = "") -> int:  # noqa: ANN001
-        goal_xy = np.asarray(goal_world_xy, dtype=np.float32).reshape(-1)
-        self.events.append(f"submit_pointgoal:{float(goal_xy[0]):.3f},{float(goal_xy[1]):.3f}:{label}")
-        return 11
-
     def cancel_interactive_task(self) -> bool:
         self.events.append("cancel")
         return True
@@ -150,28 +145,6 @@ def test_handle_task_request_routes_dashboard_instruction_into_interactive_plann
     ]
     assert notices[-1]["notice"] == "interactive task queued"
     assert notices[-1]["details"]["taskId"] == "task-1"
-
-
-def test_handle_task_request_routes_pointgoal_command_into_navdp_only() -> None:
-    source, planning_session, memory_service, notices = _build_source()
-
-    source._handle_task_request(TaskRequest(command_text="/pointgoal 1.25 -0.5", task_id="task-pg"))
-
-    assert planning_session.events == [
-        "navdp:interactive pointgoal (dashboard)",
-        "submit_pointgoal:1.250,-0.500:/pointgoal 1.250 -0.500",
-    ]
-    assert memory_service.set_calls == [
-        {
-            "instruction": "/pointgoal 1.250 -0.500",
-            "planner_mode": "interactive",
-            "task_state": "pending",
-            "task_id": "task-pg",
-            "command_id": 11,
-        }
-    ]
-    assert notices[-1]["notice"] == "interactive point goal queued"
-    assert notices[-1]["details"]["goal"] == {"x": 1.25, "y": -0.5}
 
 
 def test_handle_runtime_control_cancels_active_interactive_task() -> None:
