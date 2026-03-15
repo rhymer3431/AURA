@@ -353,14 +353,15 @@ class SubgoalExecutor:
 
     def _apply_obstacle_defense(self, observation, command: np.ndarray, *, now: float | None = None) -> ObstacleDefenseResult:  # noqa: ANN001
         current_time = time.monotonic() if now is None else float(now)
+        base_command = np.asarray(command, dtype=np.float32).copy()
         if not bool(self._obstacle_defense.enabled) or observation is None:
-            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+            return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
 
         depth = np.asarray(getattr(observation, "depth", np.zeros((0, 0), dtype=np.float32)), dtype=np.float32)
         if depth.ndim == 3 and depth.shape[-1] == 1:
             depth = depth[..., 0]
         if depth.ndim != 2 or depth.size == 0:
-            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+            return self._maybe_build_recovery_command(base_command, now=current_time)
 
         row_start = min(max(int(depth.shape[0] * 0.35), 0), depth.shape[0] - 1)
         row_stop = min(max(int(depth.shape[0] * 0.90), row_start + 1), depth.shape[0])
@@ -368,20 +369,19 @@ class SubgoalExecutor:
         col_stop = min(max(int(depth.shape[1] * 0.80), col_start + 1), depth.shape[1])
         roi = depth[row_start:row_stop, col_start:col_stop]
         if roi.size == 0:
-            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+            return self._maybe_build_recovery_command(base_command, now=current_time)
 
         valid_mask = np.isfinite(roi) & (roi > 0.05)
         valid_count = int(np.count_nonzero(valid_mask))
         min_valid_count = max(int(roi.size * float(self._obstacle_defense.min_valid_fraction)), 4)
         if valid_count < min_valid_count:
-            return ObstacleDefenseResult(command=np.asarray(command, dtype=np.float32).copy(), triggered=False, metadata={})
+            return self._maybe_build_recovery_command(base_command, now=current_time)
 
         left_roi, center_roi, right_roi = np.array_split(roi, 3, axis=1)
         left_clearance = self._depth_band_clearance(left_roi)
         center_clearance = self._depth_band_clearance(center_roi)
         right_clearance = self._depth_band_clearance(right_roi)
 
-        base_command = np.asarray(command, dtype=np.float32).copy()
         moving_forward = float(base_command[0]) > float(self._obstacle_defense.forward_trigger_mps)
         turn_sign = self._clearer_side_turn_sign(left_clearance, right_clearance)
         metadata = {
@@ -404,14 +404,7 @@ class SubgoalExecutor:
                 recovery_active=False,
             )
 
-        if current_time < float(self._obstacle_recovery_until):
-            return self._build_backoff_command(
-                base_command,
-                turn_sign=self._obstacle_recovery_sign,
-                metadata=metadata,
-                mode="backoff_recovery",
-                recovery_active=True,
-            )
+        self._clear_obstacle_recovery()
 
         if not moving_forward and float(center_clearance) >= float(self._obstacle_defense.stop_distance_m):
             self._clear_obstacle_recovery()
@@ -454,6 +447,20 @@ class SubgoalExecutor:
     def _clear_obstacle_recovery(self) -> None:
         self._obstacle_recovery_until = 0.0
         self._obstacle_recovery_sign = 0
+
+    def _maybe_build_recovery_command(self, base_command: np.ndarray, *, now: float) -> ObstacleDefenseResult:
+        if float(now) >= float(self._obstacle_recovery_until):
+            return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
+        return self._build_backoff_command(
+            base_command,
+            turn_sign=self._obstacle_recovery_sign,
+            metadata={
+                "obstacle_defense": True,
+                "obstacle_depth_valid": False,
+            },
+            mode="backoff_recovery",
+            recovery_active=True,
+        )
 
     def _build_backoff_command(
         self,

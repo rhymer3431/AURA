@@ -248,7 +248,7 @@ def test_obstacle_defense_backoffs_when_both_sides_are_blocked() -> None:
     assert result.status.metadata["obstacle_defense_mode"] == "backoff_hold"
 
 
-def test_obstacle_defense_holds_recovery_briefly_after_contact() -> None:
+def test_obstacle_defense_switches_to_hold_once_threshold_is_recovered() -> None:
     update = TrajectoryUpdate(
         trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
         plan_version=7,
@@ -260,7 +260,9 @@ def test_obstacle_defense_holds_recovery_briefly_after_contact() -> None:
     blocked_depth = np.full((18, 18), 1.2, dtype=np.float32)
     blocked_depth[:, 7:11] = 0.20
     blocked_depth[:, 11:15] = 2.0
-    clear_depth = np.full((18, 18), 2.5, dtype=np.float32)
+    hold_depth = np.full((18, 18), 1.2, dtype=np.float32)
+    hold_depth[:, 7:11] = 0.60
+    hold_depth[:, 11:15] = 1.8
 
     first = executor.step(
         frame_idx=1,
@@ -272,7 +274,44 @@ def test_obstacle_defense_holds_recovery_briefly_after_contact() -> None:
     )
     second = executor.step(
         frame_idx=2,
-        observation=_observation_with_depth(clear_depth),
+        observation=_observation_with_depth(hold_depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert float(first.command_vector[0]) < 0.0
+    assert np.allclose(second.command_vector, np.zeros(3, dtype=np.float32))
+    assert second.status is not None
+    assert second.status.metadata["obstacle_defense_mode"] == "hold"
+
+
+def test_obstacle_defense_holds_recovery_briefly_when_depth_temporarily_disappears() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
+        plan_version=9,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    blocked_depth = np.full((18, 18), 1.2, dtype=np.float32)
+    blocked_depth[:, 7:11] = 0.20
+    blocked_depth[:, 11:15] = 2.0
+    missing_depth = np.zeros((18, 18), dtype=np.float32)
+
+    first = executor.step(
+        frame_idx=1,
+        observation=_observation_with_depth(blocked_depth),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    second = executor.step(
+        frame_idx=2,
+        observation=_observation_with_depth(missing_depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
@@ -284,6 +323,7 @@ def test_obstacle_defense_holds_recovery_briefly_after_contact() -> None:
     assert second.status is not None
     assert second.status.metadata["obstacle_defense_mode"] == "backoff_recovery"
     assert second.status.metadata["obstacle_recovery_active"] is True
+    assert second.status.metadata["obstacle_depth_valid"] is False
 
 
 def test_obstacle_defense_holds_position_within_hold_distance() -> None:
