@@ -30,10 +30,9 @@ export const DEFAULT_FORM: SessionForm = {
   locomotionConfig: {
     actionScale: "0.5",
     onnxDevice: "auto",
-    physicsDt: "0.005",
-    decimation: "4",
-    renderingDt: "0.0",
-    cmdVelTimeout: "0.0",
+    cmdMaxVx: "0.5",
+    cmdMaxVy: "0.3",
+    cmdMaxWz: "0.8",
   },
   goalX: "2.0",
   goalY: "0.0",
@@ -70,10 +69,9 @@ export function buildSessionPayload(form: SessionForm) {
     locomotionConfig: {
       actionScale: number;
       onnxDevice: SessionForm["locomotionConfig"]["onnxDevice"];
-      physicsDt: number;
-      decimation: number;
-      renderingDt: number;
-      cmdVelTimeout: number;
+      cmdMaxVx: number;
+      cmdMaxVy: number;
+      cmdMaxWz: number;
     };
     goal?: { x: number; y: number };
   } = {
@@ -86,30 +84,28 @@ export function buildSessionPayload(form: SessionForm) {
     locomotionConfig: {
       actionScale: Number(form.locomotionConfig.actionScale),
       onnxDevice: form.locomotionConfig.onnxDevice,
-      physicsDt: Number(form.locomotionConfig.physicsDt),
-      decimation: Number(form.locomotionConfig.decimation),
-      renderingDt: Number(form.locomotionConfig.renderingDt),
-      cmdVelTimeout: Number(form.locomotionConfig.cmdVelTimeout),
+      cmdMaxVx: Number(form.locomotionConfig.cmdMaxVx),
+      cmdMaxVy: Number(form.locomotionConfig.cmdMaxVy),
+      cmdMaxWz: Number(form.locomotionConfig.cmdMaxWz),
     },
   };
   const locomotionValues = payload.locomotionConfig;
   if (
     !Number.isFinite(locomotionValues.actionScale) ||
-    !Number.isFinite(locomotionValues.physicsDt) ||
-    !Number.isFinite(locomotionValues.decimation) ||
-    !Number.isFinite(locomotionValues.renderingDt) ||
-    !Number.isFinite(locomotionValues.cmdVelTimeout)
+    !Number.isFinite(locomotionValues.cmdMaxVx) ||
+    !Number.isFinite(locomotionValues.cmdMaxVy) ||
+    !Number.isFinite(locomotionValues.cmdMaxWz)
   ) {
     throw new Error("locomotion config must contain numeric values");
   }
-  if (locomotionValues.actionScale <= 0 || locomotionValues.physicsDt <= 0) {
-    throw new Error("locomotion actionScale and physicsDt must be positive");
+  if (locomotionValues.actionScale <= 0) {
+    throw new Error("locomotion actionScale must be positive");
   }
-  if (!Number.isInteger(locomotionValues.decimation) || locomotionValues.decimation <= 0) {
-    throw new Error("locomotion decimation must be a positive integer");
+  if (locomotionValues.cmdMaxVx < 0 || locomotionValues.cmdMaxVy < 0) {
+    throw new Error("locomotion cmdMaxVx and cmdMaxVy must be non-negative");
   }
-  if (locomotionValues.renderingDt < 0) {
-    throw new Error("locomotion renderingDt must be non-negative");
+  if (locomotionValues.cmdMaxWz <= 0) {
+    throw new Error("locomotion cmdMaxWz must be positive");
   }
   if (form.plannerMode === "pointgoal") {
     const goalX = Number(form.goalX);

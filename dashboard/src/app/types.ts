@@ -5,10 +5,9 @@ export type OnnxDevice = "auto" | "cuda" | "cpu";
 export type LocomotionConfigForm = {
   actionScale: string;
   onnxDevice: OnnxDevice;
-  physicsDt: string;
-  decimation: string;
-  renderingDt: string;
-  cmdVelTimeout: string;
+  cmdMaxVx: string;
+  cmdMaxVy: string;
+  cmdMaxWz: string;
 };
 
 export type SessionForm = {
@@ -59,10 +58,9 @@ export type DashboardState = {
       locomotionConfig: {
         actionScale: number;
         onnxDevice: OnnxDevice;
-        physicsDt: number;
-        decimation: number;
-        renderingDt: number;
-        cmdVelTimeout: number;
+        cmdMaxVx: number;
+        cmdMaxVy: number;
+        cmdMaxWz: number;
       };
       goal?: { x: number; y: number };
     } | null;

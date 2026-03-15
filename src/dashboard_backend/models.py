@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from locomotion.constants import ACTION_SCALE, DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
+from locomotion.constants import ACTION_SCALE
 
 
 PROCESS_NAMES = ("navdp", "system2", "dual", "runtime")
@@ -14,19 +14,17 @@ PROCESS_NAMES = ("navdp", "system2", "dual", "runtime")
 class DashboardLocomotionConfig:
     action_scale: float = ACTION_SCALE
     onnx_device: str = "auto"
-    physics_dt: float = DEFAULT_PHYSICS_DT
-    decimation: int = DEFAULT_DECIMATION
-    rendering_dt: float = 0.0
-    cmd_vel_timeout: float = 0.0
+    cmd_max_vx: float = 0.5
+    cmd_max_vy: float = 0.3
+    cmd_max_wz: float = 0.8
 
     def to_public_dict(self) -> dict[str, Any]:
         return {
             "actionScale": float(self.action_scale),
             "onnxDevice": self.onnx_device,
-            "physicsDt": float(self.physics_dt),
-            "decimation": int(self.decimation),
-            "renderingDt": float(self.rendering_dt),
-            "cmdVelTimeout": float(self.cmd_vel_timeout),
+            "cmdMaxVx": float(self.cmd_max_vx),
+            "cmdMaxVy": float(self.cmd_max_vy),
+            "cmdMaxWz": float(self.cmd_max_wz),
         }
 
 
@@ -70,29 +68,25 @@ def _parse_locomotion_config(payload: Any) -> DashboardLocomotionConfig:
         raise ValueError("locomotionConfig.onnxDevice must be auto, cuda, or cpu")
     try:
         action_scale = float(config_payload.get("actionScale", ACTION_SCALE))
-        physics_dt = float(config_payload.get("physicsDt", DEFAULT_PHYSICS_DT))
-        decimation = int(config_payload.get("decimation", DEFAULT_DECIMATION))
-        rendering_dt = float(config_payload.get("renderingDt", 0.0))
-        cmd_vel_timeout = float(config_payload.get("cmdVelTimeout", 0.0))
+        cmd_max_vx = float(config_payload.get("cmdMaxVx", 0.5))
+        cmd_max_vy = float(config_payload.get("cmdMaxVy", 0.3))
+        cmd_max_wz = float(config_payload.get("cmdMaxWz", 0.8))
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "locomotionConfig.actionScale/physicsDt/renderingDt/cmdVelTimeout must be numbers and decimation must be an integer"
-        ) from exc
+        raise ValueError("locomotionConfig.actionScale/cmdMaxVx/cmdMaxVy/cmdMaxWz must be numbers") from exc
     if action_scale <= 0.0:
         raise ValueError("locomotionConfig.actionScale must be positive")
-    if physics_dt <= 0.0:
-        raise ValueError("locomotionConfig.physicsDt must be positive")
-    if decimation <= 0:
-        raise ValueError("locomotionConfig.decimation must be positive")
-    if rendering_dt < 0.0:
-        raise ValueError("locomotionConfig.renderingDt must be non-negative")
+    if cmd_max_vx < 0.0:
+        raise ValueError("locomotionConfig.cmdMaxVx must be non-negative")
+    if cmd_max_vy < 0.0:
+        raise ValueError("locomotionConfig.cmdMaxVy must be non-negative")
+    if cmd_max_wz <= 0.0:
+        raise ValueError("locomotionConfig.cmdMaxWz must be positive")
     return DashboardLocomotionConfig(
         action_scale=action_scale,
         onnx_device=onnx_device,
-        physics_dt=physics_dt,
-        decimation=decimation,
-        rendering_dt=rendering_dt,
-        cmd_vel_timeout=cmd_vel_timeout,
+        cmd_max_vx=cmd_max_vx,
+        cmd_max_vy=cmd_max_vy,
+        cmd_max_wz=cmd_max_wz,
     )
 
 

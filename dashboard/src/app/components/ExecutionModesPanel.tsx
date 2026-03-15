@@ -36,10 +36,9 @@ export function ExecutionModesPanel() {
   const locomotionText = [
     `action ${form.locomotionConfig.actionScale}`,
     form.locomotionConfig.onnxDevice,
-    `dt ${form.locomotionConfig.physicsDt}`,
-    `dec ${form.locomotionConfig.decimation}`,
-    `render ${form.locomotionConfig.renderingDt}`,
-    `timeout ${form.locomotionConfig.cmdVelTimeout}`,
+    `vx ${form.locomotionConfig.cmdMaxVx}`,
+    `vy ${form.locomotionConfig.cmdMaxVy}`,
+    `wz ${form.locomotionConfig.cmdMaxWz}`,
   ].join(" / ");
   const liveGoalText =
     liveConfig?.goal === undefined
@@ -47,14 +46,13 @@ export function ExecutionModesPanel() {
       : `${liveConfig.goal.x.toFixed(2)}, ${liveConfig.goal.y.toFixed(2)}`;
   const liveLocomotionText =
     liveConfig == null
-      ? "inactive"
+        ? "inactive"
       : [
           `action ${liveConfig.locomotionConfig.actionScale.toFixed(3)}`,
           liveConfig.locomotionConfig.onnxDevice,
-          `dt ${liveConfig.locomotionConfig.physicsDt}`,
-          `dec ${liveConfig.locomotionConfig.decimation}`,
-          `render ${liveConfig.locomotionConfig.renderingDt}`,
-          `timeout ${liveConfig.locomotionConfig.cmdVelTimeout}`,
+          `vx ${liveConfig.locomotionConfig.cmdMaxVx}`,
+          `vy ${liveConfig.locomotionConfig.cmdMaxVy}`,
+          `wz ${liveConfig.locomotionConfig.cmdMaxWz}`,
         ].join(" / ");
 
   return (

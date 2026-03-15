@@ -36,14 +36,12 @@ export function ControlStrip() {
   const isLocomotionConfigValid =
     Number.isFinite(Number(locomotionConfig.actionScale)) &&
     Number(locomotionConfig.actionScale) > 0 &&
-    Number.isFinite(Number(locomotionConfig.physicsDt)) &&
-    Number(locomotionConfig.physicsDt) > 0 &&
-    Number.isFinite(Number(locomotionConfig.decimation)) &&
-    Number(locomotionConfig.decimation) > 0 &&
-    Number.isInteger(Number(locomotionConfig.decimation)) &&
-    Number.isFinite(Number(locomotionConfig.renderingDt)) &&
-    Number(locomotionConfig.renderingDt) >= 0 &&
-    Number.isFinite(Number(locomotionConfig.cmdVelTimeout));
+    Number.isFinite(Number(locomotionConfig.cmdMaxVx)) &&
+    Number(locomotionConfig.cmdMaxVx) >= 0 &&
+    Number.isFinite(Number(locomotionConfig.cmdMaxVy)) &&
+    Number(locomotionConfig.cmdMaxVy) >= 0 &&
+    Number.isFinite(Number(locomotionConfig.cmdMaxWz)) &&
+    Number(locomotionConfig.cmdMaxWz) > 0;
   const scenePresets = bootstrap?.scenePresets ?? ["warehouse", "interioragent", "interior agent kujiale 3"];
   const lastEvent = state?.session.lastEvent?.message ?? "";
 
@@ -143,11 +141,11 @@ export function ControlStrip() {
         )}
         {!isLocomotionConfigValid && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-            {"locomotion config는 `action scale > 0`, `physics dt > 0`, `decimation` 양의 정수, `rendering dt >= 0` 이어야 합니다."}
+            {"locomotion config는 `action scale > 0`, `cmd max vx/vy >= 0`, `cmd max wz > 0` 이어야 합니다."}
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <div>
             <div className="text-[11px] text-black/40 mb-1">action scale</div>
             <input
@@ -178,42 +176,32 @@ export function ControlStrip() {
             </select>
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">physics dt</div>
+            <div className="text-[11px] text-black/40 mb-1">cmd max vx</div>
             <input
               className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
-              value={locomotionConfig.physicsDt}
+              value={locomotionConfig.cmdMaxVx}
               onChange={(event) =>
-                setForm({ locomotionConfig: { ...locomotionConfig, physicsDt: event.target.value } })
+                setForm({ locomotionConfig: { ...locomotionConfig, cmdMaxVx: event.target.value } })
               }
             />
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">decimation</div>
+            <div className="text-[11px] text-black/40 mb-1">cmd max vy</div>
             <input
               className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
-              value={locomotionConfig.decimation}
+              value={locomotionConfig.cmdMaxVy}
               onChange={(event) =>
-                setForm({ locomotionConfig: { ...locomotionConfig, decimation: event.target.value } })
+                setForm({ locomotionConfig: { ...locomotionConfig, cmdMaxVy: event.target.value } })
               }
             />
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">rendering dt</div>
+            <div className="text-[11px] text-black/40 mb-1">cmd max wz</div>
             <input
               className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
-              value={locomotionConfig.renderingDt}
+              value={locomotionConfig.cmdMaxWz}
               onChange={(event) =>
-                setForm({ locomotionConfig: { ...locomotionConfig, renderingDt: event.target.value } })
-              }
-            />
-          </div>
-          <div>
-            <div className="text-[11px] text-black/40 mb-1">cmd vel timeout</div>
-            <input
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
-              value={locomotionConfig.cmdVelTimeout}
-              onChange={(event) =>
-                setForm({ locomotionConfig: { ...locomotionConfig, cmdVelTimeout: event.target.value } })
+                setForm({ locomotionConfig: { ...locomotionConfig, cmdMaxWz: event.target.value } })
               }
             />
           </div>

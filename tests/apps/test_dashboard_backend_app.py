@@ -263,10 +263,9 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                         "locomotionConfig": {
                             "actionScale": 0.65,
                             "onnxDevice": "cuda",
-                            "physicsDt": 0.01,
-                            "decimation": 5,
-                            "renderingDt": 0.02,
-                            "cmdVelTimeout": 1.5,
+                            "cmdMaxVx": 0.8,
+                            "cmdMaxVy": 0.4,
+                            "cmdMaxWz": 1.0,
                         },
                     },
                 )
@@ -276,6 +275,7 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert started["session"]["config"]["plannerMode"] == "interactive"
                 assert started["session"]["config"]["locomotionConfig"]["actionScale"] == 0.65
                 assert started["session"]["config"]["locomotionConfig"]["onnxDevice"] == "cuda"
+                assert started["session"]["config"]["locomotionConfig"]["cmdMaxVx"] == 0.8
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/runtime/task",
@@ -368,10 +368,9 @@ def test_dashboard_backend_returns_service_unavailable_when_process_start_fails(
                         "locomotionConfig": {
                             "actionScale": 0.65,
                             "onnxDevice": "cuda",
-                            "physicsDt": 0.01,
-                            "decimation": 5,
-                            "renderingDt": 0.02,
-                            "cmdVelTimeout": 1.5,
+                            "cmdMaxVx": 0.8,
+                            "cmdMaxVy": 0.4,
+                            "cmdMaxWz": 1.0,
                         },
                     },
                 )

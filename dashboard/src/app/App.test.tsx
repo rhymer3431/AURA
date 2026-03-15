@@ -40,10 +40,9 @@ const mockDashboard = {
     locomotionConfig: {
       actionScale: "0.5",
       onnxDevice: "auto" as const,
-      physicsDt: "0.005",
-      decimation: "4",
-      renderingDt: "0.0",
-      cmdVelTimeout: "0.0",
+      cmdMaxVx: "0.5",
+      cmdMaxVy: "0.3",
+      cmdMaxWz: "0.8",
     },
     goalX: "0",
     goalY: "0",

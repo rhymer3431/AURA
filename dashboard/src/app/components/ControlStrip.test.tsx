@@ -35,10 +35,9 @@ const mockContext: any = {
     locomotionConfig: {
       actionScale: "0.5",
       onnxDevice: "auto" as const,
-      physicsDt: "0.005",
-      decimation: "4",
-      renderingDt: "0.0",
-      cmdVelTimeout: "0.0",
+      cmdMaxVx: "0.5",
+      cmdMaxVy: "0.3",
+      cmdMaxWz: "0.8",
     },
     goalX: "abc",
     goalY: "0",
@@ -87,10 +86,9 @@ describe("ControlStrip", () => {
           locomotionConfig: {
             actionScale: 0.65,
             onnxDevice: "cuda",
-            physicsDt: 0.005,
-            decimation: 4,
-            renderingDt: 0,
-            cmdVelTimeout: 0,
+            cmdMaxVx: 0.8,
+            cmdMaxVy: 0.4,
+            cmdMaxWz: 1.0,
           },
         },
         lastEvent: null,
@@ -139,7 +137,13 @@ describe("ControlStrip", () => {
 
     render(<ControlStrip />);
 
-    fireEvent.change(screen.getByDisplayValue("0.5"), {
+    const actionScaleInput = screen
+      .getByText("action scale")
+      .parentElement?.querySelector("input");
+    if (actionScaleInput == null) {
+      throw new Error("action scale input not found");
+    }
+    fireEvent.change(actionScaleInput, {
       target: { value: "0.7" },
     });
 

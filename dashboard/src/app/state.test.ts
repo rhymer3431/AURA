@@ -18,10 +18,9 @@ describe("dashboard state helpers", () => {
     expect(payload.locomotionConfig).toEqual({
       actionScale: 0.65,
       onnxDevice: "cuda",
-      physicsDt: 0.005,
-      decimation: 4,
-      renderingDt: 0,
-      cmdVelTimeout: 0,
+      cmdMaxVx: 0.5,
+      cmdMaxVy: 0.3,
+      cmdMaxWz: 0.8,
     });
   });
 

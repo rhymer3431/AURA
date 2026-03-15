@@ -70,10 +70,9 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
             "locomotionConfig": {
                 "actionScale": 0.65,
                 "onnxDevice": "cuda",
-                "physicsDt": 0.01,
-                "decimation": 5,
-                "renderingDt": 0.02,
-                "cmdVelTimeout": 1.5,
+                "cmdMaxVx": 0.8,
+                "cmdMaxVy": 0.4,
+                "cmdMaxWz": 1.0,
             },
         }
     )
@@ -101,14 +100,12 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "0.65",
         "--onnx-device",
         "cuda",
-        "--physics-dt",
-        "0.01",
-        "--decimation",
-        "5",
-        "--rendering-dt",
-        "0.02",
-        "--cmd-vel-timeout",
-        "1.5",
+        "--cmd-max-vx",
+        "0.8",
+        "--cmd-max-vy",
+        "0.4",
+        "--cmd-max-wz",
+        "1.0",
     )
     assert [item["name"] for item in snapshot if item["state"] == "running"] == ["navdp", "system2", "dual", "runtime"]
 
@@ -201,6 +198,9 @@ def test_process_manager_includes_default_locomotion_config_when_not_overridden(
     assert "0.5" in runtime_spec.args
     assert "--onnx-device" in runtime_spec.args
     assert "auto" in runtime_spec.args
+    assert "--cmd-max-vx" in runtime_spec.args
+    assert "--cmd-max-vy" in runtime_spec.args
+    assert "--cmd-max-wz" in runtime_spec.args
 
 
 def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.MonkeyPatch) -> None:
