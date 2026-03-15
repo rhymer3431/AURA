@@ -24,7 +24,7 @@ class CommandEvaluation:
 class ObstacleDefenseConfig:
     enabled: bool = True
     stop_distance_m: float = 0.45
-    turn_distance_m: float = 0.70
+    hold_distance_m: float = 0.70
     side_bias_m: float = 0.10
     min_valid_fraction: float = 0.05
     min_turn_wz: float = 0.35
@@ -74,7 +74,7 @@ class SubgoalExecutor:
         self._obstacle_defense = ObstacleDefenseConfig(
             enabled=bool(getattr(args, "obstacle_defense_enabled", True)),
             stop_distance_m=float(getattr(args, "obstacle_stop_distance_m", 0.45)),
-            turn_distance_m=float(getattr(args, "obstacle_turn_distance_m", 0.70)),
+            hold_distance_m=float(getattr(args, "obstacle_hold_distance_m", getattr(args, "obstacle_turn_distance_m", 0.70))),
             side_bias_m=float(getattr(args, "obstacle_side_bias_m", 0.10)),
             min_valid_fraction=float(getattr(args, "obstacle_min_valid_fraction", 0.05)),
             min_turn_wz=float(getattr(args, "obstacle_min_turn_wz", 0.35)),
@@ -389,6 +389,8 @@ class SubgoalExecutor:
             "obstacle_left_clearance_m": round(left_clearance, 4),
             "obstacle_center_clearance_m": round(center_clearance, 4),
             "obstacle_right_clearance_m": round(right_clearance, 4),
+            "obstacle_stop_distance_m": round(float(self._obstacle_defense.stop_distance_m), 4),
+            "obstacle_hold_distance_m": round(float(self._obstacle_defense.hold_distance_m), 4),
         }
 
         if float(center_clearance) < float(self._obstacle_defense.stop_distance_m):
@@ -415,12 +417,11 @@ class SubgoalExecutor:
             self._clear_obstacle_recovery()
             return ObstacleDefenseResult(command=base_command, triggered=False, metadata={})
 
-        if moving_forward and float(center_clearance) < float(self._obstacle_defense.turn_distance_m):
+        if moving_forward and float(center_clearance) < float(self._obstacle_defense.hold_distance_m):
             self._clear_obstacle_recovery()
-            command_xyw = self._build_centering_command(base_command, turn_sign=turn_sign)
-            metadata["obstacle_defense_mode"] = "slow_turn" if (turn_sign != 0 or abs(float(command_xyw[1])) > 1.0e-5) else "hold"
+            metadata["obstacle_defense_mode"] = "hold"
             return ObstacleDefenseResult(
-                command=command_xyw,
+                command=np.zeros(3, dtype=np.float32),
                 triggered=True,
                 metadata=metadata,
             )
@@ -453,19 +454,6 @@ class SubgoalExecutor:
     def _clear_obstacle_recovery(self) -> None:
         self._obstacle_recovery_until = 0.0
         self._obstacle_recovery_sign = 0
-
-    def _build_centering_command(self, base_command: np.ndarray, *, turn_sign: int) -> np.ndarray:
-        max_vx = max(float(getattr(self.args, "cmd_max_vx", 0.0)), 0.0)
-        max_vy = max(float(getattr(self.args, "cmd_max_vy", 0.0)), 0.0)
-        max_wz = max(float(getattr(self.args, "cmd_max_wz", 0.0)), 1.0e-3)
-        slow_vx = min(float(self._obstacle_defense.slow_forward_vx_mps), max_vx)
-        lateral_vy = 0.0
-        turn_wz = 0.0
-        if turn_sign != 0:
-            lateral_vy = float(turn_sign) * min(float(self._obstacle_defense.lateral_nudge_vy_mps), max_vy)
-            turn_wz = float(turn_sign) * min(max_wz, max(float(self._obstacle_defense.min_turn_wz), abs(float(base_command[2]))))
-        commanded_vx = min(max(float(base_command[0]), 0.0), slow_vx)
-        return np.asarray([commanded_vx, lateral_vy, turn_wz], dtype=np.float32)
 
     def _build_backoff_command(
         self,

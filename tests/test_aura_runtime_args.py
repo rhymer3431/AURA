@@ -127,6 +127,8 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
     assert args.viewer_shm_name == DEFAULT_VIEWER_SHM_NAME
     assert args.native_viewer == DEFAULT_NATIVE_VIEWER
     assert args.viewer_publish is False
+    assert args.obstacle_stop_distance_m == 0.45
+    assert args.obstacle_hold_distance_m == 0.70
     assert args.obstacle_backoff_vx_mps == 0.18
     assert args.obstacle_recovery_hold_sec == 0.75
 
@@ -141,6 +143,16 @@ def test_validate_args_rejects_native_viewer_without_viewer_publish():
     args = _parse_args("--native-viewer", "opencv")
 
     with pytest.raises(ValueError, match="--native-viewer opencv requires --viewer-publish"):
+        validate_args(args)
+
+
+def test_validate_args_rejects_obstacle_hold_distance_below_stop_distance():
+    args = _parse_args("--obstacle-stop-distance-m", "0.5", "--obstacle-hold-distance-m", "0.4")
+
+    with pytest.raises(
+        ValueError,
+        match="--obstacle-hold-distance-m must be greater than or equal to --obstacle-stop-distance-m",
+    ):
         validate_args(args)
 
 

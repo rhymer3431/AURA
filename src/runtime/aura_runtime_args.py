@@ -48,6 +48,14 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
     parser.add_argument("--traj-stale-timeout-sec", dest="traj_stale_timeout_sec", type=float, default=1.5)
     parser.add_argument("--cmd-accel-limit", dest="cmd_accel_limit", type=float, default=1.0)
     parser.add_argument("--cmd-yaw-accel-limit", dest="cmd_yaw_accel_limit", type=float, default=1.5)
+    parser.add_argument("--obstacle-stop-distance-m", dest="obstacle_stop_distance_m", type=float, default=0.45)
+    parser.add_argument(
+        "--obstacle-hold-distance-m",
+        "--obstacle-turn-distance-m",
+        dest="obstacle_hold_distance_m",
+        type=float,
+        default=0.70,
+    )
     parser.add_argument("--obstacle-slow-forward-vx-mps", dest="obstacle_slow_forward_vx_mps", type=float, default=0.08)
     parser.add_argument("--obstacle-backoff-vx-mps", dest="obstacle_backoff_vx_mps", type=float, default=0.18)
     parser.add_argument("--obstacle-lateral-nudge-vy-mps", dest="obstacle_lateral_nudge_vy_mps", type=float, default=0.12)
@@ -130,6 +138,14 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--object-stop-radius-m must be positive")
     if int(args.interactive_idle_log_interval) <= 0:
         raise ValueError("--interactive-idle-log-interval must be positive")
+    if float(args.obstacle_stop_distance_m) <= 0.0:
+        raise ValueError("--obstacle-stop-distance-m must be positive")
+    if float(args.obstacle_hold_distance_m) <= 0.0:
+        raise ValueError("--obstacle-hold-distance-m must be positive")
+    if float(args.obstacle_hold_distance_m) < float(args.obstacle_stop_distance_m):
+        raise ValueError("--obstacle-hold-distance-m must be greater than or equal to --obstacle-stop-distance-m")
+    if float(args.obstacle_recovery_hold_sec) < 0.0:
+        raise ValueError("--obstacle-recovery-hold-sec must be non-negative")
 
     if planner_mode == "pointgoal":
         if args.goal_x is None or args.goal_y is None:

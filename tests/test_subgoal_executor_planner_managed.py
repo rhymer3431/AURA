@@ -21,7 +21,7 @@ def _args() -> Namespace:
         cmd_yaw_accel_limit=1.5,
         obstacle_defense_enabled=True,
         obstacle_stop_distance_m=0.45,
-        obstacle_turn_distance_m=0.70,
+        obstacle_hold_distance_m=0.70,
         obstacle_side_bias_m=0.10,
         obstacle_min_valid_fraction=0.05,
         obstacle_min_turn_wz=0.35,
@@ -286,7 +286,7 @@ def test_obstacle_defense_holds_recovery_briefly_after_contact() -> None:
     assert second.status.metadata["obstacle_recovery_active"] is True
 
 
-def test_obstacle_defense_slow_turn_adds_centering_bias() -> None:
+def test_obstacle_defense_holds_position_within_hold_distance() -> None:
     update = TrajectoryUpdate(
         trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
         plan_version=8,
@@ -308,8 +308,6 @@ def test_obstacle_defense_slow_turn_adds_centering_bias() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
-    assert 0.0 <= float(result.command_vector[0]) <= 0.08 + 1.0e-4
-    assert float(result.command_vector[1]) < 0.0
-    assert float(result.command_vector[2]) < 0.0
+    assert np.allclose(result.command_vector, np.zeros(3, dtype=np.float32))
     assert result.status is not None
-    assert result.status.metadata["obstacle_defense_mode"] == "slow_turn"
+    assert result.status.metadata["obstacle_defense_mode"] == "hold"
