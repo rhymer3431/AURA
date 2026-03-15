@@ -127,15 +127,21 @@ class PlanningSession:
         self._interactive_lock = threading.Lock()
         self._interactive_state = "roaming" if self.mode == "interactive" else ""
         self._interactive_command_seq = 0
+        self._interactive_pending_command_kind = ""
         self._interactive_pending_command_id = -1
         self._interactive_pending_instruction = ""
+        self._interactive_pending_goal_world_xy: np.ndarray | None = None
         self._interactive_cancel_requested = False
+        self._interactive_active_command_kind = ""
         self._interactive_active_command_id = -1
         self._interactive_active_instruction = ""
+        self._interactive_active_goal_world_xy: np.ndarray | None = None
         self._interactive_session_plan_version = -1
         self._interactive_last_nogoal_plan_version = -1
+        self._interactive_last_pointgoal_plan_version = -1
         self._interactive_last_dual_plan_version = -1
         self._interactive_last_nogoal_failed_calls = 0
+        self._interactive_last_pointgoal_failed_calls = 0
         self._interactive_last_dual_failed_calls = 0
 
     @property
@@ -265,8 +271,26 @@ class PlanningSession:
             raise ValueError("interactive instruction must be non-empty")
         with self._interactive_lock:
             self._interactive_command_seq += 1
+            self._interactive_pending_command_kind = "dual"
             self._interactive_pending_command_id = int(self._interactive_command_seq)
             self._interactive_pending_instruction = text
+            self._interactive_pending_goal_world_xy = None
+            self._interactive_cancel_requested = False
+            return int(self._interactive_pending_command_id)
+
+    def submit_interactive_point_goal(self, goal_world_xy: np.ndarray | tuple[float, float], *, label: str = "") -> int:
+        if self.mode != "interactive":
+            raise RuntimeError("submit_interactive_point_goal requires planner-mode=interactive")
+        goal_xy = np.asarray(goal_world_xy, dtype=np.float32).reshape(-1)
+        if goal_xy.shape[0] < 2 or not np.all(np.isfinite(goal_xy[:2])):
+            raise ValueError("interactive point goal requires finite x and y values")
+        summary = str(label).strip() or f"/pointgoal {float(goal_xy[0]):.3f} {float(goal_xy[1]):.3f}"
+        with self._interactive_lock:
+            self._interactive_command_seq += 1
+            self._interactive_pending_command_kind = "pointgoal"
+            self._interactive_pending_command_id = int(self._interactive_command_seq)
+            self._interactive_pending_instruction = summary
+            self._interactive_pending_goal_world_xy = goal_xy[:2].copy()
             self._interactive_cancel_requested = False
             return int(self._interactive_pending_command_id)
 
@@ -277,12 +301,14 @@ class PlanningSession:
             has_work = (
                 self._interactive_pending_command_id >= 0
                 or self._interactive_active_command_id >= 0
-                or self._interactive_state in {"task_pending", "task_active"}
+                or self._interactive_state in {"task_pending", "task_active", "pointgoal_pending", "pointgoal_active"}
             )
             if not has_work:
                 return False
+            self._interactive_pending_command_kind = ""
             self._interactive_pending_command_id = -1
             self._interactive_pending_instruction = ""
+            self._interactive_pending_goal_world_xy = None
             self._interactive_cancel_requested = True
             return True
 
@@ -352,7 +378,12 @@ class PlanningSession:
         if self.mode == "interactive":
             if self.nogoal_planner is None or self.dual_planner is None:
                 raise RuntimeError("PlanningSession is not initialized.")
-            return self._run_interactive(observation, action_command=action_command)
+            return self._run_interactive(
+                observation,
+                action_command=action_command,
+                robot_pos_world=robot_pos_world,
+                robot_yaw=robot_yaw,
+            )
         if self.pointgoal_planner is None or self.nogoal_planner is None:
             raise RuntimeError("PlanningSession is not initialized.")
         if action_command is None or action_command.action_type in {"STOP", "LOOK_AT"}:
@@ -525,11 +556,24 @@ class PlanningSession:
             sensor_meta=observation.sensor_meta,
         )
 
-    def _run_interactive(self, observation: ExecutionObservation, *, action_command: ActionCommand | None) -> TrajectoryUpdate:
+    def _run_interactive(
+        self,
+        observation: ExecutionObservation,
+        *,
+        action_command: ActionCommand | None,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> TrajectoryUpdate:
         self._consume_interactive_controls()
         plan_stop = False
         if self._interactive_state == "roaming":
             self._update_interactive_roaming(observation)
+        elif self._interactive_state == "pointgoal_active":
+            plan_stop = self._update_interactive_pointgoal(
+                observation,
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+            )
         else:
             plan_stop = self._update_interactive_task(observation)
         return self._build_update(
@@ -543,23 +587,34 @@ class PlanningSession:
         if self.mode != "interactive":
             return
         cancel_requested = False
+        pending_command_kind = ""
         pending_command_id = -1
         pending_instruction = ""
+        pending_goal_world_xy: np.ndarray | None = None
         with self._interactive_lock:
             cancel_requested = bool(self._interactive_cancel_requested)
+            pending_command_kind = str(self._interactive_pending_command_kind)
             pending_command_id = int(self._interactive_pending_command_id)
             pending_instruction = str(self._interactive_pending_instruction)
+            pending_goal_world_xy = None if self._interactive_pending_goal_world_xy is None else self._interactive_pending_goal_world_xy.copy()
             self._interactive_cancel_requested = False
+            self._interactive_pending_command_kind = ""
             self._interactive_pending_command_id = -1
             self._interactive_pending_instruction = ""
+            self._interactive_pending_goal_world_xy = None
 
         if cancel_requested:
             self._activate_roaming("user cancel")
-        if pending_command_id >= 0 and pending_instruction != "":
+        if pending_command_id < 0:
+            return
+        if pending_command_kind == "pointgoal" and pending_goal_world_xy is not None:
+            self._activate_pointgoal_task(pending_command_id, pending_instruction, pending_goal_world_xy)
+            return
+        if pending_instruction != "":
             self._activate_task(pending_command_id, pending_instruction)
 
     def _activate_roaming(self, reason: str) -> bool:
-        if self.navdp_client is None or self.nogoal_planner is None:
+        if self.navdp_client is None or self.nogoal_planner is None or self.pointgoal_planner is None:
             return False
         try:
             algo = self.navdp_client.navigator_reset(self._intrinsic.copy(), batch_size=1)
@@ -583,6 +638,9 @@ class PlanningSession:
             self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
             return False
 
+        self.pointgoal_planner.reset_state()
+        self._interactive_last_pointgoal_plan_version = -1
+        self._interactive_last_pointgoal_failed_calls = 0
         self.nogoal_planner.reset_state()
         self._interactive_last_nogoal_plan_version = -1
         self._interactive_last_nogoal_failed_calls = 0
@@ -612,6 +670,10 @@ class PlanningSession:
             f"state=task_pending command_id={int(command_id)} instruction={instruction!r}",
         )
         self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
+        if self.pointgoal_planner is not None:
+            self.pointgoal_planner.reset_state()
+        self._interactive_last_pointgoal_plan_version = -1
+        self._interactive_last_pointgoal_failed_calls = 0
         if self.nogoal_planner is not None:
             self.nogoal_planner.reset_state()
         self._interactive_last_nogoal_plan_version = -1
@@ -637,8 +699,10 @@ class PlanningSession:
             return False
 
         self._interactive_state = "task_active"
+        self._interactive_active_command_kind = "dual"
         self._interactive_active_command_id = int(command_id)
         self._interactive_active_instruction = str(instruction)
+        self._interactive_active_goal_world_xy = None
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
@@ -648,6 +712,73 @@ class PlanningSession:
         self._interactive_log(
             "TASK",
             f"state=task_active command_id={int(command_id)} instruction={instruction!r}",
+        )
+        return True
+
+    def _activate_pointgoal_task(self, command_id: int, instruction: str, goal_world_xy: np.ndarray) -> bool:
+        if self.navdp_client is None or self.pointgoal_planner is None:
+            return False
+        goal_xy = np.asarray(goal_world_xy, dtype=np.float32).reshape(-1)
+        if goal_xy.shape[0] < 2 or not np.all(np.isfinite(goal_xy[:2])):
+            raise ValueError("interactive point goal requires finite x and y values")
+        self._interactive_state = "pointgoal_pending"
+        self._interactive_log(
+            "POINTGOAL",
+            "state=pointgoal_pending command_id={} goal_world=({:.3f}, {:.3f})".format(
+                int(command_id),
+                float(goal_xy[0]),
+                float(goal_xy[1]),
+            ),
+        )
+        self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
+        self.pointgoal_planner.reset_state()
+        self._interactive_last_pointgoal_plan_version = -1
+        self._interactive_last_pointgoal_failed_calls = 0
+        if self.nogoal_planner is not None:
+            self.nogoal_planner.reset_state()
+        self._interactive_last_nogoal_plan_version = -1
+        self._interactive_last_nogoal_failed_calls = 0
+        if self.dual_planner is not None:
+            self.dual_planner.reset_state()
+        self._interactive_last_dual_plan_version = -1
+        self._interactive_last_dual_failed_calls = 0
+        self._reset_planner_control_state()
+
+        try:
+            algo = self.navdp_client.navigator_reset(self._intrinsic.copy(), batch_size=1)
+        except Exception as exc:  # noqa: BLE001
+            error = f"pointgoal navigator_reset failed for command_id={int(command_id)}: {type(exc).__name__}: {exc}"
+            self._stats = PlannerStats(
+                successful_calls=0,
+                failed_calls=1,
+                latency_ms=0.0,
+                last_error=error,
+                last_plan_step=int(self._stats.last_plan_step),
+            )
+            self._interactive_log("POINTGOAL", error)
+            self._activate_roaming(f"pointgoal reset failure for command_id={int(command_id)}")
+            return False
+
+        self._interactive_state = "pointgoal_active"
+        self._interactive_active_command_kind = "pointgoal"
+        self._interactive_active_command_id = int(command_id)
+        self._interactive_active_instruction = str(instruction)
+        self._interactive_active_goal_world_xy = goal_xy[:2].copy()
+        self._last_goal_local_xy = np.zeros(2, dtype=np.float32)
+        self._last_server_stale_sec = -1.0
+        self._last_goal_version = -1
+        self._last_traj_version = -1
+        self._last_system2_pixel_goal = None
+        self._last_dual_response_ts = time.perf_counter()
+        self._stats = PlannerStats()
+        self._interactive_log(
+            "POINTGOAL",
+            "state=pointgoal_active command_id={} goal_world=({:.3f}, {:.3f}) navdp_reset={}".format(
+                int(command_id),
+                float(goal_xy[0]),
+                float(goal_xy[1]),
+                algo,
+            ),
         )
         return True
 
@@ -752,6 +883,93 @@ class PlanningSession:
             return False
 
         self._interactive_last_dual_failed_calls = int(failed_calls)
+        self._stats = PlannerStats(
+            successful_calls=int(success_calls),
+            failed_calls=int(failed_calls),
+            latency_ms=float(planner_latency_ms),
+            last_error=str(last_error),
+            last_plan_step=int(self._stats.last_plan_step),
+        )
+        return False
+
+    def _update_interactive_pointgoal(
+        self,
+        observation: ExecutionObservation,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> bool:
+        if self.pointgoal_planner is None:
+            raise RuntimeError("interactive pointgoal planner is not initialized")
+        if self._interactive_active_goal_world_xy is None:
+            self._activate_roaming("pointgoal goal missing")
+            return False
+        goal_local_xy = world_goal_to_robot_frame(
+            goal_xy=np.asarray(self._interactive_active_goal_world_xy[:2], dtype=np.float32),
+            robot_xy=np.asarray(robot_pos_world[:2], dtype=np.float32),
+            robot_yaw=float(robot_yaw),
+        )
+        self._last_goal_local_xy = np.asarray(goal_local_xy, dtype=np.float32).copy()
+        goal_distance = float(np.linalg.norm(self._last_goal_local_xy[:2]))
+        if goal_distance <= float(getattr(self.args, "goal_tolerance_m", 0.4)):
+            self._interactive_log(
+                "POINTGOAL",
+                "command_id={} reached goal dist={:.3f}m".format(
+                    int(self._interactive_active_command_id),
+                    goal_distance,
+                ),
+            )
+            self._activate_roaming(f"pointgoal complete command_id={int(self._interactive_active_command_id)}")
+            return True
+
+        should_plan = self._last_trajectory.shape[0] == 0 or (
+            observation.frame_id % max(int(getattr(self.args, "plan_interval_frames", 1)), 1) == 0
+        )
+        if should_plan:
+            self.pointgoal_planner.submit(
+                PlannerInput(
+                    frame_id=int(observation.frame_id),
+                    local_goal_xy=self._last_goal_local_xy.copy(),
+                    rgb=observation.rgb,
+                    depth=observation.depth,
+                    sensor_meta=dict(observation.sensor_meta),
+                    cam_pos=observation.cam_pos,
+                    cam_quat=observation.cam_quat,
+                    robot_pos=np.asarray(robot_pos_world, dtype=np.float32),
+                    robot_yaw=float(robot_yaw),
+                )
+            )
+
+        plan = self.pointgoal_planner.consume_latest(last_seen_version=self._interactive_last_pointgoal_plan_version)
+        if plan is not None:
+            self._interactive_last_pointgoal_plan_version = int(plan.plan_version)
+            self._emit_interactive_trajectory(plan.trajectory_world)
+            self._stats = PlannerStats(
+                successful_calls=int(plan.successful_calls),
+                failed_calls=int(plan.failed_calls),
+                latency_ms=float(plan.latency_ms),
+                last_error=str(plan.last_error),
+                last_plan_step=int(plan.source_frame_id),
+            )
+
+        success_calls, failed_calls, last_error, planner_latency_ms = self.pointgoal_planner.snapshot_status()
+        if int(failed_calls) > int(self._interactive_last_pointgoal_failed_calls):
+            self._stats = PlannerStats(
+                successful_calls=int(success_calls),
+                failed_calls=int(failed_calls),
+                latency_ms=float(planner_latency_ms),
+                last_error=str(last_error),
+                last_plan_step=int(self._stats.last_plan_step),
+            )
+            self._interactive_last_pointgoal_failed_calls = int(failed_calls)
+            self._interactive_log(
+                "POINTGOAL",
+                f"command_id={int(self._interactive_active_command_id)} pointgoal_step failed: {last_error}",
+            )
+            self._activate_roaming(f"pointgoal failure command_id={int(self._interactive_active_command_id)}")
+            return False
+
+        self._interactive_last_pointgoal_failed_calls = int(failed_calls)
         self._stats = PlannerStats(
             successful_calls=int(success_calls),
             failed_calls=int(failed_calls),
@@ -870,8 +1088,11 @@ class PlanningSession:
         self._last_trajectory = traj.copy()
 
     def _interactive_clear_active_task(self) -> None:
+        self._interactive_active_command_kind = ""
         self._interactive_active_command_id = -1
         self._interactive_active_instruction = ""
+        self._interactive_active_goal_world_xy = None
+        self._last_goal_local_xy = np.zeros(2, dtype=np.float32)
 
     def _interactive_log(self, phase: str, message: str) -> None:
         print(f"[G1_INTERACTIVE][{phase}] {message}")
@@ -902,7 +1123,11 @@ class PlanningSession:
             plan_version=int(self._last_plan_version),
             stats=self._stats,
             source_frame_id=int(frame_id),
-            goal_local_xy=self._last_goal_local_xy.copy() if self.mode == "pointgoal" else None,
+            goal_local_xy=(
+                self._last_goal_local_xy.copy()
+                if self.mode == "pointgoal" or self._interactive_state == "pointgoal_active"
+                else None
+            ),
             action_command=action_command,
             stop=bool(stop),
             planner_control_mode=self._last_planner_control_mode,

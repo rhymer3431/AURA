@@ -5,7 +5,7 @@ import { ControlStrip } from "./ControlStrip";
 
 const mockContext: any = {
   bootstrap: {
-    plannerModes: ["interactive", "pointgoal"],
+    plannerModes: ["interactive"],
     launchModes: ["gui", "headless"],
     scenePresets: ["warehouse", "interior agent kujiale 3"],
     apiBaseUrl: "http://127.0.0.1:8095",
@@ -26,7 +26,7 @@ const mockContext: any = {
   },
   history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
   form: {
-    plannerMode: "pointgoal" as const,
+    plannerMode: "interactive" as const,
     launchMode: "gui" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
@@ -39,7 +39,7 @@ const mockContext: any = {
       cmdMaxVy: "0.3",
       cmdMaxWz: "0.8",
     },
-    goalX: "abc",
+    goalX: "0",
     goalY: "0",
   },
   loading: false,
@@ -57,19 +57,17 @@ vi.mock("../state", () => ({
 }));
 
 describe("ControlStrip", () => {
-  it("disables session start when pointgoal coordinates are invalid", () => {
+  it("allows session start when locomotion config is valid", () => {
     render(<ControlStrip />);
 
-    expect(screen.getByText("pointgoal 모드에서는 numeric `goal x / goal y`가 필요합니다.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /start stack/i })).toBeDisabled();
+    expect(screen.queryByText(/pointgoal 모드에서는/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /start stack/i })).toBeEnabled();
   });
 
   it("submits interactive task only for active interactive session", () => {
     mockContext.form = {
       ...mockContext.form,
       plannerMode: "interactive",
-      goalX: "1",
-      goalY: "2",
     };
     mockContext.state = {
       ...mockContext.state,
@@ -96,7 +94,7 @@ describe("ControlStrip", () => {
     };
 
     render(<ControlStrip />);
-    fireEvent.change(screen.getByPlaceholderText("자연어 task를 입력하세요"), {
+    fireEvent.change(screen.getByPlaceholderText("자연어 task 또는 `/pointgoal x y`를 입력하세요"), {
       target: { value: "go to the loading dock" },
     });
     fireEvent.click(screen.getByRole("button", { name: /submit task/i }));
@@ -109,8 +107,6 @@ describe("ControlStrip", () => {
       ...mockContext.form,
       plannerMode: "interactive",
       scenePreset: "warehouse",
-      goalX: "1",
-      goalY: "2",
     };
 
     render(<ControlStrip />);
@@ -131,8 +127,6 @@ describe("ControlStrip", () => {
         ...mockContext.form.locomotionConfig,
         actionScale: "0.5",
       },
-      goalX: "1",
-      goalY: "2",
     };
 
     render(<ControlStrip />);

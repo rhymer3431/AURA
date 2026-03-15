@@ -73,7 +73,6 @@ export function buildSessionPayload(form: SessionForm) {
       cmdMaxVy: number;
       cmdMaxWz: number;
     };
-    goal?: { x: number; y: number };
   } = {
     plannerMode: form.plannerMode,
     launchMode: form.launchMode,
@@ -106,14 +105,6 @@ export function buildSessionPayload(form: SessionForm) {
   }
   if (locomotionValues.cmdMaxWz <= 0) {
     throw new Error("locomotion cmdMaxWz must be positive");
-  }
-  if (form.plannerMode === "pointgoal") {
-    const goalX = Number(form.goalX);
-    const goalY = Number(form.goalY);
-    if (!Number.isFinite(goalX) || !Number.isFinite(goalY)) {
-      throw new Error("pointgoal goal must contain numeric x and y values");
-    }
-    payload.goal = { x: goalX, y: goalY };
   }
   return payload;
 }

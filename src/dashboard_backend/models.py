@@ -91,28 +91,22 @@ def _parse_locomotion_config(payload: Any) -> DashboardLocomotionConfig:
 
 
 def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
-    planner_mode = str(payload.get("plannerMode", "")).strip().lower()
+    planner_mode = str(payload.get("plannerMode", "interactive")).strip().lower() or "interactive"
     launch_mode = str(payload.get("launchMode", "")).strip().lower()
     scene_preset = str(payload.get("scenePreset", "warehouse")).strip() or "warehouse"
     viewer_enabled = bool(payload.get("viewerEnabled", True))
     memory_store = bool(payload.get("memoryStore", True))
     detection_enabled = bool(payload.get("detectionEnabled", True))
     locomotion_config = _parse_locomotion_config(payload.get("locomotionConfig"))
-    if planner_mode not in {"interactive", "pointgoal"}:
-        raise ValueError("plannerMode must be interactive or pointgoal")
+    if planner_mode != "interactive":
+        raise ValueError("plannerMode must be interactive")
     if launch_mode not in {"gui", "headless"}:
         raise ValueError("launchMode must be gui or headless")
     goal_payload = payload.get("goal")
     goal_x: float | None = None
     goal_y: float | None = None
-    if planner_mode == "pointgoal":
-        if not isinstance(goal_payload, dict):
-            raise ValueError("goal is required when plannerMode=pointgoal")
-        try:
-            goal_x = float(goal_payload.get("x"))
-            goal_y = float(goal_payload.get("y"))
-        except (TypeError, ValueError) as exc:
-            raise ValueError("goal.x and goal.y must be numbers") from exc
+    if goal_payload is not None:
+        raise ValueError("startup pointgoal mode was removed; submit /pointgoal <x> <y> after session start")
     return DashboardSessionRequest(
         planner_mode=planner_mode,
         launch_mode=launch_mode,

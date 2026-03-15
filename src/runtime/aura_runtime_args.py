@@ -77,7 +77,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--planner-mode",
         dest="planner_mode",
         type=str,
-        choices=("pointgoal", "dual", "interactive"),
+        choices=("dual", "interactive"),
         default="interactive",
     )
     parser.add_argument("--dual-server-url", dest="dual_server_url", type=str, default="http://127.0.0.1:8890")
@@ -147,12 +147,7 @@ def validate_args(args: argparse.Namespace) -> None:
     if float(args.obstacle_recovery_hold_sec) < 0.0:
         raise ValueError("--obstacle-recovery-hold-sec must be non-negative")
 
-    if planner_mode == "pointgoal":
-        if args.goal_x is None or args.goal_y is None:
-            raise ValueError("--goal-x and --goal-y are required in planner-mode=pointgoal")
-        if bool(args.spawn_demo_object):
-            raise ValueError("--spawn-demo-object requires --planner-mode dual")
-    elif planner_mode == "dual":
+    if planner_mode == "dual":
         if str(args.instruction).strip() == "":
             raise ValueError("--instruction must be non-empty in planner-mode=dual")
     else:
@@ -160,6 +155,8 @@ def validate_args(args: argparse.Namespace) -> None:
             raise ValueError("--spawn-demo-object requires --planner-mode dual")
         if str(args.interactive_prompt).strip() == "":
             raise ValueError("--interactive-prompt must be non-empty in planner-mode=interactive")
+        if args.goal_x is not None or args.goal_y is not None:
+            raise ValueError("startup pointgoal mode was removed; use /pointgoal <x> <y> after interactive startup")
     launch_mode = str(getattr(args, "launch_mode", "")).strip().lower()
     if (
         str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() == "opencv"

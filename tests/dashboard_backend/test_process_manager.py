@@ -119,43 +119,34 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
     ]
 
 
-def test_process_manager_marks_optional_services_not_required(monkeypatch: pytest.MonkeyPatch) -> None:
-    def runner(spec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:  # noqa: ANN001
-        return ManagedProcess(
-            spec=spec,
-            process=_FakeProcess(spec.name, []),
-            started_at=time.time(),
-            stdout_log=stdout_log,
-            stderr_log=stderr_log,
+def test_parse_session_request_rejects_removed_pointgoal_mode() -> None:
+    with pytest.raises(ValueError, match="plannerMode must be interactive"):
+        parse_session_request(
+            {
+                "plannerMode": "pointgoal",
+                "launchMode": "gui",
+                "scenePreset": "warehouse",
+                "viewerEnabled": False,
+                "memoryStore": True,
+                "detectionEnabled": True,
+                "goal": {"x": 2.0, "y": 0.0},
+            }
         )
 
-    async def no_wait(*_args, **_kwargs) -> None:
-        return None
 
-    config = DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard")
-    manager = ProcessManager(config, runner=runner)
-    monkeypatch.setattr(manager, "_wait_ready", no_wait)
-    monkeypatch.setattr(manager, "_reserve_port", lambda _host, preferred_port, reserved=None: preferred_port)
-
-    request = parse_session_request(
-        {
-            "plannerMode": "pointgoal",
-            "launchMode": "gui",
-            "scenePreset": "warehouse",
-            "viewerEnabled": False,
-            "memoryStore": True,
-            "detectionEnabled": True,
-            "goal": {"x": 2.0, "y": 0.0},
-        }
-    )
-
-    asyncio.run(manager.start_session(request))
-    snapshot = {item["name"]: item for item in manager.snapshot()}
-
-    assert snapshot["navdp"]["state"] == "running"
-    assert snapshot["runtime"]["state"] == "running"
-    assert snapshot["system2"]["state"] == "not_required"
-    assert snapshot["dual"]["state"] == "not_required"
+def test_parse_session_request_rejects_legacy_startup_goal_payload() -> None:
+    with pytest.raises(ValueError, match="startup pointgoal mode was removed"):
+        parse_session_request(
+            {
+                "plannerMode": "interactive",
+                "launchMode": "gui",
+                "scenePreset": "warehouse",
+                "viewerEnabled": False,
+                "memoryStore": True,
+                "detectionEnabled": True,
+                "goal": {"x": 2.0, "y": 0.0},
+            }
+        )
 
 
 def test_process_manager_includes_default_locomotion_config_when_not_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -181,13 +172,12 @@ def test_process_manager_includes_default_locomotion_config_when_not_overridden(
 
     request = parse_session_request(
         {
-            "plannerMode": "pointgoal",
+            "plannerMode": "interactive",
             "launchMode": "gui",
             "scenePreset": "warehouse",
             "viewerEnabled": False,
             "memoryStore": True,
             "detectionEnabled": True,
-            "goal": {"x": 2.0, "y": 0.0},
         }
     )
 
