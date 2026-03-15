@@ -12,7 +12,6 @@ import onnxruntime as ort
 from common.geometry import quat_wxyz_to_yaw
 
 from .constants import (
-    ACTION_SCALE,
     DAMPING_PATTERNS,
     DEFAULT_JOINT_POS_PATTERNS,
     HEIGHT_SCAN_GRID_LENGTH,
@@ -519,6 +518,7 @@ class G1PolicyController:
         providers: list[str],
         device_preference: str,
         decimation: int,
+        action_scale: float,
     ) -> None:
         from isaacsim.core.prims import SingleArticulation
         from isaacsim.core.utils.prims import define_prim, get_prim_at_path
@@ -538,6 +538,9 @@ class G1PolicyController:
         self.output_name = self.policy_session.output_name
         self.backend_name = self.policy_session.backend_name
         self.decimation = max(1, int(decimation))
+        self.action_scale = float(action_scale)
+        if self.action_scale <= 0.0:
+            raise ValueError(f"action_scale must be positive, got {self.action_scale}.")
         self.prim_path = prim_path
 
         self.default_pos = np.zeros(0, dtype=np.float32)
@@ -670,7 +673,7 @@ class G1PolicyController:
             self.action = np.asarray(outputs, dtype=np.float32).reshape(-1)
             self.previous_action = self.action.copy()
 
-        target_positions = self.default_pos + (self.action * ACTION_SCALE)
+        target_positions = self.default_pos + (self.action * self.action_scale)
         self.robot.apply_action(ArticulationAction(joint_positions=target_positions))
 
 

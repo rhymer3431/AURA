@@ -27,7 +27,14 @@ export const DEFAULT_FORM: SessionForm = {
   viewerEnabled: true,
   memoryStore: true,
   detectionEnabled: true,
-  policyPath: "",
+  locomotionConfig: {
+    actionScale: "0.5",
+    onnxDevice: "auto",
+    physicsDt: "0.005",
+    decimation: "4",
+    renderingDt: "0.0",
+    cmdVelTimeout: "0.0",
+  },
   goalX: "2.0",
   goalY: "0.0",
 };
@@ -60,7 +67,14 @@ export function buildSessionPayload(form: SessionForm) {
     viewerEnabled: boolean;
     memoryStore: boolean;
     detectionEnabled: boolean;
-    policyPath?: string;
+    locomotionConfig: {
+      actionScale: number;
+      onnxDevice: SessionForm["locomotionConfig"]["onnxDevice"];
+      physicsDt: number;
+      decimation: number;
+      renderingDt: number;
+      cmdVelTimeout: number;
+    };
     goal?: { x: number; y: number };
   } = {
     plannerMode: form.plannerMode,
@@ -69,10 +83,33 @@ export function buildSessionPayload(form: SessionForm) {
     viewerEnabled: form.viewerEnabled,
     memoryStore: form.memoryStore,
     detectionEnabled: form.detectionEnabled,
+    locomotionConfig: {
+      actionScale: Number(form.locomotionConfig.actionScale),
+      onnxDevice: form.locomotionConfig.onnxDevice,
+      physicsDt: Number(form.locomotionConfig.physicsDt),
+      decimation: Number(form.locomotionConfig.decimation),
+      renderingDt: Number(form.locomotionConfig.renderingDt),
+      cmdVelTimeout: Number(form.locomotionConfig.cmdVelTimeout),
+    },
   };
-  const normalizedPolicyPath = form.policyPath.trim();
-  if (normalizedPolicyPath !== "") {
-    payload.policyPath = normalizedPolicyPath;
+  const locomotionValues = payload.locomotionConfig;
+  if (
+    !Number.isFinite(locomotionValues.actionScale) ||
+    !Number.isFinite(locomotionValues.physicsDt) ||
+    !Number.isFinite(locomotionValues.decimation) ||
+    !Number.isFinite(locomotionValues.renderingDt) ||
+    !Number.isFinite(locomotionValues.cmdVelTimeout)
+  ) {
+    throw new Error("locomotion config must contain numeric values");
+  }
+  if (locomotionValues.actionScale <= 0 || locomotionValues.physicsDt <= 0) {
+    throw new Error("locomotion actionScale and physicsDt must be positive");
+  }
+  if (!Number.isInteger(locomotionValues.decimation) || locomotionValues.decimation <= 0) {
+    throw new Error("locomotion decimation must be a positive integer");
+  }
+  if (locomotionValues.renderingDt < 0) {
+    throw new Error("locomotion renderingDt must be non-negative");
   }
   if (form.plannerMode === "pointgoal") {
     const goalX = Number(form.goalX);

@@ -1,5 +1,15 @@
 export type PlannerMode = "interactive" | "pointgoal";
 export type LaunchMode = "gui" | "headless";
+export type OnnxDevice = "auto" | "cuda" | "cpu";
+
+export type LocomotionConfigForm = {
+  actionScale: string;
+  onnxDevice: OnnxDevice;
+  physicsDt: string;
+  decimation: string;
+  renderingDt: string;
+  cmdVelTimeout: string;
+};
 
 export type SessionForm = {
   plannerMode: PlannerMode;
@@ -8,7 +18,7 @@ export type SessionForm = {
   viewerEnabled: boolean;
   memoryStore: boolean;
   detectionEnabled: boolean;
-  policyPath: string;
+  locomotionConfig: LocomotionConfigForm;
   goalX: string;
   goalY: string;
 };
@@ -46,7 +56,14 @@ export type DashboardState = {
       viewerEnabled: boolean;
       memoryStore: boolean;
       detectionEnabled: boolean;
-      policyPath?: string;
+      locomotionConfig: {
+        actionScale: number;
+        onnxDevice: OnnxDevice;
+        physicsDt: number;
+        decimation: number;
+        renderingDt: number;
+        cmdVelTimeout: number;
+      };
       goal?: { x: number; y: number };
     } | null;
     lastEvent: LogRecord | null;

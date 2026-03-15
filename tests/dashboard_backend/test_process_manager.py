@@ -67,7 +67,14 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
             "viewerEnabled": True,
             "memoryStore": False,
             "detectionEnabled": False,
-            "policyPath": "artifacts/models/policy.onnx",
+            "locomotionConfig": {
+                "actionScale": 0.65,
+                "onnxDevice": "cuda",
+                "physicsDt": 0.01,
+                "decimation": 5,
+                "renderingDt": 0.02,
+                "cmdVelTimeout": 1.5,
+            },
         }
     )
 
@@ -90,8 +97,18 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "--viewer-publish",
         "--no-memory-store",
         "--skip-detection",
-        "--policy",
-        "artifacts/models/policy.onnx",
+        "--action-scale",
+        "0.65",
+        "--onnx-device",
+        "cuda",
+        "--physics-dt",
+        "0.01",
+        "--decimation",
+        "5",
+        "--rendering-dt",
+        "0.02",
+        "--cmd-vel-timeout",
+        "1.5",
     )
     assert [item["name"] for item in snapshot if item["state"] == "running"] == ["navdp", "system2", "dual", "runtime"]
 
@@ -144,7 +161,7 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
     assert snapshot["dual"]["state"] == "not_required"
 
 
-def test_process_manager_omits_policy_override_when_not_provided(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_process_manager_includes_default_locomotion_config_when_not_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
     created_specs = []
 
     def runner(spec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:  # noqa: ANN001
@@ -180,7 +197,10 @@ def test_process_manager_omits_policy_override_when_not_provided(monkeypatch: py
     asyncio.run(manager.start_session(request))
 
     runtime_spec = next(spec for spec in created_specs if spec.name == "runtime")
-    assert "--policy" not in runtime_spec.args
+    assert "--action-scale" in runtime_spec.args
+    assert "0.5" in runtime_spec.args
+    assert "--onnx-device" in runtime_spec.args
+    assert "auto" in runtime_spec.args
 
 
 def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.MonkeyPatch) -> None:

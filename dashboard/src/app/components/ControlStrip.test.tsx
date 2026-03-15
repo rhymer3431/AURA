@@ -32,7 +32,14 @@ const mockContext: any = {
     viewerEnabled: true,
     memoryStore: true,
     detectionEnabled: true,
-    policyPath: "",
+    locomotionConfig: {
+      actionScale: "0.5",
+      onnxDevice: "auto" as const,
+      physicsDt: "0.005",
+      decimation: "4",
+      renderingDt: "0.0",
+      cmdVelTimeout: "0.0",
+    },
     goalX: "abc",
     goalY: "0",
   },
@@ -77,7 +84,14 @@ describe("ControlStrip", () => {
           viewerEnabled: true,
           memoryStore: true,
           detectionEnabled: true,
-          policyPath: "artifacts/models/policy.onnx",
+          locomotionConfig: {
+            actionScale: 0.65,
+            onnxDevice: "cuda",
+            physicsDt: 0.005,
+            decimation: 4,
+            renderingDt: 0,
+            cmdVelTimeout: 0,
+          },
         },
         lastEvent: null,
       },
@@ -111,21 +125,29 @@ describe("ControlStrip", () => {
     expect(mockContext.setForm).toHaveBeenCalledWith({ scenePreset: "interior agent kujiale 3" });
   });
 
-  it("updates the locomotion policy path from the dashboard input", () => {
+  it("updates the locomotion config from the dashboard input", () => {
     mockContext.form = {
       ...mockContext.form,
       plannerMode: "interactive",
-      policyPath: "",
+      locomotionConfig: {
+        ...mockContext.form.locomotionConfig,
+        actionScale: "0.5",
+      },
       goalX: "1",
       goalY: "2",
     };
 
     render(<ControlStrip />);
 
-    fireEvent.change(screen.getByPlaceholderText("비워두면 런타임 기본 policy를 사용합니다"), {
-      target: { value: "artifacts/models/policy.onnx" },
+    fireEvent.change(screen.getByDisplayValue("0.5"), {
+      target: { value: "0.7" },
     });
 
-    expect(mockContext.setForm).toHaveBeenCalledWith({ policyPath: "artifacts/models/policy.onnx" });
+    expect(mockContext.setForm).toHaveBeenCalledWith({
+      locomotionConfig: {
+        ...mockContext.form.locomotionConfig,
+        actionScale: "0.7",
+      },
+    });
   });
 });

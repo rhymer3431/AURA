@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from .constants import DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
+from .constants import ACTION_SCALE, DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
 
 
 BOOTSTRAP_PARSER = argparse.ArgumentParser(add_help=False)
@@ -21,6 +21,14 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
             "Path to a locomotion policy file. Supports ONNX (`.onnx`) and TensorRT engines (`.engine`). "
             "Defaults to the exported ONNX policy in this repo root, with fallbacks to known export locations."
         ),
+    )
+    parser.add_argument(
+        "--action_scale",
+        "--action-scale",
+        dest="action_scale",
+        type=float,
+        default=ACTION_SCALE,
+        help="Scale factor applied to the policy output before joint targets are sent to the G1 articulation.",
     )
     parser.add_argument(
         "--robot_usd",

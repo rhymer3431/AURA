@@ -33,12 +33,29 @@ export function ExecutionModesPanel() {
     form.plannerMode === "pointgoal"
       ? `${form.goalX || "?"}, ${form.goalY || "?"}`
       : "not used";
-  const policyText = form.policyPath.trim() || "default";
+  const locomotionText = [
+    `action ${form.locomotionConfig.actionScale}`,
+    form.locomotionConfig.onnxDevice,
+    `dt ${form.locomotionConfig.physicsDt}`,
+    `dec ${form.locomotionConfig.decimation}`,
+    `render ${form.locomotionConfig.renderingDt}`,
+    `timeout ${form.locomotionConfig.cmdVelTimeout}`,
+  ].join(" / ");
   const liveGoalText =
     liveConfig?.goal === undefined
       ? "not used"
       : `${liveConfig.goal.x.toFixed(2)}, ${liveConfig.goal.y.toFixed(2)}`;
-  const livePolicyText = liveConfig?.policyPath?.trim() || "default";
+  const liveLocomotionText =
+    liveConfig == null
+      ? "inactive"
+      : [
+          `action ${liveConfig.locomotionConfig.actionScale.toFixed(3)}`,
+          liveConfig.locomotionConfig.onnxDevice,
+          `dt ${liveConfig.locomotionConfig.physicsDt}`,
+          `dec ${liveConfig.locomotionConfig.decimation}`,
+          `render ${liveConfig.locomotionConfig.renderingDt}`,
+          `timeout ${liveConfig.locomotionConfig.cmdVelTimeout}`,
+        ].join(" / ");
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6 flex flex-col gap-5">
@@ -71,8 +88,8 @@ export function ExecutionModesPanel() {
               <div className="font-medium text-black">{goalText}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3 col-span-2">
-              <div className="text-black/45 mb-1">G1 Locomotion Policy</div>
-              <div className="font-medium text-black break-all">{policyText}</div>
+              <div className="text-black/45 mb-1">G1 Locomotion Config</div>
+              <div className="font-medium text-black break-all">{locomotionText}</div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -113,8 +130,8 @@ export function ExecutionModesPanel() {
               <div className="font-medium text-black">{liveGoalText}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3 col-span-2">
-              <div className="text-black/45 mb-1">G1 Locomotion Policy</div>
-              <div className="font-medium text-black break-all">{livePolicyText}</div>
+              <div className="text-black/45 mb-1">G1 Locomotion Config</div>
+              <div className="font-medium text-black break-all">{liveLocomotionText}</div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">

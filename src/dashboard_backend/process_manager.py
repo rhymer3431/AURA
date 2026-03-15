@@ -227,8 +227,20 @@ class ProcessManager:
             args += ["--no-memory-store"]
         if not request.detection_enabled:
             args += ["--skip-detection"]
-        if request.policy_path:
-            args += ["--policy", request.policy_path]
+        args += [
+            "--action-scale",
+            str(request.locomotion_config.action_scale),
+            "--onnx-device",
+            request.locomotion_config.onnx_device,
+            "--physics-dt",
+            str(request.locomotion_config.physics_dt),
+            "--decimation",
+            str(request.locomotion_config.decimation),
+            "--rendering-dt",
+            str(request.locomotion_config.rendering_dt),
+            "--cmd-vel-timeout",
+            str(request.locomotion_config.cmd_vel_timeout),
+        ]
         if request.planner_mode == "pointgoal":
             assert request.goal_x is not None and request.goal_y is not None
             args += ["--goal-x", str(request.goal_x), "--goal-y", str(request.goal_y)]

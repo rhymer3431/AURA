@@ -28,10 +28,22 @@ export function ControlStrip() {
   const { bootstrap, form, setForm, startSession, stopSession, submitTask, cancelTask, state, loading } = useDashboard();
   const [instruction, setInstruction] = useState("");
   const sessionConfig = state?.session.config;
+  const locomotionConfig = form.locomotionConfig;
   const isInteractiveSession = state?.session.active === true && sessionConfig?.plannerMode === "interactive";
   const isPointGoalValid =
     form.plannerMode !== "pointgoal" ||
     (Number.isFinite(Number(form.goalX)) && Number.isFinite(Number(form.goalY)));
+  const isLocomotionConfigValid =
+    Number.isFinite(Number(locomotionConfig.actionScale)) &&
+    Number(locomotionConfig.actionScale) > 0 &&
+    Number.isFinite(Number(locomotionConfig.physicsDt)) &&
+    Number(locomotionConfig.physicsDt) > 0 &&
+    Number.isFinite(Number(locomotionConfig.decimation)) &&
+    Number(locomotionConfig.decimation) > 0 &&
+    Number.isInteger(Number(locomotionConfig.decimation)) &&
+    Number.isFinite(Number(locomotionConfig.renderingDt)) &&
+    Number(locomotionConfig.renderingDt) >= 0 &&
+    Number.isFinite(Number(locomotionConfig.cmdVelTimeout));
   const scenePresets = bootstrap?.scenePresets ?? ["warehouse", "interioragent", "interior agent kujiale 3"];
   const lastEvent = state?.session.lastEvent?.message ?? "";
 
@@ -75,15 +87,6 @@ export function ControlStrip() {
               ))}
             </select>
           </div>
-          <div className="min-w-[280px] flex-1">
-            <div className="text-[11px] text-black/40 mb-1">g1 locomotion policy</div>
-            <input
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
-              value={form.policyPath}
-              onChange={(event) => setForm({ policyPath: event.target.value })}
-              placeholder="비워두면 런타임 기본 policy를 사용합니다"
-            />
-          </div>
           {form.plannerMode === "pointgoal" && (
             <>
               <div>
@@ -107,7 +110,7 @@ export function ControlStrip() {
           <div className="flex gap-2 ml-auto">
             <button
               onClick={() => void startSession()}
-              disabled={loading || !isPointGoalValid}
+              disabled={loading || !isPointGoalValid || !isLocomotionConfigValid}
               className="inline-flex items-center gap-2 rounded-xl bg-black text-white px-4 py-2 text-[13px] disabled:opacity-50"
             >
               <Play className="size-4" />
@@ -138,6 +141,83 @@ export function ControlStrip() {
             pointgoal 모드에서는 numeric `goal x / goal y`가 필요합니다.
           </div>
         )}
+        {!isLocomotionConfigValid && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
+            {"locomotion config는 `action scale > 0`, `physics dt > 0`, `decimation` 양의 정수, `rendering dt >= 0` 이어야 합니다."}
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+          <div>
+            <div className="text-[11px] text-black/40 mb-1">action scale</div>
+            <input
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={locomotionConfig.actionScale}
+              onChange={(event) =>
+                setForm({ locomotionConfig: { ...locomotionConfig, actionScale: event.target.value } })
+              }
+            />
+          </div>
+          <div>
+            <div className="text-[11px] text-black/40 mb-1">onnx device</div>
+            <select
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={locomotionConfig.onnxDevice}
+              onChange={(event) =>
+                setForm({
+                  locomotionConfig: {
+                    ...locomotionConfig,
+                    onnxDevice: event.target.value as "auto" | "cuda" | "cpu",
+                  },
+                })
+              }
+            >
+              <option value="auto">auto</option>
+              <option value="cuda">cuda</option>
+              <option value="cpu">cpu</option>
+            </select>
+          </div>
+          <div>
+            <div className="text-[11px] text-black/40 mb-1">physics dt</div>
+            <input
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={locomotionConfig.physicsDt}
+              onChange={(event) =>
+                setForm({ locomotionConfig: { ...locomotionConfig, physicsDt: event.target.value } })
+              }
+            />
+          </div>
+          <div>
+            <div className="text-[11px] text-black/40 mb-1">decimation</div>
+            <input
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={locomotionConfig.decimation}
+              onChange={(event) =>
+                setForm({ locomotionConfig: { ...locomotionConfig, decimation: event.target.value } })
+              }
+            />
+          </div>
+          <div>
+            <div className="text-[11px] text-black/40 mb-1">rendering dt</div>
+            <input
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={locomotionConfig.renderingDt}
+              onChange={(event) =>
+                setForm({ locomotionConfig: { ...locomotionConfig, renderingDt: event.target.value } })
+              }
+            />
+          </div>
+          <div>
+            <div className="text-[11px] text-black/40 mb-1">cmd vel timeout</div>
+            <input
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={locomotionConfig.cmdVelTimeout}
+              onChange={(event) =>
+                setForm({ locomotionConfig: { ...locomotionConfig, cmdVelTimeout: event.target.value } })
+              }
+            />
+          </div>
+        </div>
 
         <div className="flex flex-wrap gap-3">
           <input
@@ -176,9 +256,10 @@ export function ControlStrip() {
             </span>
           </span>
           <span className="truncate">
-            policy:{" "}
+            locomotion:{" "}
             <span className="text-black/80 font-medium">
-              {sessionConfig?.policyPath?.trim() || form.policyPath.trim() || "default"}
+              action {sessionConfig?.locomotionConfig.actionScale ?? Number(locomotionConfig.actionScale)} /{" "}
+              {sessionConfig?.locomotionConfig.onnxDevice ?? locomotionConfig.onnxDevice}
             </span>
           </span>
           <span>

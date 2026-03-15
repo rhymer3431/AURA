@@ -5,13 +5,24 @@ describe("dashboard state helpers", () => {
     const payload = buildSessionPayload({
       ...DEFAULT_FORM,
       plannerMode: "pointgoal",
-      policyPath: "  artifacts/models/policy.onnx  ",
+      locomotionConfig: {
+        ...DEFAULT_FORM.locomotionConfig,
+        actionScale: "0.65",
+        onnxDevice: "cuda",
+      },
       goalX: "1.5",
       goalY: "-2.25",
     });
 
     expect(payload.goal).toEqual({ x: 1.5, y: -2.25 });
-    expect(payload.policyPath).toBe("artifacts/models/policy.onnx");
+    expect(payload.locomotionConfig).toEqual({
+      actionScale: 0.65,
+      onnxDevice: "cuda",
+      physicsDt: 0.005,
+      decimation: 4,
+      renderingDt: 0,
+      cmdVelTimeout: 0,
+    });
   });
 
   it("rejects invalid pointgoal coordinates", () => {
@@ -23,6 +34,18 @@ describe("dashboard state helpers", () => {
         goalY: "0",
       }),
     ).toThrow("pointgoal goal must contain numeric x and y values");
+  });
+
+  it("rejects invalid locomotion config values", () => {
+    expect(() =>
+      buildSessionPayload({
+        ...DEFAULT_FORM,
+        locomotionConfig: {
+          ...DEFAULT_FORM.locomotionConfig,
+          actionScale: "abc",
+        },
+      }),
+    ).toThrow("locomotion config must contain numeric values");
   });
 
   it("hydrates state history from runtime and service snapshots", () => {

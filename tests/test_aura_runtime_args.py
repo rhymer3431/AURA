@@ -127,6 +127,7 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
     assert args.viewer_shm_name == DEFAULT_VIEWER_SHM_NAME
     assert args.native_viewer == DEFAULT_NATIVE_VIEWER
     assert args.viewer_publish is False
+    assert args.action_scale == 0.5
     assert args.obstacle_stop_distance_m == 0.45
     assert args.obstacle_hold_distance_m == 0.70
     assert args.obstacle_backoff_vx_mps == 0.18

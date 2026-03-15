@@ -56,6 +56,7 @@ def _print_launch_summary(
         print(f"[INFO] ONNX providers: {providers}")
     print(f"[INFO] Physics dt: {args.physics_dt}")
     print(f"[INFO] Decimation: {args.decimation}")
+    print(f"[INFO] Action scale: {args.action_scale}")
 
 
 def _build_physics_step_callback(world, controller, command_source: CommandSource):
@@ -117,6 +118,7 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
             providers=providers,
             device_preference=args.onnx_device,
             decimation=args.decimation,
+            action_scale=args.action_scale,
         )
 
         stage = omni.usd.get_context().get_stage()
