@@ -117,7 +117,6 @@ export function ControlStrip() {
 
         <div className="flex flex-wrap items-center gap-4">
           <Toggle label="viewer publish" checked={form.viewerEnabled} onChange={(checked) => setForm({ viewerEnabled: checked })} />
-          <Toggle label="show depth" checked={form.showDepth} onChange={(checked) => setForm({ showDepth: checked })} />
           <Toggle label="memory store" checked={form.memoryStore} onChange={(checked) => setForm({ memoryStore: checked })} />
           <Toggle label="detection" checked={form.detectionEnabled} onChange={(checked) => setForm({ detectionEnabled: checked })} />
           <div className="ml-auto text-[11px] text-black/40">

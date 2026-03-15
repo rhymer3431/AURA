@@ -108,6 +108,11 @@ def build_snapshot_message(frame: FrameCache, *, active_command_type: str = "") 
             if value is None:
                 continue
             payload[target_key] = value
+    system2_pixel_goal = frame.viewer_overlay.get("system2_pixel_goal")
+    if isinstance(system2_pixel_goal, list) and len(system2_pixel_goal) >= 2:
+        compact_goal = [int(system2_pixel_goal[0]), int(system2_pixel_goal[1])]
+        payload["system2_pixel_goal"] = compact_goal
+        payload["system2PixelGoal"] = compact_goal
     return payload
 
 
@@ -177,6 +182,11 @@ def build_frame_meta_message(frame: FrameCache) -> dict[str, object]:
             if value is None:
                 continue
             payload[target_key] = value
+    system2_pixel_goal = overlay.get("system2_pixel_goal")
+    if isinstance(system2_pixel_goal, list) and len(system2_pixel_goal) >= 2:
+        compact_goal = [int(system2_pixel_goal[0]), int(system2_pixel_goal[1])]
+        payload["system2_pixel_goal"] = compact_goal
+        payload["system2PixelGoal"] = compact_goal
     return payload
 
 

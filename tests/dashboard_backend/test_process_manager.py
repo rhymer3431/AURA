@@ -65,7 +65,6 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
             "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": True,
-            "showDepth": True,
             "memoryStore": False,
             "detectionEnabled": False,
         }
@@ -88,7 +87,6 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "http://127.0.0.1:8890",
         "--headless",
         "--viewer-publish",
-        "--show-depth",
         "--no-memory-store",
         "--skip-detection",
     )
@@ -128,7 +126,6 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
             "launchMode": "gui",
             "scenePreset": "warehouse",
             "viewerEnabled": False,
-            "showDepth": False,
             "memoryStore": True,
             "detectionEnabled": True,
             "goal": {"x": 2.0, "y": 0.0},
@@ -172,7 +169,6 @@ def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.
             "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": True,
-            "showDepth": False,
             "memoryStore": True,
             "detectionEnabled": True,
         }
@@ -233,7 +229,6 @@ def test_process_manager_uses_windows_process_tree_kill_for_running_processes(mo
             "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": True,
-            "showDepth": False,
             "memoryStore": True,
             "detectionEnabled": True,
         }

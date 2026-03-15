@@ -35,7 +35,6 @@ const mockDashboard = {
     launchMode: "gui" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
-    showDepth: true,
     memoryStore: true,
     detectionEnabled: true,
     goalX: "0",

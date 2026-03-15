@@ -90,6 +90,30 @@ function drawOverlay(
     context.lineTo(x, y + 10);
     context.stroke();
   }
+
+  const system2PixelGoal = asArray<number>(
+    telemetry?.system2PixelGoal ?? telemetry?.system2_pixel_goal ?? snapshot?.system2PixelGoal ?? snapshot?.system2_pixel_goal,
+  );
+  if (system2PixelGoal.length === 2) {
+    const x = (Number(system2PixelGoal[0]) / sourceWidth) * width;
+    const y = (Number(system2PixelGoal[1]) / sourceHeight) * height;
+    context.save();
+    context.lineWidth = 2;
+    context.strokeStyle = "#facc15";
+    context.fillStyle = "#facc15";
+    context.font = "11px monospace";
+    context.beginPath();
+    context.arc(x, y, 10, 0, Math.PI * 2);
+    context.stroke();
+    context.beginPath();
+    context.moveTo(x - 14, y);
+    context.lineTo(x + 14, y);
+    context.moveTo(x, y - 14);
+    context.lineTo(x, y + 14);
+    context.stroke();
+    context.fillText("S2 GOAL", Math.min(x + 14, width - 56), Math.max(y - 12, 14));
+    context.restore();
+  }
 }
 
 export function RobotViewer() {
@@ -130,7 +154,6 @@ export function RobotViewer() {
   const telemetry = asRecord(viewer.telemetryRef.current);
   const image = asRecord(snapshot.image);
   const trackRoles = viewer.trackRoles.length > 0 ? viewer.trackRoles : asArray<string>(state?.transport.peerTrackRoles);
-  const showDepth = state?.session.config?.showDepth === true && trackRoles.includes("depth");
   const detections = asArray<Record<string, unknown>>(telemetry.detections);
   const waitingForFrame = stringValue(snapshot.type) === "waiting_for_frame";
   const frameSource = stringValue(snapshot.source, stringValue(state?.sensors.source, "aura_runtime"));
@@ -183,25 +206,13 @@ export function RobotViewer() {
         />
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
-        {showDepth && (
-          <div className="absolute bottom-3 right-3 w-[28%] aspect-video rounded-lg overflow-hidden border border-white/15 bg-black/40 backdrop-blur-sm">
-            <video
-              ref={viewer.depthVideoRef}
-              className="w-full h-full object-cover"
-              autoPlay
-              muted
-              playsInline
-            />
-          </div>
-        )}
-
         <div className="absolute top-0 left-0 w-full p-3 flex justify-between items-start pointer-events-none">
           <div className="flex flex-col gap-1">
             <div className="font-mono text-[10px] text-white/80 bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">
               SRC: {frameSource}
             </div>
             <div className="font-mono text-[10px] text-white/80 bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">
-              RES: {numberValue(image.width) ?? 0}x{numberValue(image.height) ?? 0} | DEPTH: {showDepth ? "on" : "off"}
+              RES: {numberValue(image.width) ?? 0}x{numberValue(image.height) ?? 0} | TRACKS: {trackRoles.join(",") || "none"}
             </div>
           </div>
           <div className="flex items-center gap-1.5 font-mono text-[10px] text-white/80 bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">

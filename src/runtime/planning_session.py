@@ -119,6 +119,7 @@ class PlanningSession:
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
+        self._last_system2_pixel_goal: list[int] | None = None
         self._last_dual_response_ts = time.perf_counter()
         self._stats = PlannerStats()
         self.last_sensor_init_report: dict[str, Any] = {}
@@ -252,6 +253,7 @@ class PlanningSession:
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
+        self._last_system2_pixel_goal = None
         self._last_dual_response_ts = time.perf_counter()
         self._stats = PlannerStats()
 
@@ -567,6 +569,7 @@ class PlanningSession:
             self._last_server_stale_sec = -1.0
             self._last_goal_version = -1
             self._last_traj_version = -1
+            self._last_system2_pixel_goal = None
             self._stats = PlannerStats(
                 successful_calls=0,
                 failed_calls=1,
@@ -593,6 +596,7 @@ class PlanningSession:
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
+        self._last_system2_pixel_goal = None
         self._last_dual_response_ts = time.perf_counter()
         self._stats = PlannerStats()
         self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
@@ -638,6 +642,7 @@ class PlanningSession:
         self._last_server_stale_sec = -1.0
         self._last_goal_version = -1
         self._last_traj_version = -1
+        self._last_system2_pixel_goal = None
         self._last_dual_response_ts = time.perf_counter()
         self._stats = PlannerStats()
         self._interactive_log(
@@ -843,6 +848,11 @@ class PlanningSession:
         self._last_server_stale_sec = float(plan.stale_sec)
         self._last_goal_version = int(plan.goal_version)
         self._last_traj_version = int(plan.traj_version)
+        self._last_system2_pixel_goal = None
+        if plan.pixel_goal is not None:
+            pixel_goal = np.asarray(plan.pixel_goal, dtype=np.float32).reshape(-1)
+            if pixel_goal.shape[0] >= 2 and np.all(np.isfinite(pixel_goal[:2])):
+                self._last_system2_pixel_goal = [int(round(float(pixel_goal[0]))), int(round(float(pixel_goal[1])))]
         self._stats = PlannerStats(
             successful_calls=int(plan.successful_calls),
             failed_calls=int(plan.failed_calls),
@@ -919,6 +929,8 @@ class PlanningSession:
             state["planner_control_mode"] = self._last_planner_control_mode
             state["planner_yaw_delta_rad"] = self._last_planner_yaw_delta_rad
             state["planner_control_reason"] = str(self._last_planner_control_reason)
+            if self._last_system2_pixel_goal is not None:
+                state["system2_pixel_goal"] = list(self._last_system2_pixel_goal)
         if self.mode == "interactive":
             state["interactive_phase"] = str(self._interactive_state)
             state["interactive_command_id"] = int(self._interactive_active_command_id)

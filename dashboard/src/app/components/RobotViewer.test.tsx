@@ -22,7 +22,6 @@ const mockDashboard = {
         launchMode: "gui",
         scenePreset: "warehouse",
         viewerEnabled: true,
-        showDepth: true,
         memoryStore: true,
         detectionEnabled: true,
       },
@@ -43,7 +42,6 @@ const mockDashboard = {
     launchMode: "gui" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
-    showDepth: true,
     memoryStore: true,
     detectionEnabled: true,
     goalX: "0",
@@ -69,6 +67,7 @@ const mockHookValue = {
       image: { width: 320, height: 180 },
       detector_backend: "stub",
       activeTarget: { nav_goal_pixel: [160, 90] },
+      system2PixelGoal: [220, 120],
     },
   },
   telemetryRef: {
@@ -77,6 +76,7 @@ const mockHookValue = {
       detections: [{ class_name: "apple", confidence: 0.9, bbox_xyxy: [10, 20, 120, 140] }],
       trajectoryPixels: [[10, 10], [20, 20], [30, 30]],
       activeTarget: { nav_goal_pixel: [160, 90] },
+      system2PixelGoal: [220, 120],
     },
   },
   connected: true,
@@ -104,6 +104,8 @@ describe("RobotViewer", () => {
     const stroke = vi.fn();
     const arc = vi.fn();
     const clearRect = vi.fn();
+    const save = vi.fn();
+    const restore = vi.fn();
 
     Object.defineProperty(HTMLCanvasElement.prototype, "getContext", {
       value: () => ({
@@ -115,6 +117,8 @@ describe("RobotViewer", () => {
         stroke,
         arc,
         clearRect,
+        save,
+        restore,
       }),
       configurable: true,
     });
@@ -127,6 +131,7 @@ describe("RobotViewer", () => {
     await waitFor(() => {
       expect(strokeRect).toHaveBeenCalled();
       expect(fillText).toHaveBeenCalledWith(expect.stringContaining("apple"), expect.any(Number), expect.any(Number));
+      expect(fillText).toHaveBeenCalledWith("S2 GOAL", expect.any(Number), expect.any(Number));
       expect(arc).toHaveBeenCalled();
       expect(lineTo).toHaveBeenCalled();
     });

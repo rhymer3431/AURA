@@ -187,6 +187,7 @@ def test_interactive_command_switches_to_task_mode_and_resets_dual() -> None:
             plan_version=0,
             source_frame_id=2,
             trajectory_world=np.asarray([[0.3, 0.0, 0.0], [0.5, 0.1, 0.0]], dtype=np.float32),
+            pixel_goal=None,
             stop=False,
             goal_version=3,
             traj_version=4,
@@ -220,6 +221,7 @@ def test_interactive_completion_returns_to_roaming() -> None:
             plan_version=0,
             source_frame_id=1,
             trajectory_world=np.asarray([[0.3, 0.0, 0.0], [0.5, 0.1, 0.0]], dtype=np.float32),
+            pixel_goal=None,
             stop=False,
             goal_version=1,
             traj_version=2,
@@ -236,6 +238,7 @@ def test_interactive_completion_returns_to_roaming() -> None:
             plan_version=1,
             source_frame_id=2,
             trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            pixel_goal=None,
             stop=True,
             goal_version=2,
             traj_version=3,
@@ -288,6 +291,7 @@ def test_interactive_new_instruction_preempts_active_task() -> None:
             plan_version=0,
             source_frame_id=1,
             trajectory_world=np.asarray([[0.2, 0.0, 0.0], [0.4, 0.0, 0.0]], dtype=np.float32),
+            pixel_goal=None,
             stop=False,
             goal_version=1,
             traj_version=1,
@@ -304,6 +308,7 @@ def test_interactive_new_instruction_preempts_active_task() -> None:
             plan_version=0,
             source_frame_id=2,
             trajectory_world=np.asarray([[0.0, 0.2, 0.0], [0.0, 0.4, 0.0]], dtype=np.float32),
+            pixel_goal=None,
             stop=False,
             goal_version=2,
             traj_version=2,
@@ -339,6 +344,7 @@ def test_interactive_cancel_returns_to_roaming() -> None:
             plan_version=0,
             source_frame_id=1,
             trajectory_world=np.asarray([[0.2, 0.0, 0.0], [0.4, 0.0, 0.0]], dtype=np.float32),
+            pixel_goal=None,
             stop=False,
             goal_version=1,
             traj_version=1,
@@ -380,6 +386,7 @@ def test_dual_mode_uses_dual_server_for_trajectory_generation() -> None:
             plan_version=0,
             source_frame_id=1,
             trajectory_world=np.asarray([[0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32),
+            pixel_goal=np.asarray([240.0, 180.0], dtype=np.float32),
             stop=False,
             goal_version=5,
             traj_version=7,
@@ -408,6 +415,7 @@ def test_dual_mode_uses_dual_server_for_trajectory_generation() -> None:
     assert update.goal_version == 5
     assert update.traj_version == 7
     assert update.trajectory_world.shape == (2, 3)
+    assert session.viewer_overlay_state()["system2_pixel_goal"] == [240, 180]
 
 
 def test_dual_mode_exposes_planner_managed_yaw_control() -> None:
@@ -424,6 +432,7 @@ def test_dual_mode_exposes_planner_managed_yaw_control() -> None:
             plan_version=0,
             source_frame_id=1,
             trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            pixel_goal=None,
             stop=False,
             goal_version=6,
             traj_version=7,

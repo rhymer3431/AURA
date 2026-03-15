@@ -118,6 +118,12 @@ def build_viewer_overlay_payload(
                     value = planner_overlay.get(key)
                     if isinstance(value, (int, float)) and int(value) >= 0:
                         payload[key] = int(value)
+        pixel_goal = np.asarray(planner_overlay.get("system2_pixel_goal", []), dtype=np.float32).reshape(-1)
+        if pixel_goal.shape[0] >= 2 and np.all(np.isfinite(pixel_goal[:2])):
+            payload["system2_pixel_goal"] = [
+                int(round(float(pixel_goal[0]))),
+                int(round(float(pixel_goal[1]))),
+            ]
     active_command_overlay = metadata.get("active_command_overlay")
     if isinstance(active_command_overlay, dict):
         active_target: dict[str, object] = {}

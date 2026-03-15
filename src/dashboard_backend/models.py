@@ -14,7 +14,6 @@ class DashboardSessionRequest:
     launch_mode: str
     scene_preset: str
     viewer_enabled: bool
-    show_depth: bool
     memory_store: bool
     detection_enabled: bool
     goal_x: float | None = None
@@ -32,7 +31,6 @@ class DashboardSessionRequest:
             "launchMode": self.launch_mode,
             "scenePreset": self.scene_preset,
             "viewerEnabled": self.viewer_enabled,
-            "showDepth": self.show_depth,
             "memoryStore": self.memory_store,
             "detectionEnabled": self.detection_enabled,
         }
@@ -46,7 +44,6 @@ def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
     launch_mode = str(payload.get("launchMode", "")).strip().lower()
     scene_preset = str(payload.get("scenePreset", "warehouse")).strip() or "warehouse"
     viewer_enabled = bool(payload.get("viewerEnabled", True))
-    show_depth = bool(payload.get("showDepth", False))
     memory_store = bool(payload.get("memoryStore", True))
     detection_enabled = bool(payload.get("detectionEnabled", True))
     if planner_mode not in {"interactive", "pointgoal"}:
@@ -69,7 +66,6 @@ def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
         launch_mode=launch_mode,
         scene_preset=scene_preset,
         viewer_enabled=viewer_enabled,
-        show_depth=show_depth,
         memory_store=memory_store,
         detection_enabled=detection_enabled,
         goal_x=goal_x,

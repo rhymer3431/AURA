@@ -121,6 +121,7 @@ def test_build_viewer_overlay_payload_projects_planner_trajectory_to_pixels() ->
                 "plan_version": 7,
                 "goal_version": 3,
                 "traj_version": 5,
+                "system2_pixel_goal": [88, 64],
             },
         },
     )
@@ -137,6 +138,7 @@ def test_build_viewer_overlay_payload_projects_planner_trajectory_to_pixels() ->
     assert payload["plan_version"] == 7
     assert payload["goal_version"] == 3
     assert payload["traj_version"] == 5
+    assert payload["system2_pixel_goal"] == [88, 64]
 
 
 def test_build_viewer_overlay_payload_includes_active_target_debug() -> None:

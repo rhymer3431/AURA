@@ -25,7 +25,6 @@ export const DEFAULT_FORM: SessionForm = {
   launchMode: "gui",
   scenePreset: "warehouse",
   viewerEnabled: true,
-  showDepth: true,
   memoryStore: true,
   detectionEnabled: true,
   goalX: "2.0",
@@ -58,7 +57,6 @@ export function buildSessionPayload(form: SessionForm) {
     launchMode: SessionForm["launchMode"];
     scenePreset: string;
     viewerEnabled: boolean;
-    showDepth: boolean;
     memoryStore: boolean;
     detectionEnabled: boolean;
     goal?: { x: number; y: number };
@@ -67,7 +65,6 @@ export function buildSessionPayload(form: SessionForm) {
     launchMode: form.launchMode,
     scenePreset: form.scenePreset,
     viewerEnabled: form.viewerEnabled,
-    showDepth: form.showDepth,
     memoryStore: form.memoryStore,
     detectionEnabled: form.detectionEnabled,
   };

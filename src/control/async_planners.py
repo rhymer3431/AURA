@@ -359,6 +359,7 @@ class DualPlannerOutput:
     plan_version: int
     source_frame_id: int
     trajectory_world: np.ndarray
+    pixel_goal: np.ndarray | None
     stop: bool
     goal_version: int
     traj_version: int
@@ -428,6 +429,7 @@ class AsyncDualPlanner:
                 plan_version=int(latest.plan_version),
                 source_frame_id=int(latest.source_frame_id),
                 trajectory_world=np.asarray(latest.trajectory_world, dtype=np.float32).copy(),
+                pixel_goal=None if latest.pixel_goal is None else np.asarray(latest.pixel_goal, dtype=np.float32).copy(),
                 stop=bool(latest.stop),
                 goal_version=int(latest.goal_version),
                 traj_version=int(latest.traj_version),
@@ -521,6 +523,7 @@ class AsyncDualPlanner:
                         plan_version=int(self._plan_version),
                         source_frame_id=int(pending.frame_id),
                         trajectory_world=trajectory_world.copy(),
+                        pixel_goal=None if response.pixel_goal is None else np.asarray(response.pixel_goal, dtype=np.float32).copy(),
                         stop=bool(response.stop),
                         goal_version=int(response.goal_version),
                         traj_version=int(response.traj_version),

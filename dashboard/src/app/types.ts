@@ -6,7 +6,6 @@ export type SessionForm = {
   launchMode: LaunchMode;
   scenePreset: string;
   viewerEnabled: boolean;
-  showDepth: boolean;
   memoryStore: boolean;
   detectionEnabled: boolean;
   goalX: string;
@@ -44,7 +43,6 @@ export type DashboardState = {
       launchMode: LaunchMode;
       scenePreset: string;
       viewerEnabled: boolean;
-      showDepth: boolean;
       memoryStore: boolean;
       detectionEnabled: boolean;
       goal?: { x: number; y: number };

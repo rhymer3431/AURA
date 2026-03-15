@@ -223,8 +223,6 @@ class ProcessManager:
             args += ["--viewer-publish"]
         else:
             args += ["--no-viewer-publish"]
-        if request.show_depth:
-            args += ["--show-depth"]
         if not request.memory_store:
             args += ["--no-memory-store"]
         if not request.detection_enabled:

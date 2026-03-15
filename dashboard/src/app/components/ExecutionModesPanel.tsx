@@ -71,7 +71,6 @@ export function ExecutionModesPanel() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <ModeBadge label="viewer publish" enabled={form.viewerEnabled} />
-            <ModeBadge label="show depth" enabled={form.showDepth} />
             <ModeBadge label="memory store" enabled={form.memoryStore} />
             <ModeBadge label="detection" enabled={form.detectionEnabled} />
           </div>
@@ -110,7 +109,6 @@ export function ExecutionModesPanel() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <ModeBadge label="viewer publish" enabled={booleanValue(liveConfig?.viewerEnabled)} />
-            <ModeBadge label="show depth" enabled={booleanValue(liveConfig?.showDepth)} />
             <ModeBadge label="memory store" enabled={booleanValue(liveConfig?.memoryStore)} />
             <ModeBadge label="detection" enabled={booleanValue(liveConfig?.detectionEnabled)} />
           </div>
