@@ -380,6 +380,52 @@ class MemoryService:
         )
         return result
 
+    def preview_object_recall(
+        self,
+        *,
+        query_text: str,
+        target_class: str,
+        intent: str,
+        room_id: str = "",
+        current_pose: tuple[float, float, float] | None = None,
+    ):
+        return self.query_engine.recall_object(
+            RecallQuery(
+                query_text=str(query_text),
+                target_class=str(target_class),
+                intent=str(intent),
+                room_id=str(room_id),
+            ),
+            current_pose=current_pose,
+        )
+
+    def record_memory_policy_event(
+        self,
+        *,
+        label: str,
+        source: str,
+        fallback_used: bool,
+        shadow_only: bool,
+        feature_snapshot: dict[str, object] | None = None,
+        prompt_text: str = "",
+    ) -> None:
+        if self._active_episode_id == "":
+            return
+        record = self.episodic_store.get(self._active_episode_id)
+        if record is None:
+            return
+        record.policy_events.append(
+            {
+                "label": str(label),
+                "source": str(source),
+                "fallback_used": bool(fallback_used),
+                "shadow_only": bool(shadow_only),
+                "feature_snapshot": dict(feature_snapshot or {}),
+                "prompt_preview": str(prompt_text).splitlines()[:6],
+                "timestamp": time.time(),
+            }
+        )
+
     def reacquire_follow_target(self, track_id: str, *, now: float, max_age_sec: float = 6.0):
         return self.temporal_store.reacquire_track(track_id, now=now, max_age_sec=max_age_sec)
 

@@ -30,6 +30,8 @@ include = [
     "apps.*",
     "common",
     "common.*",
+    "config",
+    "config.*",
     "control",
     "control.*",
     "dashboard_backend",

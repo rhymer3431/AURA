@@ -5,6 +5,7 @@ from importlib import import_module
 
 _EXPORTS = {
     "DualOrchestrator": ("services.dual_orchestrator", "DualOrchestrator"),
+    "MemoryPolicyService": ("services.memory_policy_service", "MemoryPolicyService"),
     "MemoryService": ("services.memory_service", "MemoryService"),
     "NavDPInferenceService": ("services.navdp_inference_service", "NavDPInferenceService"),
     "TaskOrchestrator": ("services.task_orchestrator", "TaskOrchestrator"),

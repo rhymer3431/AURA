@@ -139,13 +139,19 @@ class Supervisor:
         *,
         now: float,
         robot_pose: tuple[float, float, float],
+        robot_yaw_rad: float | None = None,
         action_status: ActionStatus | None = None,
         publish: bool = True,
         publish_status: bool = False,
     ) -> ActionCommand | None:
         if action_status is not None and publish and publish_status:
             self.bridge.publish_status(action_status)
-        command = self.orchestrator.step(now=now, robot_pose=robot_pose, action_status=action_status)
+        command = self.orchestrator.step(
+            now=now,
+            robot_pose=robot_pose,
+            robot_yaw_rad=robot_yaw_rad,
+            action_status=action_status,
+        )
         if command is not None and publish:
             self.bus.publish(self.bridge.config.command_topic, command)
         return command
@@ -165,6 +171,7 @@ class Supervisor:
         robot_pose: tuple[float, float, float] | None = None,
     ) -> BusCycleResult:
         latest_robot_pose = robot_pose
+        latest_robot_yaw = 0.0
         task_requests = self.bridge.drain_task_requests()
         for request in task_requests:
             self.orchestrator.submit_task(request)
@@ -172,11 +179,18 @@ class Supervisor:
         for frame_header in frame_headers:
             batch = self.bridge.reconstruct_batch(frame_header)
             latest_robot_pose = batch.robot_pose_xyz
+            latest_robot_yaw = float(batch.robot_yaw_rad)
             self.process_frame(batch, publish=False)
         statuses = self.bridge.drain_statuses()
         latest_status = statuses[-1] if statuses else None
         pose = latest_robot_pose or (0.0, 0.0, 0.0)
-        command = self.step(now=now, robot_pose=pose, action_status=latest_status, publish=True)
+        command = self.step(
+            now=now,
+            robot_pose=pose,
+            robot_yaw_rad=latest_robot_yaw,
+            action_status=latest_status,
+            publish=True,
+        )
         return BusCycleResult(
             command=command,
             task_count=len(task_requests),

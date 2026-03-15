@@ -13,6 +13,20 @@ class SubgoalPlanner:
             metadata={"speaker_id": event.speaker_id, **event.metadata},
         )
 
+    def look_at_yaw(
+        self,
+        yaw_rad: float,
+        *,
+        task_id: str = "",
+        metadata: dict[str, object] | None = None,
+    ) -> ActionCommand:
+        return ActionCommand(
+            action_type="LOOK_AT",
+            task_id=task_id,
+            look_at_yaw_rad=float(yaw_rad),
+            metadata=dict(metadata or {}),
+        )
+
     def follow_target(
         self,
         *,

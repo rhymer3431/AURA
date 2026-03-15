@@ -111,6 +111,7 @@ class EpisodeRecord:
     success: bool | None = None
     failure_reason: str = ""
     recovery_actions: list[str] = field(default_factory=list)
+    policy_events: list[dict[str, Any]] = field(default_factory=list)
     summary_text: str = ""
     started_at: float = 0.0
     ended_at: float = 0.0
