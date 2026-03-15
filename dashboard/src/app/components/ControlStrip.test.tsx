@@ -6,7 +6,7 @@ import { ControlStrip } from "./ControlStrip";
 const mockContext: any = {
   bootstrap: {
     plannerModes: ["interactive"],
-    launchModes: ["gui", "headless"],
+    launchModes: ["headless"],
     scenePresets: ["warehouse", "interior agent kujiale 3"],
     apiBaseUrl: "http://127.0.0.1:8095",
     devOrigin: "",
@@ -27,7 +27,7 @@ const mockContext: any = {
   history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
   form: {
     plannerMode: "interactive" as const,
-    launchMode: "gui" as const,
+    launchMode: "headless" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
     memoryStore: true,
@@ -76,7 +76,7 @@ describe("ControlStrip", () => {
         startedAt: 1,
         config: {
           plannerMode: "interactive",
-          launchMode: "gui",
+          launchMode: "headless",
           scenePreset: "warehouse",
           viewerEnabled: true,
           memoryStore: true,

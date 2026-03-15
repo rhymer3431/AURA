@@ -6,7 +6,7 @@ import { RobotViewer } from "./RobotViewer";
 const mockDashboard = {
   bootstrap: {
     plannerModes: ["interactive"],
-    launchModes: ["gui"],
+    launchModes: ["headless"],
     scenePresets: ["warehouse"],
     apiBaseUrl: "http://127.0.0.1:8095",
     devOrigin: "",
@@ -19,7 +19,7 @@ const mockDashboard = {
       startedAt: 1,
       config: {
         plannerMode: "interactive",
-        launchMode: "gui",
+        launchMode: "headless",
         scenePreset: "warehouse",
         viewerEnabled: true,
         memoryStore: true,
@@ -46,7 +46,7 @@ const mockDashboard = {
   history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
   form: {
     plannerMode: "interactive" as const,
-    launchMode: "gui" as const,
+    launchMode: "headless" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
     memoryStore: true,

@@ -127,7 +127,7 @@ def test_parse_session_request_rejects_removed_pointgoal_mode() -> None:
         parse_session_request(
             {
                 "plannerMode": "pointgoal",
-                "launchMode": "gui",
+                "launchMode": "headless",
                 "scenePreset": "warehouse",
                 "viewerEnabled": False,
                 "memoryStore": True,
@@ -142,12 +142,26 @@ def test_parse_session_request_rejects_legacy_startup_goal_payload() -> None:
         parse_session_request(
             {
                 "plannerMode": "interactive",
-                "launchMode": "gui",
+                "launchMode": "headless",
                 "scenePreset": "warehouse",
                 "viewerEnabled": False,
                 "memoryStore": True,
                 "detectionEnabled": True,
                 "goal": {"x": 2.0, "y": 0.0},
+            }
+        )
+
+
+def test_parse_session_request_rejects_gui_launch_mode_for_dashboard() -> None:
+    with pytest.raises(ValueError, match="launchMode must be headless for dashboard sessions"):
+        parse_session_request(
+            {
+                "plannerMode": "interactive",
+                "launchMode": "gui",
+                "scenePreset": "warehouse",
+                "viewerEnabled": True,
+                "memoryStore": True,
+                "detectionEnabled": True,
             }
         )
 
@@ -176,7 +190,7 @@ def test_process_manager_includes_default_locomotion_config_when_not_overridden(
     request = parse_session_request(
         {
             "plannerMode": "interactive",
-            "launchMode": "gui",
+            "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": False,
             "memoryStore": True,

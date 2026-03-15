@@ -28,7 +28,7 @@ export function ExecutionModesPanel() {
   const { bootstrap, form, state } = useDashboard();
   const liveConfig = state?.session.config;
   const plannerModes = bootstrap?.plannerModes ?? ["interactive"];
-  const launchModes = bootstrap?.launchModes ?? ["gui", "headless"];
+  const launchModes = bootstrap?.launchModes ?? ["headless"];
   const goalText = "submit `/pointgoal x y` while interactive is running";
   const locomotionText = [
     `action ${form.locomotionConfig.actionScale}`,

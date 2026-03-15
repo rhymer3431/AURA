@@ -157,7 +157,7 @@ class DashboardWebApp:
         return web.json_response(
             {
                 "plannerModes": ["interactive"],
-                "launchModes": ["gui", "headless"],
+                "launchModes": ["headless"],
                 "scenePresets": ["warehouse", "interioragent", "interior agent kujiale 3"],
                 "apiBaseUrl": self.config.api_base_url,
                 "devOrigin": self.config.dev_origin,

@@ -22,7 +22,7 @@ const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export const DEFAULT_FORM: SessionForm = {
   plannerMode: "interactive",
-  launchMode: "gui",
+  launchMode: "headless",
   scenePreset: "warehouse",
   viewerEnabled: true,
   memoryStore: true,

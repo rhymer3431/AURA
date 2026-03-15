@@ -92,7 +92,7 @@ def _parse_locomotion_config(payload: Any) -> DashboardLocomotionConfig:
 
 def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
     planner_mode = str(payload.get("plannerMode", "interactive")).strip().lower() or "interactive"
-    launch_mode = str(payload.get("launchMode", "")).strip().lower()
+    launch_mode = str(payload.get("launchMode", "headless")).strip().lower() or "headless"
     scene_preset = str(payload.get("scenePreset", "warehouse")).strip() or "warehouse"
     viewer_enabled = bool(payload.get("viewerEnabled", True))
     memory_store = bool(payload.get("memoryStore", True))
@@ -100,8 +100,8 @@ def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
     locomotion_config = _parse_locomotion_config(payload.get("locomotionConfig"))
     if planner_mode != "interactive":
         raise ValueError("plannerMode must be interactive")
-    if launch_mode not in {"gui", "headless"}:
-        raise ValueError("launchMode must be gui or headless")
+    if launch_mode != "headless":
+        raise ValueError("launchMode must be headless for dashboard sessions")
     goal_payload = payload.get("goal")
     goal_x: float | None = None
     goal_y: float | None = None

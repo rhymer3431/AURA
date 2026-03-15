@@ -6,7 +6,7 @@ import App from "./App";
 const mockDashboard = {
   bootstrap: {
     plannerModes: ["interactive"],
-    launchModes: ["gui", "headless"],
+    launchModes: ["headless"],
     scenePresets: ["warehouse"],
     apiBaseUrl: "http://127.0.0.1:8095",
     devOrigin: "",
@@ -32,7 +32,7 @@ const mockDashboard = {
   history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
   form: {
     plannerMode: "interactive" as const,
-    launchMode: "gui" as const,
+    launchMode: "headless" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
     memoryStore: true,

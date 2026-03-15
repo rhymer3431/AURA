@@ -52,14 +52,7 @@ export function ControlStrip() {
           </div>
           <div>
             <div className="text-[11px] text-black/40 mb-1">launch mode</div>
-            <select
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
-              value={form.launchMode}
-              onChange={(event) => setForm({ launchMode: event.target.value as "gui" | "headless" })}
-            >
-              <option value="gui">gui</option>
-              <option value="headless">headless</option>
-            </select>
+            <div className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 min-w-[140px]">headless</div>
           </div>
           <div>
             <div className="text-[11px] text-black/40 mb-1">scene preset</div>
