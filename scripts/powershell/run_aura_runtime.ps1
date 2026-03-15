@@ -342,7 +342,7 @@ if (-not $HasSceneOverride) {
     if (-not [string]::IsNullOrWhiteSpace($SceneUsd)) {
         if (-not (Test-Path -LiteralPath $SceneUsd)) {
             Write-Host "[AURA Runtime] Scene USD not found: `"$SceneUsd`""
-            Write-Host "[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent|\"interior agent kujiale 3\", or pass --scene-usd/--env-url explicitly."
+            Write-Host '[AURA Runtime] Set G1_POINTGOAL_SCENE_USD, choose --scene-preset warehouse|interioragent|"interior agent kujiale 3", or pass --scene-usd/--env-url explicitly.'
             exit 1
         }
     } elseif (-not [string]::IsNullOrWhiteSpace($DefaultSceneUsd) -and (-not (Test-Path -LiteralPath $DefaultSceneUsd))) {
@@ -388,12 +388,12 @@ Write-Host "[AURA Runtime] default detection=on"
 Write-Host "[AURA Runtime] user args override defaults when repeated."
 Write-Host "[AURA Runtime] examples:"
 Write-Host "[AURA Runtime]   interactive: .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode gui"
-Write-Host "[AURA Runtime]   dual       : .\\run_aura_runtime.ps1 --planner-mode dual --instruction \"go to the loading dock\""
+Write-Host '[AURA Runtime]   dual       : .\\run_aura_runtime.ps1 --planner-mode dual --instruction "go to the loading dock"'
 Write-Host "[AURA Runtime]   warehouse  : .\\run_aura_runtime.ps1 --scene-preset warehouse --planner-mode interactive"
 Write-Host "[AURA Runtime]   interior   : .\\run_aura_runtime.ps1 --scene-preset interioragent --planner-mode interactive"
-Write-Host "[AURA Runtime]   kujiale 3  : .\\run_aura_runtime.ps1 --scene-preset \"interior agent kujiale 3\" --planner-mode interactive"
-Write-Host "[AURA Runtime]   pointgoal  : start interactive, then type `/pointgoal 2.0 0.0` in the terminal"
-Write-Host "[AURA Runtime]   pointgoal+v: .\\run_aura_runtime.ps1 --launch-mode g1_view  # then type `/pointgoal 2.0 0.0`"
+Write-Host '[AURA Runtime]   kujiale 3  : .\\run_aura_runtime.ps1 --scene-preset "interior agent kujiale 3" --planner-mode interactive'
+Write-Host '[AURA Runtime]   pointgoal  : start interactive, then type /pointgoal 2.0 0.0 in the terminal'
+Write-Host '[AURA Runtime]   pointgoal+v: .\\run_aura_runtime.ps1 --launch-mode g1_view  # then type /pointgoal 2.0 0.0'
 Write-Host "[AURA Runtime]   interac+d  : .\\run_aura_runtime.ps1 --planner-mode interactive --launch-mode g1_view --show-depth"
 Write-Host "[AURA Runtime]   no memory : .\\run_aura_runtime.ps1 --no-memory-store"
 Write-Host "[AURA Runtime]   no detect: .\\run_aura_runtime.ps1 --skip-detection"
