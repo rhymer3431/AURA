@@ -5,11 +5,13 @@ describe("dashboard state helpers", () => {
     const payload = buildSessionPayload({
       ...DEFAULT_FORM,
       plannerMode: "pointgoal",
+      policyPath: "  artifacts/models/policy.onnx  ",
       goalX: "1.5",
       goalY: "-2.25",
     });
 
     expect(payload.goal).toEqual({ x: 1.5, y: -2.25 });
+    expect(payload.policyPath).toBe("artifacts/models/policy.onnx");
   });
 
   it("rejects invalid pointgoal coordinates", () => {

@@ -227,6 +227,8 @@ class ProcessManager:
             args += ["--no-memory-store"]
         if not request.detection_enabled:
             args += ["--skip-detection"]
+        if request.policy_path:
+            args += ["--policy", request.policy_path]
         if request.planner_mode == "pointgoal":
             assert request.goal_x is not None and request.goal_y is not None
             args += ["--goal-x", str(request.goal_x), "--goal-y", str(request.goal_y)]

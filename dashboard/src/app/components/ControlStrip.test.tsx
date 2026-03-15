@@ -32,6 +32,7 @@ const mockContext: any = {
     viewerEnabled: true,
     memoryStore: true,
     detectionEnabled: true,
+    policyPath: "",
     goalX: "abc",
     goalY: "0",
   },
@@ -76,6 +77,7 @@ describe("ControlStrip", () => {
           viewerEnabled: true,
           memoryStore: true,
           detectionEnabled: true,
+          policyPath: "artifacts/models/policy.onnx",
         },
         lastEvent: null,
       },
@@ -107,5 +109,23 @@ describe("ControlStrip", () => {
     });
 
     expect(mockContext.setForm).toHaveBeenCalledWith({ scenePreset: "interior agent kujiale 3" });
+  });
+
+  it("updates the locomotion policy path from the dashboard input", () => {
+    mockContext.form = {
+      ...mockContext.form,
+      plannerMode: "interactive",
+      policyPath: "",
+      goalX: "1",
+      goalY: "2",
+    };
+
+    render(<ControlStrip />);
+
+    fireEvent.change(screen.getByPlaceholderText("비워두면 런타임 기본 policy를 사용합니다"), {
+      target: { value: "artifacts/models/policy.onnx" },
+    });
+
+    expect(mockContext.setForm).toHaveBeenCalledWith({ policyPath: "artifacts/models/policy.onnx" });
   });
 });

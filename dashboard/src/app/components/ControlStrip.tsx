@@ -75,6 +75,15 @@ export function ControlStrip() {
               ))}
             </select>
           </div>
+          <div className="min-w-[280px] flex-1">
+            <div className="text-[11px] text-black/40 mb-1">g1 locomotion policy</div>
+            <input
+              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              value={form.policyPath}
+              onChange={(event) => setForm({ policyPath: event.target.value })}
+              placeholder="비워두면 런타임 기본 policy를 사용합니다"
+            />
+          </div>
           {form.plannerMode === "pointgoal" && (
             <>
               <div>
@@ -164,6 +173,12 @@ export function ControlStrip() {
             runtime:{" "}
             <span className="text-black/80 font-medium">
               {sessionConfig?.plannerMode ?? form.plannerMode} / {sessionConfig?.launchMode ?? form.launchMode}
+            </span>
+          </span>
+          <span className="truncate">
+            policy:{" "}
+            <span className="text-black/80 font-medium">
+              {sessionConfig?.policyPath?.trim() || form.policyPath.trim() || "default"}
             </span>
           </span>
           <span>

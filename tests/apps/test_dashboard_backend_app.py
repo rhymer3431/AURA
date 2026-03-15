@@ -260,12 +260,14 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                         "viewerEnabled": True,
                         "memoryStore": True,
                         "detectionEnabled": True,
+                        "policyPath": "artifacts/models/policy.onnx",
                     },
                 )
                 assert response.status == 200
                 started = await response.json()
                 assert started["session"]["active"] is True
                 assert started["session"]["config"]["plannerMode"] == "interactive"
+                assert started["session"]["config"]["policyPath"] == "artifacts/models/policy.onnx"
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/runtime/task",
@@ -355,6 +357,7 @@ def test_dashboard_backend_returns_service_unavailable_when_process_start_fails(
                         "viewerEnabled": True,
                         "memoryStore": True,
                         "detectionEnabled": True,
+                        "policyPath": "artifacts/models/policy.onnx",
                     },
                 )
                 assert response.status == 503

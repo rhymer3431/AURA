@@ -16,6 +16,7 @@ class DashboardSessionRequest:
     viewer_enabled: bool
     memory_store: bool
     detection_enabled: bool
+    policy_path: str | None = None
     goal_x: float | None = None
     goal_y: float | None = None
 
@@ -34,6 +35,8 @@ class DashboardSessionRequest:
             "memoryStore": self.memory_store,
             "detectionEnabled": self.detection_enabled,
         }
+        if self.policy_path is not None:
+            payload["policyPath"] = self.policy_path
         if self.goal_x is not None and self.goal_y is not None:
             payload["goal"] = {"x": float(self.goal_x), "y": float(self.goal_y)}
         return payload
@@ -46,6 +49,8 @@ def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
     viewer_enabled = bool(payload.get("viewerEnabled", True))
     memory_store = bool(payload.get("memoryStore", True))
     detection_enabled = bool(payload.get("detectionEnabled", True))
+    raw_policy_path = payload.get("policyPath")
+    policy_path = str(raw_policy_path).strip() if raw_policy_path is not None else ""
     if planner_mode not in {"interactive", "pointgoal"}:
         raise ValueError("plannerMode must be interactive or pointgoal")
     if launch_mode not in {"gui", "headless"}:
@@ -68,6 +73,7 @@ def parse_session_request(payload: dict[str, Any]) -> DashboardSessionRequest:
         viewer_enabled=viewer_enabled,
         memory_store=memory_store,
         detection_enabled=detection_enabled,
+        policy_path=policy_path or None,
         goal_x=goal_x,
         goal_y=goal_y,
     )

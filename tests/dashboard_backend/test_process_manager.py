@@ -67,6 +67,7 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
             "viewerEnabled": True,
             "memoryStore": False,
             "detectionEnabled": False,
+            "policyPath": "artifacts/models/policy.onnx",
         }
     )
 
@@ -89,6 +90,8 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "--viewer-publish",
         "--no-memory-store",
         "--skip-detection",
+        "--policy",
+        "artifacts/models/policy.onnx",
     )
     assert [item["name"] for item in snapshot if item["state"] == "running"] == ["navdp", "system2", "dual", "runtime"]
 
@@ -139,6 +142,45 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
     assert snapshot["runtime"]["state"] == "running"
     assert snapshot["system2"]["state"] == "not_required"
     assert snapshot["dual"]["state"] == "not_required"
+
+
+def test_process_manager_omits_policy_override_when_not_provided(monkeypatch: pytest.MonkeyPatch) -> None:
+    created_specs = []
+
+    def runner(spec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:  # noqa: ANN001
+        created_specs.append(spec)
+        return ManagedProcess(
+            spec=spec,
+            process=_FakeProcess(spec.name, []),
+            started_at=time.time(),
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
+        )
+
+    async def no_wait(*_args, **_kwargs) -> None:
+        return None
+
+    config = DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard")
+    manager = ProcessManager(config, runner=runner)
+    monkeypatch.setattr(manager, "_wait_ready", no_wait)
+    monkeypatch.setattr(manager, "_reserve_port", lambda _host, preferred_port, reserved=None: preferred_port)
+
+    request = parse_session_request(
+        {
+            "plannerMode": "pointgoal",
+            "launchMode": "gui",
+            "scenePreset": "warehouse",
+            "viewerEnabled": False,
+            "memoryStore": True,
+            "detectionEnabled": True,
+            "goal": {"x": 2.0, "y": 0.0},
+        }
+    )
+
+    asyncio.run(manager.start_session(request))
+
+    runtime_spec = next(spec for spec in created_specs if spec.name == "runtime")
+    assert "--policy" not in runtime_spec.args
 
 
 def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.MonkeyPatch) -> None:

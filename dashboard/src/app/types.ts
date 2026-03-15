@@ -8,6 +8,7 @@ export type SessionForm = {
   viewerEnabled: boolean;
   memoryStore: boolean;
   detectionEnabled: boolean;
+  policyPath: string;
   goalX: string;
   goalY: string;
 };
@@ -45,6 +46,7 @@ export type DashboardState = {
       viewerEnabled: boolean;
       memoryStore: boolean;
       detectionEnabled: boolean;
+      policyPath?: string;
       goal?: { x: number; y: number };
     } | null;
     lastEvent: LogRecord | null;

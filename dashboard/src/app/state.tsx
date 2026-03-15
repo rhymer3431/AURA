@@ -27,6 +27,7 @@ export const DEFAULT_FORM: SessionForm = {
   viewerEnabled: true,
   memoryStore: true,
   detectionEnabled: true,
+  policyPath: "",
   goalX: "2.0",
   goalY: "0.0",
 };
@@ -59,6 +60,7 @@ export function buildSessionPayload(form: SessionForm) {
     viewerEnabled: boolean;
     memoryStore: boolean;
     detectionEnabled: boolean;
+    policyPath?: string;
     goal?: { x: number; y: number };
   } = {
     plannerMode: form.plannerMode,
@@ -68,6 +70,10 @@ export function buildSessionPayload(form: SessionForm) {
     memoryStore: form.memoryStore,
     detectionEnabled: form.detectionEnabled,
   };
+  const normalizedPolicyPath = form.policyPath.trim();
+  if (normalizedPolicyPath !== "") {
+    payload.policyPath = normalizedPolicyPath;
+  }
   if (form.plannerMode === "pointgoal") {
     const goalX = Number(form.goalX);
     const goalY = Number(form.goalY);

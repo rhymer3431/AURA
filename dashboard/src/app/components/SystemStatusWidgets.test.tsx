@@ -40,6 +40,7 @@ const mockDashboard = {
     viewerEnabled: true,
     memoryStore: true,
     detectionEnabled: true,
+    policyPath: "",
     goalX: "0",
     goalY: "0",
   },
