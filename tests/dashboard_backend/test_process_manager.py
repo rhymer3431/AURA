@@ -120,7 +120,10 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
 
 
 def test_process_manager_marks_optional_services_not_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    created_specs = []
+
     def runner(spec, stdout_log: Path, stderr_log: Path) -> ManagedProcess:  # noqa: ANN001
+        created_specs.append(spec)
         return ManagedProcess(
             spec=spec,
             process=_FakeProcess(spec.name, []),
@@ -151,11 +154,13 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
 
     asyncio.run(manager.start_session(request))
     snapshot = {item["name"]: item for item in manager.snapshot()}
+    runtime_spec = next(spec for spec in created_specs if spec.name == "runtime")
 
     assert snapshot["navdp"]["state"] == "running"
     assert snapshot["runtime"]["state"] == "running"
     assert snapshot["system2"]["state"] == "not_required"
     assert snapshot["dual"]["state"] == "not_required"
+    assert "--no-exit-on-pointgoal-failure" in runtime_spec.args
 
 
 def test_process_manager_includes_default_locomotion_config_when_not_overridden(monkeypatch: pytest.MonkeyPatch) -> None:

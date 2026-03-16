@@ -67,6 +67,7 @@ class AuraRuntimeCommandSource:
         self._pending_exit_code: int | None = None
         self._pending_exit_frames = 0
         self._pending_exit_reason = ""
+        self._last_suppressed_pointgoal_failure_reason = ""
         self._interactive_running = False
         self._interactive_input_thread: threading.Thread | None = None
         self._last_interactive_phase = ""
@@ -191,11 +192,7 @@ class AuraRuntimeCommandSource:
         if self._pending_status is not None and self._runtime_io is not None:
             self.supervisor.bridge.publish_status(self._pending_status)
         self._publish_runtime_snapshot(frame_idx, update=update, evaluation=evaluation)
-
-        if evaluation.reached_goal and self._mode == "pointgoal":
-            self._arm_exit(0, f"goal reached at step={frame_idx} dist={evaluation.goal_distance_m:.3f}m")
-        elif self._pending_status is not None and self._pending_status.state == "failed" and self._mode == "pointgoal":
-            self._arm_exit(1, self._pending_status.reason or "pointgoal planning failed")
+        self._handle_pointgoal_terminal_state(frame_idx=frame_idx, evaluation=evaluation)
 
         if self._pending_exit_code is not None:
             if self._pending_exit_frames <= 0:
@@ -299,6 +296,24 @@ class AuraRuntimeCommandSource:
             self._pending_exit_code = int(exit_code)
             self._pending_exit_reason = str(reason)
             self._pending_exit_frames = 1
+
+    def _handle_pointgoal_terminal_state(self, *, frame_idx: int, evaluation: CommandEvaluation) -> None:
+        if self._mode != "pointgoal":
+            return
+        if evaluation.reached_goal:
+            self._last_suppressed_pointgoal_failure_reason = ""
+            self._arm_exit(0, f"goal reached at step={frame_idx} dist={evaluation.goal_distance_m:.3f}m")
+            return
+        if self._pending_status is None or self._pending_status.state != "failed":
+            self._last_suppressed_pointgoal_failure_reason = ""
+            return
+        reason = self._pending_status.reason or "pointgoal planning failed"
+        if bool(getattr(self.args, "exit_on_pointgoal_failure", True)):
+            self._arm_exit(1, reason)
+            return
+        if reason != self._last_suppressed_pointgoal_failure_reason:
+            print(f"[G1_POINTGOAL] planner failure suppressed for dashboard session: {reason}")
+            self._last_suppressed_pointgoal_failure_reason = str(reason)
 
     def _print_interactive_help(self) -> None:
         print("[G1_INTERACTIVE][ROAM] terminal natural-language control")

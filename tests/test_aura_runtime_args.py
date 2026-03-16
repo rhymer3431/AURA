@@ -64,6 +64,22 @@ def test_validate_args_accepts_standard_pointgoal_mode():
     validate_args(args)
 
 
+def test_validate_args_accepts_pointgoal_with_failure_exit_disabled():
+    args = _parse_args(
+        "--planner-mode",
+        "pointgoal",
+        "--goal-x",
+        "2.0",
+        "--goal-y",
+        "0.0",
+        "--no-exit-on-pointgoal-failure",
+    )
+
+    apply_demo_defaults(args)
+    validate_args(args)
+    assert args.exit_on_pointgoal_failure is False
+
+
 def test_validate_args_accepts_standard_dual_mode():
     args = _parse_args("--planner-mode", "dual", "--instruction", "Navigate to the target shelf and stop.")
 
@@ -132,6 +148,7 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
     assert args.obstacle_hold_distance_m == 0.70
     assert args.obstacle_backoff_vx_mps == 0.18
     assert args.obstacle_recovery_hold_sec == 0.75
+    assert args.exit_on_pointgoal_failure is True
     assert args.global_map_image == ""
     assert args.global_map_config == ""
     assert args.global_waypoint_spacing_m == 0.75

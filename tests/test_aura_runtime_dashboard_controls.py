@@ -196,3 +196,41 @@ def test_build_runtime_snapshot_contains_dashboard_contract_groups() -> None:
     assert snapshot["perception"]["detectionCount"] == 1
     assert snapshot["memory"]["objectCount"] == 2
     assert snapshot["transport"]["viewerPublish"] is False
+
+
+def test_pointgoal_failure_exit_can_be_suppressed_for_dashboard_sessions() -> None:
+    source = object.__new__(AuraRuntimeCommandSource)
+    source.args = Namespace(exit_on_pointgoal_failure=False)
+    source._mode = "pointgoal"
+    source._pending_status = SimpleNamespace(state="failed", reason="planner timeout")
+    source._pending_exit_code = None
+    source._pending_exit_reason = ""
+    source._pending_exit_frames = 0
+    source._last_suppressed_pointgoal_failure_reason = ""
+
+    source._handle_pointgoal_terminal_state(
+        frame_idx=12,
+        evaluation=CommandEvaluation(force_stop=True, goal_distance_m=1.2, yaw_error_rad=0.0, reached_goal=False),
+    )
+
+    assert source._pending_exit_code is None
+    assert source._last_suppressed_pointgoal_failure_reason == "planner timeout"
+
+
+def test_pointgoal_failure_exit_remains_enabled_by_default() -> None:
+    source = object.__new__(AuraRuntimeCommandSource)
+    source.args = Namespace(exit_on_pointgoal_failure=True)
+    source._mode = "pointgoal"
+    source._pending_status = SimpleNamespace(state="failed", reason="planner timeout")
+    source._pending_exit_code = None
+    source._pending_exit_reason = ""
+    source._pending_exit_frames = 0
+    source._last_suppressed_pointgoal_failure_reason = ""
+
+    source._handle_pointgoal_terminal_state(
+        frame_idx=12,
+        evaluation=CommandEvaluation(force_stop=True, goal_distance_m=1.2, yaw_error_rad=0.0, reached_goal=False),
+    )
+
+    assert source._pending_exit_code == 1
+    assert source._pending_exit_reason == "planner timeout"
