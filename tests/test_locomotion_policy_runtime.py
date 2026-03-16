@@ -61,12 +61,12 @@ def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> Non
     assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
 
 
-def test_resolve_default_policy_path_prefers_tuned_engine(tmp_path: Path) -> None:
-    tuned_dir = tmp_path / "tuned"
+def test_resolve_default_policy_path_prefers_src_engine(tmp_path: Path) -> None:
+    policy_dir = tmp_path / "src" / "locomotion" / "models"
     models_dir = tmp_path / "artifacts" / "models"
-    tuned_dir.mkdir(parents=True)
+    policy_dir.mkdir(parents=True)
     models_dir.mkdir(parents=True)
-    tuned_engine_path = tuned_dir / "policy_fp16.engine"
+    tuned_engine_path = policy_dir / "policy_fp16.engine"
     fallback_engine_path = models_dir / "g1_policy_fp32.engine"
     tuned_engine_path.write_bytes(b"tuned-engine")
     fallback_engine_path.write_bytes(b"fallback-engine")
@@ -78,7 +78,7 @@ def test_validate_default_policy_device_rejects_cpu_for_default_engine() -> None
     args = SimpleNamespace(policy="", onnx_device="cpu")
 
     with pytest.raises(RuntimeError, match="requires CUDA/TensorRT"):
-        _validate_default_policy_device(args, "/tmp/tuned/policy_fp16.engine")
+        _validate_default_policy_device(args, "/tmp/src/locomotion/models/policy_fp16.engine")
 
 
 def test_height_scan_grid_matches_official_layout() -> None:

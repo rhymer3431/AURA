@@ -8,7 +8,7 @@ from control.navdp_follower import NavDPFollower, NavDPFollowerConfig
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FOLLOWER_POLICY_PATH = ROOT / "tuned" / "navdp follower" / "exported" / "policy.onnx"
+FOLLOWER_POLICY_PATH = ROOT / "src" / "control" / "models" / "navdp_follower.onnx"
 
 
 class _FakePolicySession:

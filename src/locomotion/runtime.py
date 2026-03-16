@@ -47,7 +47,7 @@ def _validate_default_policy_device(args, policy_path: str) -> None:
     if str(getattr(args, "onnx_device", "auto")).strip().lower() != "cpu":
         return
     raise RuntimeError(
-        "Default locomotion policy uses tuned/policy_fp16.engine and requires CUDA/TensorRT. "
+        "Default locomotion policy uses src/locomotion/models/policy_fp16.engine and requires CUDA/TensorRT. "
         "Use --onnx-device auto/cuda, or pass an explicit ONNX policy with --policy."
     )
 
