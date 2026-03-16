@@ -6,6 +6,8 @@ from argparse import Namespace
 from pathlib import Path
 
 import numpy as np
+import pytest
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -21,6 +23,7 @@ from runtime.planning_session import PlanningSession
 class _FakeNavDPClient:
     def __init__(self) -> None:
         self.reset_calls = 0
+        self.point_goals: list[np.ndarray] = []
 
     @property
     def backend_name(self) -> str:
@@ -37,6 +40,7 @@ class _FakeNavDPClient:
         assert point_goals.shape == (1, 2)
         assert rgb_images.shape[0] == 1
         assert depth_images_m.shape[0] == 1
+        self.point_goals.append(np.asarray(point_goals, dtype=np.float32).copy())
         trajectory = np.asarray([[0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32)
         return NavDPPointGoalResponse(
             trajectory=trajectory,
@@ -58,6 +62,7 @@ class _FakeNavDPClient:
 
 def _args() -> Namespace:
     return Namespace(
+        planner_mode="pointgoal",
         use_trajectory_z=False,
         plan_wait_timeout_sec=0.5,
         navdp_backend="heuristic",
@@ -67,7 +72,31 @@ def _args() -> Namespace:
         navdp_amp_dtype="float16",
         navdp_tf32=False,
         stop_threshold=-3.0,
+        global_map_image="",
+        global_map_config="",
+        global_waypoint_spacing_m=0.75,
+        global_inflation_radius_m=0.25,
     )
+
+
+def _write_global_map_assets(tmp_path: Path) -> tuple[Path, Path]:
+    image = np.full((5, 5), 255, dtype=np.uint8)
+    image_path = tmp_path / "occupancy_map.png"
+    config_path = tmp_path / "config.txt"
+    Image.fromarray(image, mode="L").save(image_path)
+    config_path.write_text(
+        "\n".join(
+            [
+                "Top Left: (0.0, 4.0)\t\t Top Right: (4.0, 4.0)",
+                " Bottom Left: (0.0, 0.0)\t\t Bottom Right: (4.0, 0.0)",
+                "Coordinates of top left of image (pixel 0,0) as origin, + X down, + Y right:",
+                "(0.0, 4.0)",
+                "Image size in pixels: 5, 5",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return image_path, config_path
 
 
 def test_planning_session_uses_local_executor_without_legacy_http() -> None:
@@ -96,3 +125,91 @@ def test_planning_session_uses_local_executor_without_legacy_http() -> None:
     assert update.trajectory_world.shape == (2, 3)
     assert update.stats.successful_calls >= 1
     assert "legacy_http" not in inspect.getsource(planning_module)
+
+
+def test_planning_session_global_route_uses_active_waypoint_only(tmp_path: Path) -> None:
+    fake_client = _FakeNavDPClient()
+    image_path, config_path = _write_global_map_assets(tmp_path)
+    args = _args()
+    args.global_map_image = str(image_path)
+    args.global_map_config = str(config_path)
+    args.global_waypoint_spacing_m = 1.0
+    args.global_inflation_radius_m = 0.0
+    session = PlanningSession(args, navdp_client_factory=lambda intrinsic, runtime_args: fake_client)
+    session.initialize_local(intrinsic=np.eye(3, dtype=np.float32))
+
+    observation = session.build_local_observation(
+        frame_id=1,
+        rgb=np.zeros((16, 16, 3), dtype=np.uint8),
+        depth=np.ones((16, 16), dtype=np.float32),
+        camera_pose_xyz=(0.0, 0.0, 1.2),
+        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
+    )
+    first = session.plan_with_observation(
+        observation,
+        action_command=ActionCommand(action_type="NAV_TO_POSE", target_pose_xyz=(4.0, 0.0, 0.0)),
+        robot_pos_world=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    second = session.plan_with_observation(
+        observation,
+        action_command=ActionCommand(action_type="NAV_TO_POSE", target_pose_xyz=(4.0, 0.0, 0.0)),
+        robot_pos_world=np.asarray([1.05, 0.0, 0.0], dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    session.shutdown()
+
+    assert first.trajectory_world.shape == (2, 3)
+    assert second.trajectory_world.shape == (2, 3)
+    assert len(fake_client.point_goals) == 2
+    assert fake_client.point_goals[0][0].tolist() == pytest.approx([1.0, 0.0], abs=1.0e-5)
+    assert fake_client.point_goals[1][0].tolist() == pytest.approx([0.95, 0.0], abs=1.0e-5)
+    overlay = session.viewer_overlay_state()
+    assert overlay["global_route_enabled"] is True
+    assert overlay["global_route_waypoint_count"] == 4
+    assert overlay["global_route_waypoint_index"] == 1
+
+
+def test_planning_session_global_route_replans_when_goal_changes(tmp_path: Path) -> None:
+    fake_client = _FakeNavDPClient()
+    image_path, config_path = _write_global_map_assets(tmp_path)
+    args = _args()
+    args.global_map_image = str(image_path)
+    args.global_map_config = str(config_path)
+    args.global_waypoint_spacing_m = 1.0
+    args.global_inflation_radius_m = 0.0
+    session = PlanningSession(args, navdp_client_factory=lambda intrinsic, runtime_args: fake_client)
+    session.initialize_local(intrinsic=np.eye(3, dtype=np.float32))
+    observation = session.build_local_observation(
+        frame_id=1,
+        rgb=np.zeros((16, 16, 3), dtype=np.uint8),
+        depth=np.ones((16, 16), dtype=np.float32),
+        camera_pose_xyz=(0.0, 0.0, 1.2),
+        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
+    )
+
+    session.plan_with_observation(
+        observation,
+        action_command=ActionCommand(action_type="NAV_TO_POSE", target_pose_xyz=(4.0, 0.0, 0.0)),
+        robot_pos_world=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    updated = session.plan_with_observation(
+        observation,
+        action_command=ActionCommand(action_type="NAV_TO_POSE", target_pose_xyz=(4.0, 1.0, 0.0)),
+        robot_pos_world=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    session.shutdown()
+
+    assert updated.stats.successful_calls >= 1
+    assert len(fake_client.point_goals) == 2
+    assert float(fake_client.point_goals[-1][0][0]) < 2.0
+    overlay = session.viewer_overlay_state()
+    assert overlay["global_route_last_replan_reason"] == "goal_changed"

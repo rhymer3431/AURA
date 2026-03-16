@@ -3,7 +3,8 @@ from __future__ import annotations
 import argparse
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
@@ -11,7 +12,7 @@ import requests
 
 from adapters.dual_http import DualSystemClient, DualSystemClientConfig
 from adapters.sensors.d455_sensor import D455SensorAdapter, D455SensorAdapterConfig
-from common.geometry import world_goal_to_robot_frame
+from common.geometry import within_xy_radius, world_goal_to_robot_frame
 from control.async_planners import (
     AsyncDualPlanner,
     AsyncNoGoalPlanner,
@@ -24,6 +25,7 @@ from control.async_planners import (
 from inference.navdp import InProcessNavDPClient, create_inprocess_navdp_client
 from ipc.messages import ActionCommand
 from memory.models import MemoryContextBundle
+from runtime.global_route import GlobalRoutePlanner
 
 
 def _health_url(base_url: str) -> str:
@@ -86,6 +88,18 @@ class TrajectoryUpdate:
     interactive_instruction: str = ""
 
 
+@dataclass
+class GlobalRouteState:
+    planner: GlobalRoutePlanner | None = None
+    waypoints_world: list[tuple[float, float]] = field(default_factory=list)
+    final_goal_xy: np.ndarray = field(default_factory=lambda: np.zeros(2, dtype=np.float32))
+    active_index: int = 0
+    last_progress_ts: float = 0.0
+    best_distance_m: float = float("inf")
+    last_replan_reason: str = ""
+    last_error: str = ""
+
+
 class PlanningSession:
     def __init__(
         self,
@@ -123,6 +137,7 @@ class PlanningSession:
         self._last_dual_response_ts = time.perf_counter()
         self._stats = PlannerStats()
         self.last_sensor_init_report: dict[str, Any] = {}
+        self._global_route_state = GlobalRouteState()
 
         self._interactive_lock = threading.Lock()
         self._interactive_state = "roaming" if self.mode == "interactive" else ""
@@ -381,11 +396,19 @@ class PlanningSession:
                 stop=True,
                 sensor_meta=dict(observation.sensor_meta),
             )
-        goal_local_xy = world_goal_to_robot_frame(
-            goal_xy=np.asarray(action_command.target_pose_xyz[:2], dtype=np.float32),
-            robot_xy=np.asarray(robot_pos_world[:2], dtype=np.float32),
+        goal_local_xy, route_error = self._resolve_pointgoal_local_goal(
+            action_command=action_command,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
             robot_yaw=float(robot_yaw),
         )
+        if route_error != "":
+            return self._pointgoal_failure_update(
+                frame_id=int(observation.frame_id),
+                action_command=action_command,
+                error=route_error,
+                sensor_meta=observation.sensor_meta,
+            )
+        assert goal_local_xy is not None
         return self._run_pointgoal(
             observation,
             goal_local_xy,
@@ -419,6 +442,196 @@ class PlanningSession:
             memory_context=memory_context,
         )
 
+    def _resolve_pointgoal_local_goal(
+        self,
+        *,
+        action_command: ActionCommand,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> tuple[np.ndarray | None, str]:
+        goal_xy = np.asarray(action_command.target_pose_xyz[:2], dtype=np.float32)
+        robot_xy = np.asarray(robot_pos_world[:2], dtype=np.float32)
+        if not self._global_route_enabled():
+            self._clear_global_route_progress()
+            goal_local_xy = world_goal_to_robot_frame(goal_xy=goal_xy, robot_xy=robot_xy, robot_yaw=float(robot_yaw))
+            return goal_local_xy.astype(np.float32), ""
+        try:
+            waypoint_xy = self._resolve_global_route_waypoint(
+                robot_xy=robot_xy,
+                goal_xy=goal_xy,
+                stop_radius_m=float(action_command.stop_radius_m),
+            )
+        except Exception as exc:  # noqa: BLE001
+            error = f"global route planning failed: {type(exc).__name__}: {exc}"
+            self._global_route_state.last_error = error
+            return None, error
+        goal_local_xy = world_goal_to_robot_frame(goal_xy=waypoint_xy, robot_xy=robot_xy, robot_yaw=float(robot_yaw))
+        return goal_local_xy.astype(np.float32), ""
+
+    def _pointgoal_failure_update(
+        self,
+        *,
+        frame_id: int,
+        action_command: ActionCommand,
+        error: str,
+        sensor_meta: dict[str, Any] | None = None,
+    ) -> TrajectoryUpdate:
+        self._last_trajectory = np.zeros((0, 3), dtype=np.float32)
+        self._last_goal_local_xy = np.zeros(2, dtype=np.float32)
+        self._reset_planner_control_state()
+        self._stats = PlannerStats(
+            failed_calls=1,
+            last_error=str(error),
+            last_plan_step=int(frame_id),
+        )
+        return TrajectoryUpdate(
+            trajectory_world=self._last_trajectory.copy(),
+            plan_version=int(self._last_plan_version),
+            stats=self._stats,
+            source_frame_id=int(frame_id),
+            goal_local_xy=self._last_goal_local_xy.copy(),
+            action_command=action_command,
+            stop=True,
+            sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
+        )
+
+    def _global_route_enabled(self) -> bool:
+        return self.mode == "pointgoal" and str(getattr(self.args, "global_map_image", "")).strip() != ""
+
+    def _clear_global_route_progress(self) -> None:
+        self._global_route_state.waypoints_world = []
+        self._global_route_state.active_index = 0
+        self._global_route_state.last_progress_ts = 0.0
+        self._global_route_state.best_distance_m = float("inf")
+        self._global_route_state.last_replan_reason = ""
+        self._global_route_state.last_error = ""
+
+    def _ensure_global_route_planner(self) -> GlobalRoutePlanner:
+        if self._global_route_state.planner is not None:
+            return self._global_route_state.planner
+        map_image_path = Path(str(getattr(self.args, "global_map_image", "")).strip())
+        if str(map_image_path) == "":
+            raise RuntimeError("global route map image is not configured")
+        config_override = str(getattr(self.args, "global_map_config", "")).strip()
+        config_path = Path(config_override) if config_override != "" else map_image_path.parent / "config.txt"
+        planner = GlobalRoutePlanner.from_files(
+            image_path=map_image_path,
+            config_path=config_path,
+            inflation_radius_m=float(getattr(self.args, "global_inflation_radius_m", 0.25)),
+        )
+        self._global_route_state.planner = planner
+        print(
+            "[G1_POINTGOAL][GLOBAL_ROUTE] loaded "
+            f"map={planner.image_path} config={planner.config_path} "
+            f"res={planner.meta.res:.4f} inflation_px={planner.inflation_radius_px}"
+        )
+        return planner
+
+    def _resolve_global_route_waypoint(
+        self,
+        *,
+        robot_xy: np.ndarray,
+        goal_xy: np.ndarray,
+        stop_radius_m: float,
+    ) -> np.ndarray:
+        if within_xy_radius(
+            np.asarray([float(robot_xy[0]), float(robot_xy[1]), 0.0], dtype=np.float32),
+            np.asarray([float(goal_xy[0]), float(goal_xy[1]), 0.0], dtype=np.float32),
+            float(stop_radius_m),
+        ):
+            return goal_xy.astype(np.float32).copy()
+        self._ensure_global_route_planner()
+        state = self._global_route_state
+        replan_reason = self._global_route_replan_reason(robot_xy=robot_xy, goal_xy=goal_xy, stop_radius_m=stop_radius_m)
+        if replan_reason != "":
+            self._replan_global_route(robot_xy=robot_xy, goal_xy=goal_xy, reason=replan_reason)
+        self._advance_global_route_index(robot_xy=robot_xy)
+        if state.active_index >= len(state.waypoints_world):
+            if within_xy_radius(
+                np.asarray([float(robot_xy[0]), float(robot_xy[1]), 0.0], dtype=np.float32),
+                np.asarray([float(goal_xy[0]), float(goal_xy[1]), 0.0], dtype=np.float32),
+                float(stop_radius_m),
+            ):
+                return goal_xy.astype(np.float32).copy()
+            self._replan_global_route(robot_xy=robot_xy, goal_xy=goal_xy, reason="route_exhausted_before_goal")
+            self._advance_global_route_index(robot_xy=robot_xy)
+        if state.active_index >= len(state.waypoints_world):
+            raise RuntimeError("global route has no active waypoint after replanning")
+        active_waypoint = np.asarray(state.waypoints_world[state.active_index], dtype=np.float32)
+        distance = float(np.linalg.norm(active_waypoint - robot_xy[:2]))
+        if not np.isfinite(state.best_distance_m) or distance <= state.best_distance_m - 0.10:
+            state.best_distance_m = distance
+            state.last_progress_ts = time.monotonic()
+        return active_waypoint
+
+    def _global_route_replan_reason(
+        self,
+        *,
+        robot_xy: np.ndarray,
+        goal_xy: np.ndarray,
+        stop_radius_m: float,
+    ) -> str:
+        state = self._global_route_state
+        if len(state.waypoints_world) == 0:
+            return "route_missing"
+        if not np.allclose(state.final_goal_xy[:2], goal_xy[:2], atol=1.0e-4):
+            return "goal_changed"
+        self._advance_global_route_index(robot_xy=robot_xy)
+        if state.active_index >= len(state.waypoints_world):
+            if within_xy_radius(
+                np.asarray([float(robot_xy[0]), float(robot_xy[1]), 0.0], dtype=np.float32),
+                np.asarray([float(goal_xy[0]), float(goal_xy[1]), 0.0], dtype=np.float32),
+                float(stop_radius_m),
+            ):
+                return ""
+            return "route_exhausted_before_goal"
+        active_waypoint = np.asarray(state.waypoints_world[state.active_index], dtype=np.float32)
+        distance = float(np.linalg.norm(active_waypoint - robot_xy[:2]))
+        if not np.isfinite(state.best_distance_m):
+            state.best_distance_m = distance
+            state.last_progress_ts = time.monotonic()
+            return ""
+        if distance <= state.best_distance_m - 0.10:
+            state.best_distance_m = distance
+            state.last_progress_ts = time.monotonic()
+            return ""
+        if time.monotonic() - float(state.last_progress_ts) >= 2.0 and distance > 0.35:
+            return "stuck_no_progress"
+        return ""
+
+    def _advance_global_route_index(self, *, robot_xy: np.ndarray) -> None:
+        state = self._global_route_state
+        now = time.monotonic()
+        while state.active_index < len(state.waypoints_world):
+            active_waypoint = np.asarray(state.waypoints_world[state.active_index], dtype=np.float32)
+            if float(np.linalg.norm(active_waypoint - robot_xy[:2])) >= 0.35:
+                break
+            state.active_index += 1
+            state.best_distance_m = float("inf")
+            state.last_progress_ts = now
+
+    def _replan_global_route(self, *, robot_xy: np.ndarray, goal_xy: np.ndarray, reason: str) -> None:
+        planner = self._ensure_global_route_planner()
+        state = self._global_route_state
+        state.last_replan_reason = str(reason)
+        state.last_error = ""
+        waypoints = planner.plan(
+            start_xy=(float(robot_xy[0]), float(robot_xy[1])),
+            goal_xy=(float(goal_xy[0]), float(goal_xy[1])),
+            waypoint_spacing_m=float(getattr(self.args, "global_waypoint_spacing_m", 0.75)),
+        )
+        state.final_goal_xy = goal_xy.astype(np.float32).copy()
+        state.waypoints_world = [(float(x), float(y)) for x, y in waypoints]
+        state.active_index = 0
+        state.last_progress_ts = time.monotonic()
+        state.best_distance_m = float("inf")
+        state.last_error = ""
+        print(
+            "[G1_POINTGOAL][GLOBAL_ROUTE] replan "
+            f"reason={reason} waypoint_count={len(state.waypoints_world)} "
+            f"goal=({float(goal_xy[0]):.3f},{float(goal_xy[1]):.3f})"
+        )
+
     def _run_pointgoal(
         self,
         observation: ExecutionObservation,
@@ -428,6 +641,7 @@ class PlanningSession:
         action_command: ActionCommand,
     ) -> TrajectoryUpdate:
         assert self.pointgoal_planner is not None
+        self._last_goal_local_xy = np.asarray(goal_local_xy, dtype=np.float32).copy()
         self.pointgoal_planner.submit(
             PlannerInput(
                 frame_id=observation.frame_id,
@@ -922,6 +1136,17 @@ class PlanningSession:
             "trajectory_world": np.asarray(self._last_trajectory, dtype=np.float32).tolist(),
             "plan_version": int(self._last_plan_version),
         }
+        if self.mode == "pointgoal" and self._global_route_enabled():
+            route_state = self._global_route_state
+            state["global_route_enabled"] = True
+            state["global_route_active"] = bool(route_state.active_index < len(route_state.waypoints_world))
+            state["global_route_waypoint_index"] = int(route_state.active_index)
+            state["global_route_waypoint_count"] = int(len(route_state.waypoints_world))
+            state["global_route_last_replan_reason"] = str(route_state.last_replan_reason)
+            state["global_route_last_error"] = str(route_state.last_error)
+            if route_state.active_index < len(route_state.waypoints_world):
+                active_waypoint = route_state.waypoints_world[route_state.active_index]
+                state["global_route_active_waypoint_xy"] = [float(active_waypoint[0]), float(active_waypoint[1])]
         if self.mode in {"dual", "interactive"}:
             state["goal_version"] = int(self._last_goal_version)
             state["traj_version"] = int(self._last_traj_version)

@@ -132,6 +132,10 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
     assert args.obstacle_hold_distance_m == 0.70
     assert args.obstacle_backoff_vx_mps == 0.18
     assert args.obstacle_recovery_hold_sec == 0.75
+    assert args.global_map_image == ""
+    assert args.global_map_config == ""
+    assert args.global_waypoint_spacing_m == 0.75
+    assert args.global_inflation_radius_m == 0.25
 
 
 def test_build_arg_parser_accepts_skip_detection_flag():
@@ -144,6 +148,41 @@ def test_validate_args_rejects_native_viewer_without_viewer_publish():
     args = _parse_args("--native-viewer", "opencv")
 
     with pytest.raises(ValueError, match="--native-viewer opencv requires --viewer-publish"):
+        validate_args(args)
+
+
+def test_validate_args_accepts_pointgoal_with_global_route_assets() -> None:
+    map_image = ROOT / "datasets" / "InteriorAgent" / "kujiale_0003" / "occupancy map.png"
+    map_config = ROOT / "datasets" / "InteriorAgent" / "kujiale_0003" / "config.txt"
+    args = _parse_args(
+        "--planner-mode",
+        "pointgoal",
+        "--goal-x",
+        "2.0",
+        "--goal-y",
+        "0.0",
+        "--global-map-image",
+        str(map_image),
+        "--global-map-config",
+        str(map_config),
+    )
+
+    validate_args(args)
+
+
+def test_validate_args_rejects_global_map_outside_pointgoal() -> None:
+    map_image = ROOT / "datasets" / "InteriorAgent" / "kujiale_0003" / "occupancy map.png"
+    args = _parse_args("--planner-mode", "interactive", "--global-map-image", str(map_image))
+
+    with pytest.raises(ValueError, match="--global-map-image requires --planner-mode pointgoal"):
+        validate_args(args)
+
+
+def test_validate_args_rejects_global_map_config_without_image() -> None:
+    map_config = ROOT / "datasets" / "InteriorAgent" / "kujiale_0003" / "config.txt"
+    args = _parse_args("--planner-mode", "pointgoal", "--goal-x", "2.0", "--goal-y", "0.0", "--global-map-config", str(map_config))
+
+    with pytest.raises(ValueError, match="--global-map-config requires --global-map-image"):
         validate_args(args)
 
 

@@ -697,16 +697,30 @@ class AuraRuntimeCommandSource:
         error_note = f" last_error={update.stats.last_error}" if update.stats.last_error != "" else ""
         command_type = command.action_type if command is not None else "none"
         distance_note = ""
+        route_note = ""
         if evaluation.goal_distance_m >= 0.0:
             distance_note = f" goal_dist={evaluation.goal_distance_m:.3f}m"
         if command is not None and command.action_type == "LOOK_AT":
             distance_note = f" yaw_error={evaluation.yaw_error_rad:.3f}rad"
+        if self._mode == "pointgoal":
+            overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
+            if callable(overlay_getter):
+                overlay = overlay_getter()
+                if isinstance(overlay, dict) and bool(overlay.get("global_route_enabled", False)):
+                    route_note = (
+                        " global_route={} wp={}/{} replan={}".format(
+                            "active" if bool(overlay.get("global_route_active", False)) else "idle",
+                            int(overlay.get("global_route_waypoint_index", 0)),
+                            int(overlay.get("global_route_waypoint_count", 0)),
+                            str(overlay.get("global_route_last_replan_reason", "")) or "-",
+                        )
+                    )
         print(
             f"{self._log_prefix()}"
             f"[step={frame_idx}] command={command_type}{distance_note} "
             f"cmd=({float(self._command[0]):.3f},{float(self._command[1]):.3f},{float(self._command[2]):.3f}) "
             f"plan_v={update.plan_version} plan_ok={update.stats.successful_calls} "
-            f"plan_fail={update.stats.failed_calls} plan_latency_ms={update.stats.latency_ms:.1f}{error_note}"
+            f"plan_fail={update.stats.failed_calls} plan_latency_ms={update.stats.latency_ms:.1f}{route_note}{error_note}"
         )
 
 

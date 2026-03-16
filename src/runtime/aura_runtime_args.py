@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 from typing import Literal
 
 from locomotion.args import BOOTSTRAP_ARGS, BOOTSTRAP_PARSER, add_runtime_args
@@ -89,6 +90,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--goal-x", dest="goal_x", type=float, default=None)
     parser.add_argument("--goal-y", dest="goal_y", type=float, default=None)
     parser.add_argument("--goal-tolerance-m", dest="goal_tolerance_m", type=float, default=0.4)
+    parser.add_argument("--global-map-image", dest="global_map_image", type=str, default="")
+    parser.add_argument("--global-map-config", dest="global_map_config", type=str, default="")
+    parser.add_argument("--global-waypoint-spacing-m", dest="global_waypoint_spacing_m", type=float, default=0.75)
+    parser.add_argument("--global-inflation-radius-m", dest="global_inflation_radius_m", type=float, default=0.25)
     parser.add_argument("--spawn-demo-object", dest="spawn_demo_object", action="store_true")
     parser.add_argument("--demo-object-x", dest="demo_object_x", type=float, default=2.0)
     parser.add_argument("--demo-object-y", dest="demo_object_y", type=float, default=0.0)
@@ -146,20 +151,37 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--obstacle-hold-distance-m must be greater than or equal to --obstacle-stop-distance-m")
     if float(args.obstacle_recovery_hold_sec) < 0.0:
         raise ValueError("--obstacle-recovery-hold-sec must be non-negative")
+    if float(getattr(args, "global_waypoint_spacing_m", 0.75)) <= 0.0:
+        raise ValueError("--global-waypoint-spacing-m must be positive")
+    if float(getattr(args, "global_inflation_radius_m", 0.25)) < 0.0:
+        raise ValueError("--global-inflation-radius-m must be non-negative")
+    global_map_image = str(getattr(args, "global_map_image", "")).strip()
+    global_map_config = str(getattr(args, "global_map_config", "")).strip()
+    if global_map_config != "" and global_map_image == "":
+        raise ValueError("--global-map-config requires --global-map-image")
 
     if planner_mode == "pointgoal":
         if args.goal_x is None or args.goal_y is None:
             raise ValueError("--goal-x and --goal-y are required in planner-mode=pointgoal")
         if bool(args.spawn_demo_object):
             raise ValueError("--spawn-demo-object requires --planner-mode dual")
+        if global_map_image != "":
+            if not Path(global_map_image).exists():
+                raise ValueError(f"--global-map-image not found: {global_map_image}")
+            if global_map_config != "" and not Path(global_map_config).exists():
+                raise ValueError(f"--global-map-config not found: {global_map_config}")
     elif planner_mode == "dual":
         if str(args.instruction).strip() == "":
             raise ValueError("--instruction must be non-empty in planner-mode=dual")
+        if str(getattr(args, "global_map_image", "")).strip() != "":
+            raise ValueError("--global-map-image requires --planner-mode pointgoal")
     else:
         if bool(args.spawn_demo_object):
             raise ValueError("--spawn-demo-object requires --planner-mode dual")
         if str(args.interactive_prompt).strip() == "":
             raise ValueError("--interactive-prompt must be non-empty in planner-mode=interactive")
+        if str(getattr(args, "global_map_image", "")).strip() != "":
+            raise ValueError("--global-map-image requires --planner-mode pointgoal")
     launch_mode = str(getattr(args, "launch_mode", "")).strip().lower()
     if (
         str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() == "opencv"
