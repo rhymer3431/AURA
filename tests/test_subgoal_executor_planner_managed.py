@@ -4,6 +4,7 @@ from argparse import Namespace
 
 import numpy as np
 
+from control.navdp_follower import NavDPFollowerResult
 from ipc.messages import ActionCommand
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 from runtime.subgoal_executor import SubgoalExecutor
@@ -80,6 +81,26 @@ class _FakePlanningSession:
         return self._update
 
 
+class _FakeFollower:
+    def __init__(self, command: np.ndarray | None = None) -> None:
+        self.command = np.asarray(command if command is not None else [0.2, 0.0, 0.0], dtype=np.float32)
+        self.calls: list[dict[str, np.ndarray]] = []
+
+    def compute_command(self, *, pose_command_b, base_lin_vel_w, base_ang_vel_w, robot_quat_wxyz):  # noqa: ANN001
+        self.calls.append(
+            {
+                "pose_command_b": np.asarray(pose_command_b, dtype=np.float32).copy(),
+                "base_lin_vel_w": np.asarray(base_lin_vel_w, dtype=np.float32).copy(),
+                "base_ang_vel_w": np.asarray(base_ang_vel_w, dtype=np.float32).copy(),
+                "robot_quat_wxyz": np.asarray(robot_quat_wxyz, dtype=np.float32).copy(),
+            }
+        )
+        return NavDPFollowerResult(command=self.command.copy(), observation=np.zeros(13, dtype=np.float32))
+
+    def close(self) -> None:
+        return None
+
+
 def test_planner_managed_stop_maps_to_success() -> None:
     update = TrajectoryUpdate(
         trajectory_world=np.zeros((0, 3), dtype=np.float32),
@@ -88,13 +109,16 @@ def test_planner_managed_stop_maps_to_success() -> None:
         source_frame_id=1,
         stop=True,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    follower = _FakeFollower()
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=follower)
 
     result = executor.step(
         frame_idx=1,
         observation=_observation(),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -102,6 +126,7 @@ def test_planner_managed_stop_maps_to_success() -> None:
     assert result.evaluation.reached_goal is True
     assert result.status is not None
     assert result.status.state == "succeeded"
+    assert follower.calls == []
 
 
 def test_planner_managed_error_maps_to_failure() -> None:
@@ -112,13 +137,15 @@ def test_planner_managed_error_maps_to_failure() -> None:
         source_frame_id=1,
         stop=False,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=_FakeFollower())
 
     result = executor.step(
         frame_idx=1,
         observation=_observation(),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -138,13 +165,16 @@ def test_planner_managed_wait_holds_position() -> None:
         stop=False,
         planner_control_mode="wait",
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    follower = _FakeFollower()
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=follower)
 
     result = executor.step(
         frame_idx=1,
         observation=_observation(),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -152,6 +182,7 @@ def test_planner_managed_wait_holds_position() -> None:
     assert np.allclose(result.command_vector, np.zeros(3, dtype=np.float32))
     assert result.status is not None
     assert result.status.state == "running"
+    assert follower.calls == []
 
 
 def test_planner_managed_yaw_delta_reaches_target() -> None:
@@ -164,13 +195,16 @@ def test_planner_managed_yaw_delta_reaches_target() -> None:
         planner_control_mode="yaw_delta",
         planner_yaw_delta_rad=float(np.pi / 6.0),
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    follower = _FakeFollower()
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=follower)
 
     first = executor.step(
         frame_idx=1,
         observation=_observation(),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -179,6 +213,8 @@ def test_planner_managed_yaw_delta_reaches_target() -> None:
         observation=_observation(),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=float(np.pi / 6.0),
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -188,6 +224,61 @@ def test_planner_managed_yaw_delta_reaches_target() -> None:
     assert first.status.state == "running"
     assert second.status is not None
     assert second.status.state == "succeeded"
+    assert follower.calls == []
+
+
+def test_look_at_bypasses_follower() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[1.0, 0.0, 0.0]], dtype=np.float32),
+        plan_version=5,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    follower = _FakeFollower()
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=follower)
+    look_at_command = ActionCommand(action_type="LOOK_AT", look_at_yaw_rad=0.4)
+
+    result = executor.step(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=look_at_command,
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert result.command_vector[2] > 0.0
+    assert follower.calls == []
+
+
+def test_planner_managed_trajectory_uses_follower_output() -> None:
+    update = TrajectoryUpdate(
+        trajectory_world=np.asarray([[0.8, 0.0, 0.0], [1.2, 0.4, 0.0]], dtype=np.float32),
+        plan_version=5,
+        stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=1),
+        source_frame_id=1,
+        stop=False,
+    )
+    follower = _FakeFollower(command=np.asarray([0.11, 0.22, 0.33], dtype=np.float32))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=follower)
+
+    result = executor.step(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.asarray([0.1, 0.0, 0.0], dtype=np.float32),
+        robot_ang_vel_world=np.asarray([0.0, 0.0, 0.2], dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    np.testing.assert_allclose(result.command_vector, np.asarray([0.11, 0.22, 0.33], dtype=np.float32))
+    assert len(follower.calls) == 1
+    assert follower.calls[0]["pose_command_b"].shape == (4,)
 
 
 def test_obstacle_defense_turns_toward_clearer_side() -> None:
@@ -198,7 +289,7 @@ def test_obstacle_defense_turns_toward_clearer_side() -> None:
         source_frame_id=1,
         stop=False,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=_FakeFollower())
     depth = np.full((18, 18), 1.2, dtype=np.float32)
     depth[:, 7:11] = 0.25
     depth[:, 11:15] = 2.0
@@ -208,6 +299,8 @@ def test_obstacle_defense_turns_toward_clearer_side() -> None:
         observation=_observation_with_depth(depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -228,7 +321,7 @@ def test_obstacle_defense_backoffs_when_both_sides_are_blocked() -> None:
         source_frame_id=1,
         stop=False,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=_FakeFollower())
     depth = np.full((18, 18), 0.20, dtype=np.float32)
 
     result = executor.step(
@@ -236,6 +329,8 @@ def test_obstacle_defense_backoffs_when_both_sides_are_blocked() -> None:
         observation=_observation_with_depth(depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -256,7 +351,7 @@ def test_obstacle_defense_switches_to_hold_once_threshold_is_recovered() -> None
         source_frame_id=1,
         stop=False,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=_FakeFollower())
     blocked_depth = np.full((18, 18), 1.2, dtype=np.float32)
     blocked_depth[:, 7:11] = 0.20
     blocked_depth[:, 11:15] = 2.0
@@ -269,6 +364,8 @@ def test_obstacle_defense_switches_to_hold_once_threshold_is_recovered() -> None
         observation=_observation_with_depth(blocked_depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -277,6 +374,8 @@ def test_obstacle_defense_switches_to_hold_once_threshold_is_recovered() -> None
         observation=_observation_with_depth(hold_depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -295,7 +394,7 @@ def test_obstacle_defense_holds_recovery_briefly_when_depth_temporarily_disappea
         source_frame_id=1,
         stop=False,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=_FakeFollower())
     blocked_depth = np.full((18, 18), 1.2, dtype=np.float32)
     blocked_depth[:, 7:11] = 0.20
     blocked_depth[:, 11:15] = 2.0
@@ -306,6 +405,8 @@ def test_obstacle_defense_holds_recovery_briefly_when_depth_temporarily_disappea
         observation=_observation_with_depth(blocked_depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -314,6 +415,8 @@ def test_obstacle_defense_holds_recovery_briefly_when_depth_temporarily_disappea
         observation=_observation_with_depth(missing_depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
@@ -334,7 +437,7 @@ def test_obstacle_defense_holds_position_within_hold_distance() -> None:
         source_frame_id=1,
         stop=False,
     )
-    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update))
+    executor = SubgoalExecutor(_args(), planning_session=_FakePlanningSession(update), follower=_FakeFollower())
     depth = np.full((18, 18), 1.5, dtype=np.float32)
     depth[:, 7:11] = 0.60
     depth[:, 11:15] = 1.8
@@ -344,6 +447,8 @@ def test_obstacle_defense_holds_position_within_hold_distance() -> None:
         observation=_observation_with_depth(depth),
         action_command=_planner_command(),
         robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )

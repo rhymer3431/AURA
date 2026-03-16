@@ -29,6 +29,17 @@ class TrackerResult:
     stale: bool
 
 
+@dataclass(frozen=True)
+class TrackerPoseTarget:
+    pose_command_b: np.ndarray
+    progress_idx: int
+    target_idx: int
+    heading_error_rad: float
+    stale: bool
+    target_xy_world: np.ndarray
+    target_yaw_world: float
+
+
 class TrajectoryTracker:
     def __init__(self, config: TrajectoryTrackerConfig):
         self.config = config
@@ -141,6 +152,52 @@ class TrajectoryTracker:
             stale=False,
         )
 
+    def compute_target_pose(
+        self,
+        position_w: np.ndarray,
+        quat_wxyz: np.ndarray,
+        *,
+        now: float | None = None,
+        force_stop: bool = False,
+    ) -> TrackerPoseTarget:
+        current_time = time.monotonic() if now is None else float(now)
+        zero_pose = np.zeros(4, dtype=np.float32)
+        zero_xy = np.zeros(2, dtype=np.float32)
+        if force_stop or self._trajectory_world.shape[0] == 0 or self.is_stale(now=current_time):
+            return TrackerPoseTarget(
+                pose_command_b=zero_pose,
+                progress_idx=int(self._progress_idx),
+                target_idx=-1,
+                heading_error_rad=0.0,
+                stale=True,
+                target_xy_world=zero_xy,
+                target_yaw_world=0.0,
+            )
+
+        robot_pos = np.asarray(position_w, dtype=np.float32).reshape(-1)
+        robot_xy = robot_pos[:2]
+        robot_yaw = quat_wxyz_to_yaw(np.asarray(quat_wxyz, dtype=np.float32).reshape(-1))
+
+        self._advance_progress(robot_xy)
+        target_idx = self._select_target_idx()
+        target_xy = self._trajectory_world[target_idx, :2].astype(np.float32).copy()
+        target_yaw_world = self._select_target_yaw(target_idx, robot_xy)
+        target_xy_b = world_goal_to_robot_frame(goal_xy=target_xy, robot_xy=robot_xy, robot_yaw=float(robot_yaw))
+        heading_error = wrap_to_pi(float(target_yaw_world) - float(robot_yaw))
+        pose_command_b = np.asarray(
+            [float(target_xy_b[0]), float(target_xy_b[1]), 0.0, float(heading_error)],
+            dtype=np.float32,
+        )
+        return TrackerPoseTarget(
+            pose_command_b=pose_command_b,
+            progress_idx=int(self._progress_idx),
+            target_idx=int(target_idx),
+            heading_error_rad=float(heading_error),
+            stale=False,
+            target_xy_world=target_xy,
+            target_yaw_world=float(target_yaw_world),
+        )
+
     def _advance_progress(self, robot_xy: np.ndarray) -> None:
         remaining = self._trajectory_world[self._progress_idx :, :2]
         if remaining.shape[0] == 0:
@@ -159,6 +216,21 @@ class TrajectoryTracker:
         cumulative = np.concatenate(([0.0], np.cumsum(segment_lengths)))
         rel_target_idx = int(np.searchsorted(cumulative, float(self.config.lookahead_distance_m), side="left"))
         return min(self._progress_idx + rel_target_idx, self._trajectory_world.shape[0] - 1)
+
+    def _select_target_yaw(self, target_idx: int, robot_xy: np.ndarray) -> float:
+        if target_idx < 0 or self._trajectory_world.shape[0] == 0:
+            return 0.0
+        if self._trajectory_world.shape[0] == 1:
+            tangent_xy = self._trajectory_world[0, :2] - robot_xy[:2]
+        elif target_idx < self._trajectory_world.shape[0] - 1:
+            tangent_xy = self._trajectory_world[target_idx + 1, :2] - self._trajectory_world[target_idx, :2]
+        else:
+            tangent_xy = self._trajectory_world[target_idx, :2] - self._trajectory_world[target_idx - 1, :2]
+        if float(np.linalg.norm(tangent_xy[:2])) <= 1.0e-6:
+            tangent_xy = self._trajectory_world[target_idx, :2] - robot_xy[:2]
+        if float(np.linalg.norm(tangent_xy[:2])) <= 1.0e-6:
+            return 0.0
+        return float(np.arctan2(float(tangent_xy[1]), float(tangent_xy[0])))
 
     def _apply_slew_limit(self, command: np.ndarray, *, now: float) -> np.ndarray:
         if self._last_command_time <= 0.0:

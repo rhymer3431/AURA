@@ -309,3 +309,21 @@ def test_process_manager_uses_windows_process_tree_kill_for_running_processes(mo
 
     assert killed_pids == expected_pids
     assert [event for event in lifecycle_events if event[0] == "terminate"] == []
+
+
+def test_parse_session_request_rejects_cpu_when_default_policy_is_engine() -> None:
+    with pytest.raises(ValueError, match="locomotionConfig.onnxDevice=cpu"):
+        parse_session_request(
+            {
+                "plannerMode": "pointgoal",
+                "launchMode": "gui",
+                "scenePreset": "warehouse",
+                "viewerEnabled": False,
+                "memoryStore": True,
+                "detectionEnabled": True,
+                "goal": {"x": 2.0, "y": 0.0},
+                "locomotionConfig": {
+                    "onnxDevice": "cpu",
+                },
+            }
+        )

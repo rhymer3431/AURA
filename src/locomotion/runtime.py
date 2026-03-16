@@ -39,6 +39,19 @@ def _validate_runtime_paths(
         raise FileNotFoundError(f"Scene USD not found: {env_reference}")
 
 
+def _validate_default_policy_device(args, policy_path: str) -> None:
+    if str(getattr(args, "policy", "")).strip() != "":
+        return
+    if infer_policy_backend(policy_path) != "tensorrt":
+        return
+    if str(getattr(args, "onnx_device", "auto")).strip().lower() != "cpu":
+        return
+    raise RuntimeError(
+        "Default locomotion policy uses tuned/policy_fp16.engine and requires CUDA/TensorRT. "
+        "Use --onnx-device auto/cuda, or pass an explicit ONNX policy with --policy."
+    )
+
+
 def _print_launch_summary(
     args,
     policy_path: str,
@@ -92,6 +105,7 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
 
     policy_path, robot_usd, env_reference = _resolve_runtime_paths(args)
     _validate_runtime_paths(policy_path, robot_usd, env_reference, args.scene_usd)
+    _validate_default_policy_device(args, policy_path)
 
     rendering_dt = args.rendering_dt if args.rendering_dt > 0.0 else args.physics_dt * args.decimation
     backend_name = infer_policy_backend(policy_path)

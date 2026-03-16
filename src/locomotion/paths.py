@@ -12,6 +12,7 @@ def repo_dir() -> str:
 
 def resolve_default_policy_path(base_dir: str) -> str:
     candidates = [
+        os.path.abspath(os.path.join(base_dir, "tuned", "policy_fp16.engine")),
         os.path.abspath(os.path.join(base_dir, "artifacts", "models", "g1_policy_fp32.engine")),
         os.path.abspath(os.path.join(base_dir, "artifacts", "models", "policy.onnx")),
         os.path.abspath(os.path.join(base_dir, "policy.onnx")),
@@ -30,6 +31,16 @@ def resolve_default_policy_path(base_dir: str) -> str:
                 "policy.onnx",
             )
         ),
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return candidates[0]
+
+
+def resolve_default_follower_policy_path(base_dir: str) -> str:
+    candidates = [
+        os.path.abspath(os.path.join(base_dir, "tuned", "navdp follower", "exported", "policy.onnx")),
     ]
     for path in candidates:
         if os.path.isfile(path):

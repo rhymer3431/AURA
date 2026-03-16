@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -15,6 +16,7 @@ from locomotion.controller import (
     infer_policy_backend,
 )
 from locomotion.paths import resolve_default_policy_path
+from locomotion.runtime import _validate_default_policy_device
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +59,26 @@ def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> Non
     onnx_path.write_bytes(b"onnx")
 
     assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
+
+
+def test_resolve_default_policy_path_prefers_tuned_engine(tmp_path: Path) -> None:
+    tuned_dir = tmp_path / "tuned"
+    models_dir = tmp_path / "artifacts" / "models"
+    tuned_dir.mkdir(parents=True)
+    models_dir.mkdir(parents=True)
+    tuned_engine_path = tuned_dir / "policy_fp16.engine"
+    fallback_engine_path = models_dir / "g1_policy_fp32.engine"
+    tuned_engine_path.write_bytes(b"tuned-engine")
+    fallback_engine_path.write_bytes(b"fallback-engine")
+
+    assert resolve_default_policy_path(str(tmp_path)) == str(tuned_engine_path.resolve())
+
+
+def test_validate_default_policy_device_rejects_cpu_for_default_engine() -> None:
+    args = SimpleNamespace(policy="", onnx_device="cpu")
+
+    with pytest.raises(RuntimeError, match="requires CUDA/TensorRT"):
+        _validate_default_policy_device(args, "/tmp/tuned/policy_fp16.engine")
 
 
 def test_height_scan_grid_matches_official_layout() -> None:

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from locomotion.constants import ACTION_SCALE
+from locomotion.paths import repo_dir, resolve_default_policy_path
 
 
 PROCESS_NAMES = ("navdp", "system2", "dual", "runtime")
@@ -81,6 +82,12 @@ def _parse_locomotion_config(payload: Any) -> DashboardLocomotionConfig:
         raise ValueError("locomotionConfig.cmdMaxVy must be non-negative")
     if cmd_max_wz <= 0.0:
         raise ValueError("locomotionConfig.cmdMaxWz must be positive")
+    default_policy_path = Path(resolve_default_policy_path(repo_dir()))
+    if onnx_device == "cpu" and default_policy_path.suffix.lower() == ".engine":
+        raise ValueError(
+            "locomotionConfig.onnxDevice=cpu is incompatible with the default TensorRT locomotion policy. "
+            "Use auto/cuda for dashboard sessions."
+        )
     return DashboardLocomotionConfig(
         action_scale=action_scale,
         onnx_device=onnx_device,

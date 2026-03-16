@@ -107,6 +107,8 @@ class FrameBridgeCommandSource:
             observation=observation,
             action_command=self._active_command,
             robot_pos_world=robot_pos_world,
+            robot_lin_vel_world=np.asarray(base_state.lin_vel_w, dtype=np.float32),
+            robot_ang_vel_world=np.asarray(base_state.ang_vel_w, dtype=np.float32),
             robot_yaw=robot_yaw,
             robot_quat_wxyz=robot_quat,
         )

@@ -52,3 +52,24 @@ def test_tracker_returns_zero_for_stale_trajectory():
 
     assert result.stale is True
     assert np.allclose(result.command, np.zeros(3, dtype=np.float32))
+
+
+def test_tracker_builds_pose_command_from_lookahead_target_and_segment_heading() -> None:
+    tracker = _tracker()
+    tracker.set_trajectory(
+        np.asarray([[0.5, 0.0, 0.0], [1.0, 0.5, 0.0], [1.5, 1.0, 0.0]], dtype=np.float32),
+        plan_version=1,
+        timestamp=0.0,
+    )
+
+    target = tracker.compute_target_pose(
+        np.asarray([0.0, 0.0, 0.8], dtype=np.float32),
+        _quat_from_yaw(0.0),
+        now=0.1,
+    )
+
+    assert target.stale is False
+    assert target.target_idx >= 1
+    np.testing.assert_allclose(target.pose_command_b[:2], np.asarray([1.0, 0.5], dtype=np.float32), atol=1.0e-4)
+    assert abs(float(target.pose_command_b[2])) < 1.0e-6
+    assert target.pose_command_b[3] > 0.0
