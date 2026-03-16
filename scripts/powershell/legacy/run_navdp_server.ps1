@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
+$RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\..\.."))
 $EntryModule = "apps.legacy_http.navdp_server_app"
 $SrcDir = Join-Path $RepoDir "src"
 $PathSep = [System.IO.Path]::PathSeparator
@@ -48,7 +48,8 @@ Write-Host "[NavDP Server] module=`"$EntryModule`""
 Write-Host "[NavDP Server] port=$Port"
 Write-Host "[NavDP Server] checkpoint=`"$Checkpoint`""
 
-Push-Location $RepoDir
+# `conda run` may sanitize PYTHONPATH, so launch from `src` to keep `apps.*` importable.
+Push-Location $SrcDir
 $PreviousPythonPath = $env:PYTHONPATH
 if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = $SrcDir

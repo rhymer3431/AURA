@@ -379,6 +379,9 @@ class ProcessManager:
         child_env = os.environ.copy()
         for key, value in spec.env:
             child_env[str(key)] = str(value)
+        src_dir = str(resolve_repo_path(self.config.repo_root, "src"))
+        existing_pythonpath = [entry for entry in str(child_env.get("PYTHONPATH", "")).split(os.pathsep) if entry.strip()]
+        child_env["PYTHONPATH"] = os.pathsep.join([src_dir, *[entry for entry in existing_pythonpath if entry != src_dir]])
         process = subprocess.Popen(
             [
                 "powershell.exe",

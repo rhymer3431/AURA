@@ -43,7 +43,8 @@ Write-Host "[Dual Server] module=`"$EntryModule`""
 Write-Host "[Dual Server] host=$ListenHost port=$Port"
 Write-Host "[Dual Server] navdp-url=$NavDPUrl vlm-url=$VLMUrl vlm-model=$VLMModel s2-mode=$S2Mode"
 
-Push-Location $RepoDir
+# `conda run` may sanitize PYTHONPATH, so launch from `src` to keep `apps.*` importable.
+Push-Location $SrcDir
 $PreviousPythonPath = $env:PYTHONPATH
 if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = $SrcDir

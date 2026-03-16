@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 import time
 from pathlib import Path
@@ -14,7 +15,7 @@ if str(SRC) not in sys.path:
 
 from dashboard_backend.config import DashboardBackendConfig
 from dashboard_backend.models import parse_session_request
-from dashboard_backend.process_manager import ManagedProcess, ProcessManager
+from dashboard_backend.process_manager import ManagedProcess, ProcessManager, ProcessSpec
 
 
 class _FakeProcess:
@@ -327,3 +328,51 @@ def test_parse_session_request_rejects_cpu_when_default_policy_is_engine() -> No
                 },
             }
         )
+
+
+def test_default_runner_prefixes_src_pythonpath(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    config = DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard")
+    manager = ProcessManager(config)
+    captured: dict[str, object] = {}
+
+    class _FakePopen:
+        def __init__(self, args, cwd, stdout, stderr, env):  # noqa: ANN001
+            captured["args"] = args
+            captured["cwd"] = cwd
+            captured["env"] = env
+            captured["stdout"] = stdout
+            captured["stderr"] = stderr
+            self.pid = 1234
+            self.returncode = None
+
+        def poll(self):
+            return self.returncode
+
+    monkeypatch.setattr("dashboard_backend.process_manager.subprocess.Popen", _FakePopen)
+
+    stdout_log = tmp_path / "navdp.stdout.log"
+    stderr_log = tmp_path / "navdp.stderr.log"
+    spec = ProcessSpec(
+        name="navdp",
+        script_path=ROOT / "scripts" / "powershell" / "run_navdp_server.ps1",
+        args=(),
+        health_url="http://127.0.0.1:8888/health",
+    )
+
+    managed = manager._default_runner(spec, stdout_log, stderr_log)  # noqa: SLF001
+    try:
+        env = captured["env"]
+        assert captured["cwd"] == str(ROOT)
+        assert captured["args"][:5] == [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+        ]
+        assert str(env["PYTHONPATH"]).split(os.pathsep)[0] == str(ROOT / "src")
+    finally:
+        if managed.stdout_handle is not None:
+            managed.stdout_handle.close()
+        if managed.stderr_handle is not None:
+            managed.stderr_handle.close()
