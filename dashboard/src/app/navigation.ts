@@ -4,6 +4,7 @@ import {
   Eye,
   FileText,
   LayoutDashboard,
+  Map,
   Navigation,
   Radio,
   Scan,
@@ -14,6 +15,7 @@ export type DashboardPageId =
   | "pipeline-overview"
   | "planner-control"
   | "perception-memory"
+  | "occupancy-map"
   | "ipc-viewer"
   | "external-services"
   | "logs-events"
@@ -59,6 +61,13 @@ export const dashboardNavSections: DashboardNavSection[] = [
         description: "탐지 파이프라인과 memory scratchpad 상태를 분리해서 봅니다.",
         groupTitle: "Dashboards",
         icon: Scan,
+      },
+      {
+        id: "occupancy-map",
+        label: "Occupancy Map",
+        description: "맵 기반 occupancy 뷰에서 현재 로봇 위치와 전역 경로를 실시간으로 겹쳐 봅니다.",
+        groupTitle: "Dashboards",
+        icon: Map,
       },
     ],
   },

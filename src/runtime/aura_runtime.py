@@ -605,6 +605,25 @@ class AuraRuntimeCommandSource:
             },
             "activeCommandType": "" if self._active_command is None else str(self._active_command.action_type),
         }
+        planner_overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
+        if callable(planner_overlay_getter):
+            planner_overlay = planner_overlay_getter()
+            if isinstance(planner_overlay, dict):
+                planner["globalRouteEnabled"] = bool(planner_overlay.get("global_route_enabled", False))
+                planner["globalRouteActive"] = bool(planner_overlay.get("global_route_active", False))
+                planner["globalRouteWaypointIndex"] = int(planner_overlay.get("global_route_waypoint_index", 0) or 0)
+                planner["globalRouteWaypointCount"] = int(planner_overlay.get("global_route_waypoint_count", 0) or 0)
+                planner["globalRouteLastReplanReason"] = str(planner_overlay.get("global_route_last_replan_reason", ""))
+                planner["globalRouteLastError"] = str(planner_overlay.get("global_route_last_error", ""))
+                active_waypoint = planner_overlay.get("global_route_active_waypoint_xy")
+                if isinstance(active_waypoint, list):
+                    planner["globalRouteActiveWaypointXy"] = list(active_waypoint)
+                goal_xy = planner_overlay.get("global_route_goal_xy")
+                if isinstance(goal_xy, list):
+                    planner["globalRouteGoalXy"] = list(goal_xy)
+                waypoints = planner_overlay.get("global_route_waypoints_world")
+                if isinstance(waypoints, list):
+                    planner["globalRouteWaypointsWorld"] = list(waypoints)
         sensor = {
             "rgbAvailable": frame_header is not None,
             "depthAvailable": frame_header is not None and bool(overlay.get("has_depth", False) or "depth_ref" in frame_header.metadata or "depth_inline" in frame_header.metadata),

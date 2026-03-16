@@ -5,6 +5,7 @@ import { TopBar } from "./components/TopBar";
 import { StatCards } from "./components/StatCards";
 import { PipelineFlow } from "./components/PipelineFlow";
 import { NavigationControlPanel } from "./components/NavigationControlPanel";
+import { OccupancyMapPanel } from "./components/OccupancyMapPanel";
 import { ExternalServicesPanel } from "./components/ExternalServicesPanel";
 import { RobotViewer } from "./components/RobotViewer";
 import { ControlStrip } from "./components/ControlStrip";
@@ -93,6 +94,10 @@ export default function App() {
 
     if (activePage === "planner-control") {
       return <NavigationControlPanel />;
+    }
+
+    if (activePage === "occupancy-map") {
+      return <OccupancyMapPanel />;
     }
 
     if (activePage === "perception-memory") {

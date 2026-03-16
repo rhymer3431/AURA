@@ -239,6 +239,25 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert bootstrap["webrtcBasePath"] == f"http://127.0.0.1:{port}/api/webrtc"
                 assert bootstrap["scenePresets"] == ["warehouse", "interioragent", "interior agent kujiale 3"]
 
+                response = await client.get(
+                    f"http://127.0.0.1:{port}/api/occupancy/current?scenePreset=interior%20agent%20kujiale%203",
+                    headers={"Origin": "http://tauri.localhost"},
+                )
+                assert response.status == 200
+                occupancy = await response.json()
+                assert occupancy["available"] is True
+                assert occupancy["canonicalScenePreset"] == "interior agent kujiale 3"
+                assert occupancy["imageWidth"] == 328
+                assert occupancy["imageHeight"] == 281
+
+                response = await client.get(
+                    f"http://127.0.0.1:{port}{occupancy['imagePath']}",
+                    headers={"Origin": "http://tauri.localhost"},
+                )
+                assert response.status == 200
+                assert response.headers["Content-Type"] == "image/png"
+                assert len(await response.read()) > 0
+
                 events_response = await client.get(
                     f"http://127.0.0.1:{port}/api/events",
                     headers={"Origin": "http://tauri.localhost"},

@@ -73,6 +73,10 @@ vi.mock("./components/NavigationControlPanel", () => ({
   NavigationControlPanel: () => <div>NavigationControlPanel</div>,
 }));
 
+vi.mock("./components/OccupancyMapPanel", () => ({
+  OccupancyMapPanel: () => <div>OccupancyMapPanel</div>,
+}));
+
 vi.mock("./components/ExternalServicesPanel", () => ({
   ExternalServicesPanel: () => <div>ExternalServicesPanel</div>,
 }));

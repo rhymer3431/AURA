@@ -14,6 +14,7 @@ from webrtc.subscriber import ObservationSubscriber
 from .config import DashboardBackendConfig
 from .log_tailer import LogTailer
 from .models import parse_session_request
+from .occupancy import build_occupancy_payload, resolve_occupancy_scene_asset
 from .process_manager import ProcessManager
 from .runtime_control import RuntimeControlClient
 from .state import StateAggregator
@@ -83,6 +84,8 @@ class DashboardWebApp:
         app.router.add_get("/api/state", self.handle_state)
         app.router.add_get("/api/logs", self.handle_logs)
         app.router.add_get("/api/events", self.handle_events)
+        app.router.add_get("/api/occupancy/current", self.handle_occupancy_current)
+        app.router.add_get("/api/occupancy/image", self.handle_occupancy_image)
         app.router.add_post("/api/session/start", self.handle_session_start)
         app.router.add_post("/api/session/stop", self.handle_session_stop)
         app.router.add_post("/api/runtime/task", self.handle_runtime_task)
@@ -173,6 +176,31 @@ class DashboardWebApp:
     async def handle_logs(self, request) -> web.Response:  # noqa: ANN001
         limit = int(request.query.get("limit", "200"))
         return web.json_response({"logs": self.state_aggregator.get_recent_logs(limit=max(limit, 1))})
+
+    async def handle_occupancy_current(self, request) -> web.Response:  # noqa: ANN001
+        current_request = self.process_manager.current_request
+        scene_preset = str(request.query.get("scenePreset", "")).strip()
+        if scene_preset == "" and current_request is not None:
+            scene_preset = str(current_request.scene_preset)
+        payload = build_occupancy_payload(
+            repo_root=self.config.repo_root,
+            api_base_url=self.config.api_base_url,
+            scene_preset=scene_preset,
+        )
+        return web.json_response(payload)
+
+    async def handle_occupancy_image(self, request) -> web.StreamResponse:  # noqa: ANN001
+        current_request = self.process_manager.current_request
+        scene_preset = str(request.query.get("scenePreset", "")).strip()
+        if scene_preset == "" and current_request is not None:
+            scene_preset = str(current_request.scene_preset)
+        asset = resolve_occupancy_scene_asset(scene_preset)
+        if asset is None:
+            raise web.HTTPNotFound(reason="occupancy image is not available for the selected scene preset")
+        image_path = asset.image_path(self.config.repo_root)
+        if not image_path.exists():
+            raise web.HTTPNotFound(reason="occupancy image file is missing")
+        return web.FileResponse(image_path)
 
     async def handle_events(self, request) -> web.StreamResponse:  # noqa: ANN001
         response = web.StreamResponse(

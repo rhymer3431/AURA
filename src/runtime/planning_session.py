@@ -1144,6 +1144,10 @@ class PlanningSession:
             state["global_route_waypoint_count"] = int(len(route_state.waypoints_world))
             state["global_route_last_replan_reason"] = str(route_state.last_replan_reason)
             state["global_route_last_error"] = str(route_state.last_error)
+            state["global_route_goal_xy"] = [float(route_state.final_goal_xy[0]), float(route_state.final_goal_xy[1])]
+            state["global_route_waypoints_world"] = [
+                [float(waypoint[0]), float(waypoint[1])] for waypoint in route_state.waypoints_world
+            ]
             if route_state.active_index < len(route_state.waypoints_world):
                 active_waypoint = route_state.waypoints_world[route_state.active_index]
                 state["global_route_active_waypoint_xy"] = [float(active_waypoint[0]), float(active_waypoint[1])]
