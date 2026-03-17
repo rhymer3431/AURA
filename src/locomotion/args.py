@@ -19,7 +19,8 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
         default=None,
         help=(
             "Path to a locomotion policy file. Supports ONNX (`.onnx`) and TensorRT engines (`.engine`). "
-            "Defaults to artifacts/models/g1_policy_fp16.engine, with fallbacks to legacy engine and ONNX export locations."
+            "Defaults to a compatible built G1 locomotion policy under artifacts/models "
+            "(prefers g1_policy_fp32.engine, then policy.onnx), with legacy fallbacks."
         ),
     )
     parser.add_argument(

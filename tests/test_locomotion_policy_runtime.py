@@ -50,10 +50,11 @@ def test_infer_policy_backend_detects_engine_suffix() -> None:
     assert infer_policy_backend("artifacts/models/policy.onnx") == "onnxruntime"
 
 
-def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> None:
+def test_resolve_default_policy_path_prefers_artifacts_fp32_engine(tmp_path: Path) -> None:
     models_dir = tmp_path / "artifacts" / "models"
     models_dir.mkdir(parents=True)
-    engine_path = models_dir / "g1_policy_fp16.engine"
+    (models_dir / "g1_policy_fp16.engine").write_bytes(b"smaller-engine")
+    engine_path = models_dir / "g1_policy_fp32.engine"
     onnx_path = models_dir / "policy.onnx"
     engine_path.write_bytes(b"engine")
     onnx_path.write_bytes(b"onnx")
@@ -61,17 +62,13 @@ def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> Non
     assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
 
 
-def test_resolve_default_policy_path_prefers_artifacts_fp16_engine_over_legacy_src_engine(tmp_path: Path) -> None:
-    policy_dir = tmp_path / "src" / "locomotion" / "models"
+def test_resolve_default_policy_path_falls_back_to_artifacts_fp16_engine(tmp_path: Path) -> None:
     models_dir = tmp_path / "artifacts" / "models"
-    policy_dir.mkdir(parents=True)
     models_dir.mkdir(parents=True)
-    preferred_engine_path = models_dir / "g1_policy_fp16.engine"
-    tuned_engine_path = policy_dir / "policy_fp16.engine"
-    preferred_engine_path.write_bytes(b"preferred-engine")
-    tuned_engine_path.write_bytes(b"tuned-engine")
+    fallback_engine_path = models_dir / "g1_policy_fp16.engine"
+    fallback_engine_path.write_bytes(b"fallback-engine")
 
-    assert resolve_default_policy_path(str(tmp_path)) == str(preferred_engine_path.resolve())
+    assert resolve_default_policy_path(str(tmp_path)) == str(fallback_engine_path.resolve())
 
 
 def test_resolve_default_policy_path_falls_back_to_legacy_src_engine(tmp_path: Path) -> None:
@@ -87,7 +84,7 @@ def test_validate_default_policy_device_rejects_cpu_for_default_engine() -> None
     args = SimpleNamespace(policy="", onnx_device="cpu")
 
     with pytest.raises(RuntimeError, match="requires CUDA/TensorRT"):
-        _validate_default_policy_device(args, "/tmp/artifacts/models/g1_policy_fp16.engine")
+        _validate_default_policy_device(args, "/tmp/artifacts/models/g1_policy_fp32.engine")
 
 
 def test_height_scan_grid_matches_official_layout() -> None:
