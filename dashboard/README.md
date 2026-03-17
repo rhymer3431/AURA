@@ -26,6 +26,8 @@ npm run tauri:build
 npm run test:run
 ```
 
+`npm run tauri:dev` now auto-selects the next available localhost port when `127.0.0.1:5173` is already occupied. Set `AURA_DASHBOARD_DEV_PORT` if you need to pin a different preferred dev port.
+
 `npm run dev` now falls back to a lightweight mock `/api` surface when the dashboard backend is not listening on `127.0.0.1:8095`. This keeps the React shell usable for UI work instead of flooding Vite with `ECONNREFUSED` proxy errors.
 
 For a live backend during browser development:
@@ -36,6 +38,6 @@ For a live backend during browser development:
 
 ## Notes
 
-- 브라우저 dev server는 여전히 `http://127.0.0.1:5173` 에서 동작하지만, 기본 사용 경로는 브라우저가 아니라 Tauri desktop shell입니다.
+- 브라우저 dev server 기본 포트는 `http://127.0.0.1:5173` 이지만, 해당 포트가 이미 사용 중이면 `npm run tauri:dev` 는 다음 사용 가능한 localhost 포트로 자동 이동합니다.
 - packaged Tauri 앱은 backend를 `http://127.0.0.1:8095` 로 직접 호출합니다.
 - Windows에서 Tauri를 실행하려면 Rust toolchain이 필요합니다.

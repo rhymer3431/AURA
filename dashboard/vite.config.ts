@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 import { buildDevApiFallbackResponse, shouldBypassApiProxy } from './src/app/devApiFallback'
 
 const DEFAULT_PROXY_TARGET = "http://127.0.0.1:8095";
+const DEFAULT_DEV_PORT = 5173;
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
@@ -12,6 +13,11 @@ function trimTrailingSlash(value: string): string {
 
 function resolveProxyTarget(): string {
   return trimTrailingSlash(String(process.env.AURA_DASHBOARD_PROXY_TARGET ?? DEFAULT_PROXY_TARGET).trim() || DEFAULT_PROXY_TARGET);
+}
+
+function resolveDevServerPort(): number {
+  const parsed = Number.parseInt(String(process.env.AURA_DASHBOARD_DEV_PORT ?? DEFAULT_DEV_PORT), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_DEV_PORT;
 }
 
 function createBackendHealthProbe(proxyTarget: string) {
@@ -101,7 +107,7 @@ export default defineConfig({
   },
   server: {
     host: "127.0.0.1",
-    port: 5173,
+    port: resolveDevServerPort(),
     strictPort: true,
     proxy: {
       "/api": {

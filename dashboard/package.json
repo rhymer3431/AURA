@@ -7,7 +7,7 @@
     "build": "vite build",
     "dev": "vite",
     "tauri:build": "tauri build",
-    "tauri:dev": "tauri dev",
+    "tauri:dev": "node ./scripts/tauri-dev.mjs",
     "test": "vitest",
     "test:run": "vitest run"
   },

@@ -173,5 +173,5 @@ $DesktopProcess = Start-Process `
     -PassThru
 
 Write-Host "[AURA_DASHBOARD] backend pid=$($BackendProcess.Id) url=http://127.0.0.1:8095"
-Write-Host "[AURA_DASHBOARD] tauri pid=$($DesktopProcess.Id) dev-url=http://127.0.0.1:5173"
+Write-Host "[AURA_DASHBOARD] tauri pid=$($DesktopProcess.Id) dev-url=auto-select (default http://127.0.0.1:5173)"
 Write-Host "[AURA_DASHBOARD] launched backend and Tauri dashboard in separate PowerShell windows."
