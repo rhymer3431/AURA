@@ -14,29 +14,6 @@ export function stringValue(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-export function canonicalRuntimeComponent(value: unknown, fallback = "navigation_runtime"): string {
-  const raw = stringValue(value, fallback).trim();
-  if (raw === "") {
-    return fallback;
-  }
-  if (raw === "aura_runtime") {
-    return "navigation_runtime";
-  }
-  if (raw.startsWith("aura_runtime_")) {
-    return raw.replace(/^aura_runtime/, "navigation_runtime");
-  }
-  return raw;
-}
-
-export function runtimeComponentLabel(value: unknown, fallback = "navigation_runtime"): string {
-  const raw = stringValue(value, fallback).trim();
-  if (raw === "") {
-    return fallback;
-  }
-  const canonical = canonicalRuntimeComponent(raw, fallback);
-  return canonical === raw ? canonical : `${canonical} (compat)`;
-}
-
 export function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }

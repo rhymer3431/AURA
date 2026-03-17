@@ -85,11 +85,11 @@ export function ExternalServicesPanel() {
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
       <div className="flex items-center gap-2 mb-4">
-        <h3 className="text-[15px] font-semibold text-black">Planning Backends</h3>
+        <h3 className="text-[15px] font-semibold text-black">External Services</h3>
       </div>
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <ServiceCard
-          name="NavDP Backend"
+          name="NavDP Server"
           url={stringValue(navdp.healthUrl, "http://127.0.0.1:8888/health")}
           status={stringValue(navdp.status, "unknown")}
           avgLatency={formatMs(navdp.latencyMs, "n/a")}
@@ -103,7 +103,7 @@ export function ExternalServicesPanel() {
           ]}
         />
         <ServiceCard
-          name="Dual Coordinator"
+          name="Dual Server"
           url={stringValue(dual.healthUrl, "http://127.0.0.1:8890/health")}
           status={stringValue(dual.status, "inactive")}
           avgLatency={formatMs(dual.latencyMs, "n/a")}
@@ -120,7 +120,7 @@ export function ExternalServicesPanel() {
           <div className="flex items-center justify-between mb-1.5">
             <div className="flex items-center gap-1.5">
               <Radio className="size-3.5 text-black/30" />
-              <span className="text-[12px] font-medium text-black">System2 Planner</span>
+              <span className="text-[12px] font-medium text-black">System2</span>
             </div>
             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${statusClasses(stringValue(system2?.state, "inactive"))}`}>
               {statusLabel(stringValue(system2?.state, "inactive"))}

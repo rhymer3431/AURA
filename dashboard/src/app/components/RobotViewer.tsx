@@ -3,7 +3,7 @@ import { Maximize2, Eye, EyeOff, Video, SignalHigh } from "lucide-react";
 
 import { useDashboard } from "../state";
 import { useWebRTCViewer } from "../hooks/useWebRTCViewer";
-import { asArray, asRecord, formatMs, numberValue, runtimeComponentLabel, stringValue } from "../selectors";
+import { asArray, asRecord, formatMs, numberValue, stringValue } from "../selectors";
 import { buildApiUrl } from "../network";
 
 function drawOverlay(
@@ -156,10 +156,7 @@ export function RobotViewer() {
   const trackRoles = viewer.trackRoles.length > 0 ? viewer.trackRoles : asArray<string>(state?.transport.peerTrackRoles);
   const detections = asArray<Record<string, unknown>>(telemetry.detections);
   const waitingForFrame = stringValue(snapshot.type) === "waiting_for_frame";
-  const frameSource = runtimeComponentLabel(
-    snapshot.source,
-    runtimeComponentLabel(state?.sensors.source, runtimeComponentLabel(state?.runtime?.ownerComponent, "navigation_runtime")),
-  );
+  const frameSource = stringValue(snapshot.source, stringValue(state?.sensors.source, "aura_runtime"));
   const detectorBackend = stringValue(snapshot.detector_backend, stringValue(state?.perception.detectorBackend, "unknown"));
   const peerSessionId = stringValue(state?.transport.peerSessionId, "none");
 

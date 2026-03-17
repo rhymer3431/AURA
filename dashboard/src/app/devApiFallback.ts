@@ -34,7 +34,7 @@ function buildMockBootstrap(apiBaseUrl: string) {
 }
 
 function buildMockState(apiBaseUrl: string, nowMs: number) {
-  const message = `AURA dashboard backend is not running at ${trimTrailingSlash(apiBaseUrl)}. NavigationRuntime mock telemetry is active via the Vite fallback.`;
+  const message = `AURA dashboard backend is not running at ${trimTrailingSlash(apiBaseUrl)}. Vite dev fallback responses are active.`;
   const eventLog = buildMockLog(nowMs, message);
 
   return {
@@ -59,9 +59,6 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
       },
     ],
     runtime: {
-      ownerComponent: "navigation_runtime",
-      ownerDisplayName: "NavigationRuntime",
-      ownerModulePath: "runtime.navigation_runtime",
       plannerControlMode: "idle",
       lastStatusEvent: {
         state: "mock_mode",
@@ -72,7 +69,7 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
       rgbAvailable: false,
       depthAvailable: false,
       poseAvailable: false,
-      source: "navigation_runtime",
+      source: "vite-dev-fallback",
       frameId: "mock",
     },
     perception: {
@@ -94,7 +91,7 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
       semanticRuleCount: 0,
       scratchpad: {
         taskState: "idle",
-        instruction: "Start scripts/powershell/run_dashboard.ps1 to connect the dashboard to runtime.navigation_runtime.",
+        instruction: "Start scripts/powershell/run_dashboard.ps1 for the full backend.",
         nextPriority: "launch backend",
       },
     },
@@ -204,7 +201,7 @@ export function buildDevApiFallbackResponse({
 
   return jsonResponse(
     {
-      error: `AURA dashboard backend is not running at ${normalizedBase}. Start scripts/powershell/run_dashboard.ps1 to reach runtime.navigation_runtime, or point VITE_AURA_API_BASE/AURA_DASHBOARD_PROXY_TARGET to a live backend.`,
+      error: `AURA dashboard backend is not running at ${normalizedBase}. Start scripts/powershell/run_dashboard.ps1 or point VITE_AURA_API_BASE/AURA_DASHBOARD_PROXY_TARGET to a live backend.`,
       mock: true,
     },
     503,

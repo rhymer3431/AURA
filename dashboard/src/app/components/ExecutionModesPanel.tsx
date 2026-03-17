@@ -1,7 +1,7 @@
 import { Crosshair, Eye, Layers3, ScanLine, SlidersHorizontal } from "lucide-react";
 
 import { useDashboard } from "../state";
-import { asRecord, booleanValue, runtimeComponentLabel, stringValue } from "../selectors";
+import { booleanValue } from "../selectors";
 
 function ModeBadge({
   label,
@@ -27,11 +27,8 @@ function ModeBadge({
 export function ExecutionModesPanel() {
   const { bootstrap, form, state } = useDashboard();
   const liveConfig = state?.session.config;
-  const runtime = asRecord(state?.runtime);
   const plannerModes = bootstrap?.plannerModes ?? ["interactive", "pointgoal"];
   const launchModes = bootstrap?.launchModes ?? ["gui", "headless"];
-  const runtimeOwner = stringValue(runtime.ownerDisplayName, "NavigationRuntime");
-  const runtimeComponent = runtimeComponentLabel(runtime.ownerComponent, "navigation_runtime");
   const goalText =
     form.plannerMode === "pointgoal"
       ? `${form.goalX || "?"}, ${form.goalY || "?"}`
@@ -63,8 +60,8 @@ export function ExecutionModesPanel() {
       <div className="flex items-center gap-2">
         <SlidersHorizontal className="size-4 text-black/40" />
         <div>
-          <h3 className="text-[15px] font-semibold text-black">Runtime Ownership & Modes</h3>
-          <p className="text-[12px] text-black/50 mt-0.5">NavigationRuntime owner와 draft launch options, 현재 세션 설정을 분리해서 보여줍니다.</p>
+          <h3 className="text-[15px] font-semibold text-black">Execution Modes</h3>
+          <p className="text-[12px] text-black/50 mt-0.5">draft launch options와 현재 실행 중인 세션 설정을 분리해서 보여줍니다.</p>
         </div>
       </div>
 
@@ -133,10 +130,6 @@ export function ExecutionModesPanel() {
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3 col-span-2">
               <div className="text-black/45 mb-1">G1 Locomotion Config</div>
               <div className="font-medium text-black break-all">{liveLocomotionText}</div>
-            </div>
-            <div className="bg-[#F7F9FB] rounded-xl px-3 py-3 col-span-2">
-              <div className="text-black/45 mb-1">Runtime Owner</div>
-              <div className="font-medium text-black break-all">{runtimeOwner} · {runtimeComponent}</div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">

@@ -118,12 +118,12 @@ describe("App navigation", () => {
     expect(screen.getByText("PipelineFlow")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Pipeline Overview" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Planning & Execution" }));
+    fireEvent.click(screen.getByRole("button", { name: "Planner & Control" }));
 
     await waitFor(() => {
       expect(screen.getByText("NavigationControlPanel")).toBeInTheDocument();
       expect(screen.queryByText("PipelineFlow")).not.toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Planning & Execution" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Planner & Control" })).toBeInTheDocument();
       expect(window.location.hash).toBe("#/planner-control");
     });
   });
