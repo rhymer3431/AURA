@@ -26,3 +26,4 @@ datasets/
 !artifacts/datasets/system2_memory_lora_seed/**
 /state/
 agents.md
+_cudart_extract/
