@@ -1,3 +1,5 @@
+"""Legacy planning coordinator implementation kept for compatibility."""
+
 from __future__ import annotations
 
 import io
@@ -80,6 +82,8 @@ class S1Result:
 
 
 class DualOrchestrator:
+    """Compatibility implementation behind the PlanningCoordinator facade."""
+
     def __init__(self, args) -> None:
         self._lock = threading.Lock()
         self.navdp_url = str(args.navdp_url)

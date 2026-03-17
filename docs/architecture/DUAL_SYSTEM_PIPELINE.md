@@ -1,6 +1,6 @@
 # Dual-System Pipeline
 
-이 문서는 현재 저장소에서 구현된 memory-aware dual-system planning 경로를 설명한다. 대상은 `scripts/powershell/run_aura_runtime.ps1`로 실행하는 G1 런타임이며, 구현 기준은 현재 `llama.cpp` dual-server 경로다.
+이 문서는 현재 저장소에서 구현된 memory-aware dual-system planning 경로를 설명한다. 대상은 `scripts/powershell/run_aura_runtime.ps1`로 실행하는 G1 런타임이며, canonical owner는 `runtime.navigation_runtime:NavigationRuntime`다.
 
 ## 핵심 원칙
 
@@ -19,7 +19,7 @@
 [RGB frame, depth, pose, instruction]
             |
             v
-[Supervisor.process_frame]
+[WorldModelModule.update]
 - perception 실행
 - structured memory write
 - keyframe 선택
@@ -32,7 +32,7 @@
 - Keyframe Bank
             |
             v
-[AuraRuntimeCommandSource]
+[NavigationRuntime]
 - active dual task일 때 memory retrieval 수행
 - MemoryContextBundle 생성
             |
@@ -41,7 +41,7 @@
 - observation + memory_context를 dual server로 전달
             |
             v
-[DualOrchestrator / System 2]
+[PlanningCoordinator / System 2]
 - current image
 - recent history image 1장
 - retrieved text memory 3~5줄
@@ -67,7 +67,7 @@
 
 ### 1. `runtime.supervisor.Supervisor`
 
-- perception 결과를 메모리에 한 번만 기록하는 canonical ingress다.
+- compatibility path에서 `WorldModelModule`를 감싸는 ingress façade다.
 - `MemoryService.record_perception_frame(...)`를 호출해
   - object/place DB 갱신
   - keyframe bank 저장
@@ -92,7 +92,7 @@
   - instruction을 semantic / spatial / temporal query로 분해
   - top-k memory line과 keyframe을 묶어 `MemoryContextBundle` 생성
 
-### 3. `runtime.aura_runtime.AuraRuntimeCommandSource`
+### 3. `runtime.navigation_runtime.NavigationRuntime`
 
 - `Supervisor.process_frame(...)` 직후 active dual task가 있으면 memory retrieval을 수행한다.
 - retrieval 결과를 `ExecutionObservation.memory_context`에 붙인다.
@@ -107,7 +107,7 @@
 - `DualPlannerInput`으로 memory context를 그대로 넘긴다.
 - point-goal/no-goal 경로는 건드리지 않는다.
 
-### 5. `services.dual_orchestrator.DualOrchestrator`
+### 5. `planning.coordinator.PlanningCoordinator` / `services.dual_orchestrator.DualOrchestrator`
 
 - `memory_context`는 System 2 request preparation에만 사용한다.
 - System 1 호출에는 넣지 않는다.

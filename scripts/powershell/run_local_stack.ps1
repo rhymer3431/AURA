@@ -18,6 +18,7 @@ if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = "$SrcDir$PathSep$PreviousPythonPath"
 }
 try {
+    Write-Warning "run_local_stack.ps1 is deprecated and pending removal. Prefer run_aura_runtime.ps1 or run_memory_agent.ps1 --loopback."
     & $PythonExe -m $EntryModule @args
     exit $LASTEXITCODE
 }

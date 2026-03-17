@@ -27,33 +27,36 @@ AURA는 인간의 인지 파이프라인을 모방한 인지 아키텍처를 구
 
 - `perception`: detector, tracker, depth projection, object mapping, observation fusion
 - `memory`: spatial/temporal/episodic/semantic memory와 working memory
-- `services`: object search, follow, attention, task orchestration, semantic consolidation
-- `runtime`: AURA runtime, planning session, supervisor, internal frame bridge, live smoke runner
-- `apps`: 로컬 스택, 메모리 에이전트, internal frame bridge, live smoke, viewer 실행 진입점
+- `services`: legacy mission/planning/memory implementations과 compatibility aliases
+- `modules`: observation, world model, mission, planning, execution, runtime I/O facade
+- `runtime`: `NavigationRuntime`, planning session, supervisor ingress, memory agent runtime
+- `apps`: 메모리 에이전트, dashboard backend, WebRTC gateway, deprecated local stack/live smoke shim
 - `ipc`: in-process, ZMQ, shared memory transport
 - `tests`: 서비스/메모리/인퍼런스/통합 테스트
 
 ## 핵심 아키텍처
 
-AURA의 핵심은 인간의 인지 파이프라인을 참고한 구조를 로봇 런타임으로 구현하는 데 있습니다.
+AURA의 핵심은 하나의 메인 런타임 owner 아래에 인지 파이프라인을 모듈화하는 데 있습니다.
 
-기본 실행 흐름은 두 갈래입니다.
+현재 canonical runtime flow는 아래와 같습니다.
 
-1. 인식/메모리 경로  
-   센서 프레임이 detector, tracker, depth projection을 거쳐 `MemoryService`와 `TaskOrchestrator`로 들어갑니다.
+1. `run_aura_runtime.ps1`
+2. `runtime.navigation_runtime:NavigationRuntime`
+3. `ObservationModule.capture()`
+4. `WorldModelModule.update()`
+5. `MissionModule.update()`
+6. `PlanningModule.plan()`
+7. `ExecutionModule.execute()`
+8. `RuntimeIOModule.publish()`
+9. `locomotion.runtime`
 
-2. 계획/이동 경로  
-   같은 프레임이 System 2(VLM) 목표 선택과 System 1(NavDP) 궤적 생성으로 이어지고, 최종적으로 low-level motion command로 변환됩니다.
+이때 ownership은 다음처럼 읽어야 합니다.
 
-태스크 레벨에서는 `TaskOrchestrator`가 다음 행동을 관리합니다.
-
-- 사람 따라가기
-- 보이는 객체 접근
-- 기억 속 객체 회상 후 탐색
-- 발화 방향 주시
-- 기본 로컬 탐색
-
-이 구조는 단순한 네비게이션 파이프라인이 아니라, 인식, 기억, 주의, 회상, 계획을 연결하는 인지 아키텍처를 실제 로봇 동작으로 이어주는 것을 목표로 합니다.
+- `NavigationRuntime`가 프레임 루프의 유일한 owner다.
+- `Supervisor`는 world-model ingress compatibility façade다.
+- `MissionManager`/`TaskOrchestrator`는 mission state consumer이며 locomotion controller가 아니다.
+- dual-system은 top-level subsystem이 아니라 `PlanningModule` 내부 backend다.
+- memory read/write는 `WorldModelModule` 아래 façade로 분리된다.
 
 ## 검증 환경
 
@@ -66,13 +69,12 @@ AURA는 실제 로봇에 이식 가능한 구조를 지향하며, 검증은 두 
 
 ## 주요 실행 모드
 
-### 1. Local Stack
+### 1. Navigation Runtime
 
-가장 빠르게 전체 파이프라인을 확인하는 경로입니다. 한 프로세스에서 frame source, perception, memory, orchestrator를 함께 실행합니다.
+메인 실행 경로입니다. G1 런타임에서 observation -> world model -> mission -> planning -> execution 순서를 소유합니다.
 
 ```powershell
-.\scripts\powershell\run_local_stack.ps1 --command "아까 봤던 사과를 찾아가"
-.\scripts\powershell\run_local_stack.ps1 --command "따라와" --scene person --frame-source auto
+.\scripts\powershell\run_aura_runtime.ps1
 ```
 
 ### 2. Memory Agent
@@ -83,15 +85,7 @@ AURA는 실제 로봇에 이식 가능한 구조를 지향하며, 검증은 두 
 .\scripts\powershell\run_memory_agent.ps1 --bus zmq --control-endpoint tcp://127.0.0.1:5560 --telemetry-endpoint tcp://127.0.0.1:5561 --serve
 ```
 
-### 3. AURA Runtime
-
-G1 런타임에서 no-goal roaming, point-goal, 자연어 지시 이후 dual-system 경로를 다룹니다.
-
-```powershell
-.\scripts\powershell\run_aura_runtime.ps1
-```
-
-### 4. AURA Dashboard
+### 3. AURA Dashboard / WebRTC
 
 Tauri desktop app으로 AURA runtime stack을 제어하고, WebRTC viewer를 브라우저 대신 데스크톱 셸 안에서 띄웁니다.
 
@@ -101,14 +95,20 @@ Tauri desktop app으로 AURA runtime stack을 제어하고, WebRTC viewer를 브
 
 이 런처는 로컬 backend(`127.0.0.1:8095`)와 Tauri dashboard를 함께 실행합니다.
 
-### 5. Live Smoke
+### 4. Experimental Paths
 
-Isaac 환경 호환성, D455 센서 마운트, perception ingress, memory ingress를 단계별로 점검하는 진단 경로입니다.
+- `system2-memory-lora`
+- `memory-policy`
+- `text-only memory controller`
 
-```powershell
-.\scripts\powershell\run_live_smoke_preflight.ps1
-.\scripts\powershell\run_live_smoke.ps1 --headless
-```
+이 경로들은 canonical runtime이나 supporting path가 아니라 planner/mission backend 실험 경로로 본다.
+
+### 5. Decommission Targets
+
+- `run_local_stack.ps1` / `apps.local_stack_app`
+- `apps.live_smoke_app` / `runtime.live_smoke_runner`
+
+이 surface들은 유지 대상이 아니라 제거 대상이다. 현재는 compatibility shim만 남기고 canonical/supporting 목록에서는 제외했다.
 
 ## 환경 전제
 
@@ -125,9 +125,10 @@ Isaac 환경 호환성, D455 센서 마운트, perception ingress, memory ingres
 
 ## 추천 시작 순서
 
-- 구조만 빠르게 보려면 `run_local_stack.ps1`
-- Isaac 환경 점검이 먼저면 `run_live_smoke_preflight.ps1`
-- G1 dual-system 흐름까지 보려면 `run_aura_runtime.ps1`
+- 메인 런타임은 `run_aura_runtime.ps1`
+- supporting memory path는 `run_memory_agent.ps1`
+- 운영/시각화 shell은 `run_dashboard.ps1`
+- deprecated/decommission surface인 local stack/live smoke는 새 구조의 시작점으로 사용하지 않는다.
 
 ## 디렉터리 가이드
 

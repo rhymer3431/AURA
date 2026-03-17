@@ -6,6 +6,7 @@ from importlib import import_module
 
 _EXPORTS: dict[str, tuple[str, str]] = {
     "IsaacRuntime": (".isaac_runtime", "IsaacRuntime"),
+    "NavigationRuntime": (".navigation_runtime", "NavigationRuntime"),
     "PlanningSession": (".planning_session", "PlanningSession"),
     "PlannerStats": (".planning_session", "PlannerStats"),
     "Supervisor": (".supervisor", "Supervisor"),

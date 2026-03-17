@@ -8,7 +8,7 @@
 - Compatibility ONNX play shim: `play_g1_keyboard_onnx.py`
 
 ## Runtime Flow
-- Runtime flow: `runtime.aura_runtime -> locomotion.runtime -> runtime.planning -> control/adapters`
+- Runtime flow: `runtime.navigation_runtime -> modules.{observation,world_model,mission,planning,execution,runtime_io} -> locomotion.runtime`
 - Canonical robot asset path: `src/locomotion/g1/g1_d455.usd`
 - Compatibility fallback robot asset path: `g1_play/g1/g1_d455.usd`
 
@@ -26,9 +26,11 @@
 ```
 
 ## Notes
-- The AURA runtime is now canonical under `src/runtime`.
+- The canonical runtime class is `runtime.navigation_runtime:NavigationRuntime`.
+- `runtime.aura_runtime` remains as a deprecated compatibility wrapper.
 - Locomotion code and G1 assets are canonical under `src/locomotion`.
-- Planner, adapter, and tracking logic live directly under the functional packages in `src/`.
+- `TaskOrchestrator` now reads as a mission-module compatibility alias.
+- `DualOrchestrator` now reads as a planning-coordinator compatibility alias.
 - `planner-mode=interactive` starts in no-goal roaming and accepts natural-language commands from the same terminal.
 - `launch-mode=gui` keeps the existing Isaac GUI runtime path.
 - `launch-mode=g1_view` runs Isaac headless, publishes D455 frames through the production ZMQ/shared-memory IPC path, and auto-starts the external OpenCV viewer with YOLO overlays.

@@ -151,7 +151,7 @@ frame 전체를 담는 구조가 아니라, frame payload를 재구성하기 위
 
 ## 대표적인 런타임 흐름
 
-### Local Stack
+### Deprecated Local Stack
 
 - `InprocBus`
 - SHM 없이 같은 프로세스에서 batch 소비
@@ -167,11 +167,11 @@ frame 전체를 담는 구조가 아니라, frame payload를 재구성하기 위
 
 ### `g1_view`
 
-G1 pipeline의 viewer 모드에서는 같은 관측이 viewer overlay와 함께 외부 소비자에게 공개된다. 즉, IPC는 local stack과 memory agent뿐 아니라 G1 시각화 경로와도 공유되는 계약이다.
+G1 pipeline의 viewer 모드에서는 같은 관측이 viewer overlay와 함께 외부 소비자에게 공개된다. 즉, IPC는 deprecated local stack과 supporting memory agent뿐 아니라 G1 시각화 경로와도 공유되는 계약이다.
 
-## Live Smoke와의 정합성
+## Deprecated Live Smoke와의 정합성
 
-Live Smoke는 메인 runtime은 아니지만, 가능한 한 같은 observation/message 형태를 재사용한다.
+Live Smoke는 메인 runtime은 아니며 decommission 대상이지만, 가능한 한 같은 observation/message 형태를 재사용한다.
 
 - perception ingress 확인
 - memory ingress 확인

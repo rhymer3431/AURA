@@ -167,11 +167,11 @@ def main(argv: list[str] | None = None) -> int:
         return run_live_frame_bridge_app(args)
     if str(args.frame_source).lower() == "live":
         print(f"[FRAME_BRIDGE] live bridge unavailable: {live_reason}")
-        print("[FRAME_BRIDGE] use scripts/powershell/run_live_smoke_preflight.ps1 or run_live_smoke.ps1 for phase diagnostics.")
+        print("[FRAME_BRIDGE] live-smoke diagnostics are deprecated; prefer memory-agent loopback or direct NavigationRuntime validation.")
         return 1
     if live_reason != "":
         print(f"[FRAME_BRIDGE] live bootstrap unavailable, falling back to synthetic path: {live_reason}")
-        print("[FRAME_BRIDGE] use scripts/powershell/run_live_smoke_preflight.ps1 to diagnose the live bootstrap path.")
+        print("[FRAME_BRIDGE] deprecated live-smoke diagnostics remain the old bootstrap escape hatch, but are no longer a primary runtime surface.")
     return run_lightweight_frame_bridge(args, force_synthetic=True, initial_notice=live_reason)
 
 

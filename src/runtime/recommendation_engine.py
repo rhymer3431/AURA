@@ -42,7 +42,7 @@ def build_recommendations(
         results.append(
             Recommendation(
                 action="Set ISAAC_SIM_ROOT or ISAAC_SIM_PYTHON to a valid Isaac installation and rerun preflight.",
-                rationale="Isaac bundled python.bat is required for standalone live smoke.",
+                rationale="Isaac bundled python.bat is required for deprecated standalone live-smoke diagnostics.",
                 severity="error",
                 recommended_launch_mode="standalone_python",
                 recommended_profile=compatibility_report.recommended_profile,
@@ -51,7 +51,7 @@ def build_recommendations(
     if compatibility_report.likely_runtime_mismatch:
         results.append(
             Recommendation(
-                action="Current interpreter is not Isaac python.bat. Use scripts/powershell/run_live_smoke.ps1 or rerun under Isaac python.bat.",
+                action="Current interpreter is not Isaac python.bat. Use the deprecated live-smoke diagnostics path only if you are explicitly validating old bootstrap behavior.",
                 rationale="likely_runtime_mismatch",
                 severity="warning",
                 recommended_launch_mode=compatibility_report.recommended_launch_mode,
