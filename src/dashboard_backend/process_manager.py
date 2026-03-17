@@ -138,7 +138,6 @@ class ProcessManager:
 
     def _build_specs(self, request: DashboardSessionRequest) -> list[ProcessSpec]:
         scripts_dir = resolve_repo_path(self.config.repo_root, "scripts", "powershell")
-        runtime_python = resolve_repo_path(self.config.repo_root, "scripts", "windows", "isaac_console_python.bat")
         navdp_port = self._reserve_port("127.0.0.1", 8888)
         system2_port = self._reserve_port("127.0.0.1", 8080, reserved={navdp_port})
         dual_port = self._reserve_port("127.0.0.1", 8890, reserved={navdp_port, system2_port})
@@ -193,7 +192,6 @@ class ProcessManager:
                 script_path=scripts_dir / "run_aura_runtime.ps1",
                 args=tuple(runtime_args),
                 health_url="",
-                env=(("ISAAC_SIM_PYTHON", str(runtime_python)),),
             )
         )
         return specs
