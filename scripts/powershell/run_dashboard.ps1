@@ -38,6 +38,38 @@ function Test-PythonModules {
     return $LASTEXITCODE -eq 0
 }
 
+function Wait-HttpReady {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+        [int]$TimeoutSec = 20,
+        [System.Diagnostics.Process]$Process = $null
+    )
+
+    $Deadline = (Get-Date).AddSeconds([Math]::Max($TimeoutSec, 1))
+    do {
+        try {
+            $Response = Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2
+            if ($null -ne $Response -and $Response.StatusCode -ge 200 -and $Response.StatusCode -lt 300) {
+                return $true
+            }
+        }
+        catch {
+        }
+
+        if ($null -ne $Process) {
+            $Process.Refresh()
+            if ($Process.HasExited) {
+                return $false
+            }
+        }
+
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $Deadline)
+
+    return $false
+}
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
 $DashboardDir = Join-Path $RepoDir "dashboard"
@@ -119,6 +151,7 @@ if (Test-Path '$CargoBinDirEsc') {
 "@
 }
 $BackendArgText = Join-SingleQuotedArgs $args
+$BackendHealthUrl = "http://127.0.0.1:8095/api/bootstrap"
 
 $BackendCommand = @"
 `$ErrorActionPreference = 'Stop'
@@ -166,12 +199,27 @@ $BackendProcess = Start-Process `
     -WorkingDirectory $RepoDir `
     -PassThru
 
+Write-Host "[AURA_DASHBOARD] backend pid=$($BackendProcess.Id) url=http://127.0.0.1:8095"
+Write-Host "[AURA_DASHBOARD] waiting for backend readiness at $BackendHealthUrl"
+
+if (-not (Wait-HttpReady -Url $BackendHealthUrl -TimeoutSec 20 -Process $BackendProcess)) {
+    $BackendProcess.Refresh()
+    if (-not $BackendProcess.HasExited) {
+        try {
+            Stop-Process -Id $BackendProcess.Id -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+    throw "Dashboard backend did not become ready at $BackendHealthUrl. Inspect the backend PowerShell window for startup errors."
+}
+
 $DesktopProcess = Start-Process `
     -FilePath $PowerShellExe `
     -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $DesktopCommand) `
     -WorkingDirectory $DashboardDir `
     -PassThru
 
-Write-Host "[AURA_DASHBOARD] backend pid=$($BackendProcess.Id) url=http://127.0.0.1:8095"
+Write-Host "[AURA_DASHBOARD] backend ready"
 Write-Host "[AURA_DASHBOARD] tauri pid=$($DesktopProcess.Id) dev-url=auto-select (default http://127.0.0.1:5173)"
 Write-Host "[AURA_DASHBOARD] launched backend and Tauri dashboard in separate PowerShell windows."

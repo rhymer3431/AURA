@@ -15,6 +15,8 @@
 - Python `aiohttp` dashboard backend (`http://127.0.0.1:8095`)
 - Tauri desktop app (`npm run tauri:dev`)
 
+런처는 이제 backend `http://127.0.0.1:8095/api/bootstrap` 가 준비된 뒤에 Tauri를 시작합니다. 따라서 full-stack 실행에서는 백엔드가 아직 뜨지 않은 순간의 Vite mock fallback으로 대시보드가 먼저 고정되는 문제를 줄입니다.
+
 ## Frontend-only commands
 
 ```bash
