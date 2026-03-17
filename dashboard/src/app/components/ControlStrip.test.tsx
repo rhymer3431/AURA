@@ -123,31 +123,6 @@ describe("ControlStrip", () => {
     expect(mockContext.setForm).toHaveBeenCalledWith({ scenePreset: "interior agent kujiale 3" });
   });
 
-  it("disables runtime controls while Vite mock mode is active", () => {
-    mockContext.form = {
-      ...mockContext.form,
-      plannerMode: "interactive",
-      goalX: "1",
-      goalY: "2",
-    };
-    mockContext.state = {
-      ...mockContext.state,
-      runtime: {
-        lastStatusEvent: {
-          state: "mock_mode",
-          reason: "AURA dashboard backend is not running at http://127.0.0.1:8095. Vite dev fallback responses are active.",
-        },
-      },
-    };
-
-    render(<ControlStrip />);
-
-    expect(screen.getByRole("button", { name: /start stack/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /stop stack/i })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /submit task/i })).toBeDisabled();
-    expect(screen.getByText(/Vite dev fallback responses are active/i)).toBeInTheDocument();
-  });
-
   it("updates the locomotion config from the dashboard input", () => {
     mockContext.form = {
       ...mockContext.form,

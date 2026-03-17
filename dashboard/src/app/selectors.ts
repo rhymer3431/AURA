@@ -1,8 +1,5 @@
 import type { DashboardState, LogRecord, ProcessRecord, ServiceSnapshot } from "./types";
 
-export const DASHBOARD_MOCK_MODE_ACTION_MESSAGE =
-  "AURA dashboard backend is not connected. Start scripts/powershell/run_dashboard.ps1 or point VITE_AURA_API_BASE/AURA_DASHBOARD_PROXY_TARGET to a live backend.";
-
 export function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -68,22 +65,6 @@ export function serviceSnapshot(state: DashboardState | null, name: "navdp" | "d
     return { name, status: "unknown" };
   }
   return state.services[name] ?? { name, status: "unknown" };
-}
-
-export function isDashboardMockMode(state: DashboardState | null): boolean {
-  const runtime = asRecord(state?.runtime);
-  const lastStatusEvent = asRecord(runtime.lastStatusEvent);
-  return stringValue(lastStatusEvent.state) === "mock_mode";
-}
-
-export function dashboardMockModeReason(state: DashboardState | null): string {
-  if (state === null) {
-    return DASHBOARD_MOCK_MODE_ACTION_MESSAGE;
-  }
-  const runtime = asRecord(state.runtime);
-  const lastStatusEvent = asRecord(runtime.lastStatusEvent);
-  const reason = stringValue(lastStatusEvent.reason).trim();
-  return reason === "" ? DASHBOARD_MOCK_MODE_ACTION_MESSAGE : reason;
 }
 
 export function recentLogs(state: DashboardState | null, limit = 60): LogRecord[] {

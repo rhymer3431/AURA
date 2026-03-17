@@ -17,7 +17,6 @@ import type {
   SessionForm,
 } from "./types";
 import { createDashboardEventSource, requestJson } from "./network";
-import { DASHBOARD_MOCK_MODE_ACTION_MESSAGE, isDashboardMockMode } from "./selectors";
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
@@ -155,23 +154,12 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  function blockMutatingActionWhileMockMode(): boolean {
-    if (!isDashboardMockMode(model.state)) {
-      return false;
-    }
-    dispatch({ type: "error", payload: DASHBOARD_MOCK_MODE_ACTION_MESSAGE });
-    return true;
-  }
-
   async function refresh() {
     const nextState = await requestJson<DashboardState>("/api/state");
     dispatch({ type: "state", payload: nextState });
   }
 
   async function startSession() {
-    if (blockMutatingActionWhileMockMode()) {
-      return;
-    }
     setLoading(true);
     try {
       const payload = buildSessionPayload(form);
@@ -188,9 +176,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function stopSession() {
-    if (blockMutatingActionWhileMockMode()) {
-      return;
-    }
     setLoading(true);
     try {
       const nextState = await requestJson<DashboardState>("/api/session/stop", {
@@ -210,9 +195,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     if (normalized === "") {
       return;
     }
-    if (blockMutatingActionWhileMockMode()) {
-      return;
-    }
     try {
       await requestJson("/api/runtime/task", {
         method: "POST",
@@ -225,9 +207,6 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function cancelTask() {
-    if (blockMutatingActionWhileMockMode()) {
-      return;
-    }
     try {
       await requestJson("/api/runtime/cancel", { method: "POST", body: JSON.stringify({}) });
       await refresh();

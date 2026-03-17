@@ -71,11 +71,7 @@ function formatCoord(value: number | null | undefined): string {
   return typeof value === "number" && Number.isFinite(value) ? value.toFixed(2) : "n/a";
 }
 
-type OccupancyMapPanelProps = {
-  showRouteDebug?: boolean;
-};
-
-export function OccupancyMapPanel({ showRouteDebug = true }: OccupancyMapPanelProps) {
+export function OccupancyMapPanel() {
   const { state, form } = useDashboard();
   const [mapData, setMapData] = useState<OccupancyMapResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -299,70 +295,37 @@ export function OccupancyMapPanel({ showRouteDebug = true }: OccupancyMapPanelPr
             </div>
           </div>
 
-          {showRouteDebug ? (
-            <div className="rounded-[24px] bg-white border border-black/6 p-4">
-              <div className="flex items-center gap-2 text-[12px] text-black/45 mb-3">
-                <Target className="size-4" />
-                Route Debug
+          <div className="rounded-[24px] bg-white border border-black/6 p-4">
+            <div className="flex items-center gap-2 text-[12px] text-black/45 mb-3">
+              <Target className="size-4" />
+              Route Debug
+            </div>
+            <div className="space-y-3 text-[12px]">
+              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+                <div className="text-black/45 mb-1">Replan reason</div>
+                <div className="text-black font-medium">{stringValue(runtime.globalRouteLastReplanReason, "none") || "none"}</div>
               </div>
-              <div className="space-y-3 text-[12px]">
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Replan reason</div>
-                  <div className="text-black font-medium">{stringValue(runtime.globalRouteLastReplanReason, "none") || "none"}</div>
+              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+                <div className="text-black/45 mb-1">Route error</div>
+                <div className="text-black font-medium break-words">{stringValue(runtime.globalRouteLastError, "clear") || "clear"}</div>
+              </div>
+              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+                <div className="text-black/45 mb-1">Map bounds</div>
+                <div className="text-black font-medium">
+                  x [{formatCoord(mapData?.xMin)}, {formatCoord(mapData?.xMax)}]
                 </div>
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Route error</div>
-                  <div className="text-black font-medium break-words">{stringValue(runtime.globalRouteLastError, "clear") || "clear"}</div>
+                <div className="text-black font-medium">
+                  y [{formatCoord(mapData?.yMin)}, {formatCoord(mapData?.yMax)}]
                 </div>
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Map bounds</div>
-                  <div className="text-black font-medium">
-                    x [{formatCoord(mapData?.xMin)}, {formatCoord(mapData?.xMax)}]
-                  </div>
-                  <div className="text-black font-medium">
-                    y [{formatCoord(mapData?.yMin)}, {formatCoord(mapData?.yMax)}]
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Active waypoint</div>
-                  <div className="text-black font-medium">
-                    {activeWaypoint ? `${activeWaypoint[0].toFixed(2)}, ${activeWaypoint[1].toFixed(2)}` : "none"}
-                  </div>
+              </div>
+              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+                <div className="text-black/45 mb-1">Active waypoint</div>
+                <div className="text-black font-medium">
+                  {activeWaypoint ? `${activeWaypoint[0].toFixed(2)}, ${activeWaypoint[1].toFixed(2)}` : "none"}
                 </div>
               </div>
             </div>
-          ) : (
-            <div className="rounded-[24px] bg-white border border-black/6 p-4">
-              <div className="flex items-center gap-2 text-[12px] text-black/45 mb-3">
-                <Target className="size-4" />
-                Route Progress
-              </div>
-              <div className="space-y-3 text-[12px]">
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Route status</div>
-                  <div className="text-black font-medium">{routeStatus}</div>
-                </div>
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Waypoint progress</div>
-                  <div className="text-black font-medium">
-                    {Number(runtime.globalRouteWaypointIndex ?? 0)} / {Number(runtime.globalRouteWaypointCount ?? 0)}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Goal</div>
-                  <div className="text-black font-medium">
-                    {routeGoal ? `${routeGoal[0].toFixed(2)}, ${routeGoal[1].toFixed(2)}` : "none"}
-                  </div>
-                </div>
-                <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
-                  <div className="text-black/45 mb-1">Active waypoint</div>
-                  <div className="text-black font-medium">
-                    {activeWaypoint ? `${activeWaypoint[0].toFixed(2)}, ${activeWaypoint[1].toFixed(2)}` : "none"}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

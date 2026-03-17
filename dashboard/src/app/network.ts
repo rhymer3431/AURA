@@ -24,25 +24,6 @@ export function buildApiUrl(path: string): string {
   return `${base}${normalizedPath}`;
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
-  const bodyText = (await response.text()).trim();
-  if (bodyText === "") {
-    return `${response.status} ${response.statusText}`.trim();
-  }
-  try {
-    const parsed = JSON.parse(bodyText) as { error?: unknown; message?: unknown };
-    if (typeof parsed.error === "string" && parsed.error.trim() !== "") {
-      return parsed.error;
-    }
-    if (typeof parsed.message === "string" && parsed.message.trim() !== "") {
-      return parsed.message;
-    }
-  } catch {
-    // Non-JSON error bodies should be surfaced as-is.
-  }
-  return bodyText;
-}
-
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(buildApiUrl(path), {
     ...init,
@@ -52,7 +33,7 @@ export async function requestJson<T>(path: string, init?: RequestInit): Promise<
     },
   });
   if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
+    throw new Error(await response.text());
   }
   return (await response.json()) as T;
 }
