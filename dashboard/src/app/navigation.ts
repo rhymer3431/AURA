@@ -44,21 +44,21 @@ export const dashboardNavSections: DashboardNavSection[] = [
       {
         id: "pipeline-overview",
         label: "Pipeline Overview",
-        description: "핵심 런타임 상태와 전체 파이프라인을 한눈에 봅니다.",
+        description: "NavigationRuntime owner와 observation/world-model/mission/planning/execution 흐름을 한눈에 봅니다.",
         groupTitle: "Dashboards",
         icon: LayoutDashboard,
       },
       {
         id: "planner-control",
-        label: "Planner & Control",
-        description: "플래너 상태, trajectory freshness, action status를 집중해서 확인합니다.",
+        label: "Planning & Execution",
+        description: "PlanningModule backend 상태와 trajectory/action execution 상태를 집중해서 확인합니다.",
         groupTitle: "Dashboards",
         icon: Navigation,
       },
       {
         id: "perception-memory",
-        label: "Perception & Memory",
-        description: "탐지 파이프라인과 memory scratchpad 상태를 분리해서 봅니다.",
+        label: "Observation & World Model",
+        description: "observation 입력, detector 상태, world-model memory scratchpad를 함께 봅니다.",
         groupTitle: "Dashboards",
         icon: Scan,
       },
@@ -83,8 +83,8 @@ export const dashboardNavSections: DashboardNavSection[] = [
       },
       {
         id: "external-services",
-        label: "External Services",
-        description: "NavDP, Dual, System2와 관련 프로세스 구성을 함께 모니터링합니다.",
+        label: "Planning Backends",
+        description: "NavDP, Dual, System2 planning backend와 관련 프로세스 구성을 함께 모니터링합니다.",
         groupTitle: "Monitoring",
         icon: Radio,
       },
@@ -102,8 +102,8 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "execution-modes",
-        label: "Execution Modes",
-        description: "세션 시작 옵션과 현재 실행 모드를 별도 설정 화면으로 분리했습니다.",
+        label: "Runtime Ownership",
+        description: "세션 시작 옵션과 현재 NavigationRuntime owner/mode 구성을 별도 화면으로 봅니다.",
         groupTitle: "Configuration",
         icon: Bot,
       },

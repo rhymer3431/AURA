@@ -19,6 +19,7 @@ import {
   booleanValue,
   formatMs,
   recentLogs,
+  runtimeComponentLabel,
   statusLabel,
   statusTone,
   stringValue,
@@ -116,10 +117,14 @@ export function ProcessesWidget() {
 export function SensorsWidget() {
   const { state } = useDashboard();
   const sensors = asRecord(state?.sensors);
+  const frameSource = runtimeComponentLabel(
+    sensors.source,
+    runtimeComponentLabel(state?.runtime?.ownerComponent, "navigation_runtime"),
+  );
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <SectionHeader icon={MonitorSmartphone} title="센서 입력 상태" />
+      <SectionHeader icon={MonitorSmartphone} title="Observation 입력" />
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
           { label: "RGB", ok: booleanValue(sensors.rgbAvailable) },
@@ -134,7 +139,7 @@ export function SensorsWidget() {
       </div>
       <div className="space-y-1.5 text-[11px]">
         <div className="flex justify-between items-center"><span className="text-black/50">Frame Freshness</span><span className="text-emerald-600 font-medium">{formatMs(state?.transport.frameAgeMs, "n/a")}</span></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Frame Source</span><span className="text-black/70 truncate ml-1 bg-black/[0.03] px-1.5 py-0.5 rounded">{stringValue(sensors.source, "n/a")}</span></div>
+        <div className="flex justify-between items-center"><span className="text-black/50">Frame Source</span><span className="text-black/70 truncate ml-1 bg-black/[0.03] px-1.5 py-0.5 rounded">{frameSource}</span></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Frame ID</span><span className="text-black/70">{String(sensors.frameId ?? "n/a")}</span></div>
       </div>
     </div>
@@ -148,7 +153,7 @@ export function PerceptionWidget() {
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <SectionHeader icon={Scan} title="Perception / Inference" />
+      <SectionHeader icon={Scan} title="Observation / Inference" />
       <div className="flex items-center justify-between text-[11px] mb-3">
         <span className="text-black/50">Detector Backend</span>
         <Chip color={booleanValue(perception.detectorReady) ? "green" : "amber"}>
@@ -183,7 +188,7 @@ export function MemoryWidget() {
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6 h-full flex flex-col">
-      <SectionHeader icon={Database} title="Memory 상태" />
+      <SectionHeader icon={Database} title="World Model / Memory" />
       <div className="space-y-2 text-[11px] mb-3">
         <div className="flex justify-between items-center"><span className="text-black/50">Memory-Aware</span><Chip color={booleanValue(memory.memoryAwareTaskActive) ? "blue" : "slate"}>{booleanValue(memory.memoryAwareTaskActive) ? "task_active" : "idle"}</Chip></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Scratchpad</span><Chip color={stringValue(scratchpad.taskState) === "active" ? "green" : "amber"}>{stringValue(scratchpad.taskState, "idle")}</Chip></div>
@@ -219,6 +224,8 @@ export function IpcOrchestrationWidget() {
   const runtime = asRecord(state?.runtime);
   const busHealth = asRecord(transport.busHealth);
   const lastStatus = asRecord(runtime.lastStatusEvent);
+  const ownerDisplayName = stringValue(runtime.ownerDisplayName, "NavigationRuntime");
+  const ownerComponent = runtimeComponentLabel(runtime.ownerComponent, "navigation_runtime");
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6 flex flex-col gap-4">
@@ -241,7 +248,15 @@ export function IpcOrchestrationWidget() {
         <SectionHeader icon={Layers} title="Orchestration" />
         <div className="bg-white rounded-2xl p-4 shadow-sm text-[12px]">
           <div className="flex justify-between mb-2">
-            <span className="text-black/50">planner_control_mode</span>
+            <span className="text-black/50">runtime_owner</span>
+            <span className="text-black/80 font-medium">{ownerDisplayName}</span>
+          </div>
+          <div className="flex justify-between mb-2">
+            <span className="text-black/50">owner_component</span>
+            <span className="text-black/80 font-medium">{ownerComponent}</span>
+          </div>
+          <div className="flex justify-between mb-2">
+            <span className="text-black/50">planning_phase</span>
             <span className="text-black/80 font-medium">{stringValue(runtime.plannerControlMode, "idle")}</span>
           </div>
           <div className="flex justify-between mb-2">
@@ -323,11 +338,12 @@ export function LogsWidget() {
         )}
         {logs.map((log, index) => {
           const level = stringValue(log.level || log.stream, "info");
+          const sourceLabel = runtimeComponentLabel(log.source, stringValue(log.source, "runtime"));
           return (
             <div key={`${log.source}-${index}`} className="flex gap-2 py-1.5 hover:bg-[#F7F9FB] px-2 rounded-xl transition-colors">
               <span className="text-black/30 w-[70px] shrink-0">{log.timestampNs ? String(log.timestampNs).slice(-8) : log.stream}</span>
               <span className={`w-[80px] shrink-0 font-semibold ${level === "error" || level === "stderr" ? "text-red-500" : level === "warn" || level === "warning" ? "text-amber-500" : "text-black/50"}`}>
-                {log.source}
+                {sourceLabel}
               </span>
               <span className={`flex-1 truncate ${level === "error" || level === "stderr" ? "text-red-600" : level === "warn" || level === "warning" ? "text-amber-600" : "text-black/70"}`}>
                 {log.message}

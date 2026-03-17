@@ -15,6 +15,26 @@ from .log_tailer import LogTailer
 from .process_manager import ProcessManager
 from .runtime_control import RuntimeControlClient
 
+_RUNTIME_COMPONENT_ALIASES = {
+    "navigation_runtime": "navigation_runtime",
+    "aura_runtime": "navigation_runtime",
+}
+
+
+def _runtime_owner_metadata(raw_component: str | None) -> dict[str, object]:
+    raw = str(raw_component or "").strip()
+    canonical = _RUNTIME_COMPONENT_ALIASES.get(raw)
+    if canonical is None:
+        return {}
+    payload: dict[str, object] = {
+        "ownerComponent": canonical,
+        "ownerDisplayName": "NavigationRuntime",
+        "ownerModulePath": "runtime.navigation_runtime",
+    }
+    if raw != canonical:
+        payload["ownerCompatibilityAlias"] = raw
+    return payload
+
 
 class StateAggregator:
     def __init__(
@@ -37,6 +57,7 @@ class StateAggregator:
         self._tasks: list[asyncio.Task[None]] = []
         self._client: ClientSession | None = None
         self._runtime_snapshot: dict[str, object] = {}
+        self._runtime_component: str | None = None
         self._detector_capability: dict[str, object] = {}
         self._last_status: dict[str, object] = {}
         self._service_state: dict[str, dict[str, object]] = {}
@@ -105,7 +126,9 @@ class StateAggregator:
             await self.force_refresh(refresh_services=True)
 
     def _consume_gateway_event(self, kind: str, payload: dict[str, object]) -> None:
-        if kind == "health" and str(payload.get("component", "")) == "aura_runtime":
+        component = str(payload.get("component", ""))
+        if kind == "health" and component in _RUNTIME_COMPONENT_ALIASES:
+            self._runtime_component = component
             details = payload.get("details")
             if isinstance(details, dict) and isinstance(details.get("snapshot"), dict):
                 self._runtime_snapshot = dict(details["snapshot"])
@@ -114,9 +137,10 @@ class StateAggregator:
         elif kind == "status":
             self._last_status = dict(payload)
         elif kind == "notice":
+            source = _RUNTIME_COMPONENT_ALIASES.get(component, component or "runtime")
             self._event_logs.append(
                 {
-                    "source": str(payload.get("component", "runtime")),
+                    "source": source,
                     "stream": "event",
                     "level": str(payload.get("level", "info")),
                     "message": str(payload.get("notice", "")),
@@ -189,6 +213,7 @@ class StateAggregator:
         session_payload = None if request is None else request.to_public_dict()
         processes = self.process_manager.snapshot()
         runtime = dict(self._runtime_snapshot.get("planner", {})) if isinstance(self._runtime_snapshot.get("planner"), dict) else {}
+        runtime.update(_runtime_owner_metadata(self._runtime_component))
         if isinstance(self._runtime_snapshot.get("modes"), dict):
             runtime["modes"] = dict(self._runtime_snapshot["modes"])
         if self._last_status:

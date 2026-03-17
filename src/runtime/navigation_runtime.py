@@ -42,6 +42,8 @@ from .planning_session import PlanningSession, TrajectoryUpdate
 from .subgoal_executor import CommandEvaluation, SubgoalExecutor
 from .supervisor import Supervisor, SupervisorConfig
 
+RUNTIME_COMPONENT = "navigation_runtime"
+
 
 class NavigationRuntime:
     """Main runtime facade that sequences observation, world-model, mission, planning, execution, and runtime I/O."""
@@ -622,7 +624,7 @@ class NavigationRuntime:
         if self._runtime_io is None:
             return
         self.supervisor.bridge.publish_notice(
-            RuntimeNotice(component="aura_runtime", level=level, notice=notice, details=dict(details or {}))
+            RuntimeNotice(component=RUNTIME_COMPONENT, level=level, notice=notice, details=dict(details or {}))
         )
 
     def _publish_runtime_snapshot(
@@ -640,7 +642,7 @@ class NavigationRuntime:
         self._last_runtime_snapshot_frame = int(frame_idx)
         self.supervisor.bridge.publish_health(
             HealthPing(
-                component="aura_runtime",
+                component=RUNTIME_COMPONENT,
                 details={"snapshot": self._build_runtime_snapshot(update=update, evaluation=evaluation)},
             )
         )

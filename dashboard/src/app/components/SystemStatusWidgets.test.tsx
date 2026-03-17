@@ -87,5 +87,6 @@ describe("SystemStatusWidgets", () => {
 
     expect(await screen.findByText("interactive task queued")).toBeInTheDocument();
     expect(await screen.findByText("timeout retry")).toBeInTheDocument();
+    expect(await screen.findByText("navigation_runtime (compat)")).toBeInTheDocument();
   });
 });

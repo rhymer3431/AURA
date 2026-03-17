@@ -37,6 +37,26 @@ describe("devApiFallback", () => {
     expect(response.body).toContain("event: state");
   });
 
+  it("returns canonical runtime owner metadata for /api/state", () => {
+    const response = buildDevApiFallbackResponse({
+      apiBaseUrl: "http://127.0.0.1:8095",
+      method: "GET",
+      requestUrl: "/api/state",
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      runtime: {
+        ownerComponent: "navigation_runtime",
+        ownerDisplayName: "NavigationRuntime",
+        ownerModulePath: "runtime.navigation_runtime",
+      },
+      sensors: {
+        source: "navigation_runtime",
+      },
+    });
+  });
+
   it("returns a 503 for mutating runtime endpoints while mock mode is active", () => {
     const response = buildDevApiFallbackResponse({
       apiBaseUrl: "http://127.0.0.1:8095",
