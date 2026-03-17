@@ -3,16 +3,18 @@ import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { buildDevApiFallbackResponse, shouldBypassApiProxy } from './src/app/devApiFallback'
+import {
+  createBackendHealthProbe,
+  resolveBackendHealthCacheMs,
+  resolveBackendHealthGraceMs,
+  resolveBackendHealthTimeoutMs,
+  resolveProxyTarget,
+} from './scripts/devBackendProxy'
 
-const DEFAULT_PROXY_TARGET = "http://127.0.0.1:8095";
 const DEFAULT_DEV_PORT = 5173;
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
-}
-
-function resolveProxyTarget(): string {
-  return trimTrailingSlash(String(process.env.AURA_DASHBOARD_PROXY_TARGET ?? DEFAULT_PROXY_TARGET).trim() || DEFAULT_PROXY_TARGET);
 }
 
 function resolveDevServerPort(): number {
@@ -20,48 +22,28 @@ function resolveDevServerPort(): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_DEV_PORT;
 }
 
-function createBackendHealthProbe(proxyTarget: string) {
-  let lastCheckedAt = 0;
-  let lastHealthy = false;
-
-  return async function isBackendHealthy(): Promise<boolean> {
-    const now = Date.now();
-    if (now - lastCheckedAt < 1200) {
-      return lastHealthy;
-    }
-    lastCheckedAt = now;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 400);
-    try {
-      const response = await fetch(`${proxyTarget}/api/bootstrap`, {
-        method: "GET",
-        signal: controller.signal,
-      });
-      lastHealthy = response.ok;
-      return lastHealthy;
-    } catch {
-      lastHealthy = false;
-      return false;
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  };
-}
-
 function auraDashboardDevApiFallback(): Plugin {
   const proxyTarget = resolveProxyTarget();
-  const isBackendHealthy = createBackendHealthProbe(proxyTarget);
+  const backendHealth = createBackendHealthProbe(proxyTarget, {
+    timeoutMs: resolveBackendHealthTimeoutMs(),
+    cacheMs: resolveBackendHealthCacheMs(),
+    graceMs: resolveBackendHealthGraceMs(),
+  });
 
   return {
     name: "aura-dashboard-dev-api-fallback",
     apply: "serve" as const,
     configureServer(server: ViteDevServer) {
+      server.config.logger.info(
+        `[AURA_DASHBOARD] dev proxy target ${trimTrailingSlash(proxyTarget)} ` +
+          `(timeout=${resolveBackendHealthTimeoutMs()}ms cache=${resolveBackendHealthCacheMs()}ms grace=${resolveBackendHealthGraceMs()}ms)`,
+      );
       server.middlewares.use(async (req, res, next) => {
         const requestUrl = req.url ?? "/";
         if (!shouldBypassApiProxy(requestUrl)) {
           return next();
         }
-        if (await isBackendHealthy()) {
+        if (await backendHealth.shouldProxyToBackend()) {
           return next();
         }
         const fallback = buildDevApiFallbackResponse({

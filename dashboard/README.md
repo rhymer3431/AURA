@@ -32,6 +32,8 @@ npm run test:run
 
 `npm run dev` now falls back to a lightweight mock `/api` surface when the dashboard backend is not listening on `127.0.0.1:8095`. This keeps the React shell usable for UI work instead of flooding Vite with `ECONNREFUSED` proxy errors.
 
+When a live backend is present but responds slowly during startup, the Vite dev server now keeps a short grace window before dropping back to mock mode. You can tune that behavior with `AURA_DASHBOARD_BACKEND_HEALTH_TIMEOUT_MS`, `AURA_DASHBOARD_BACKEND_HEALTH_CACHE_MS`, and `AURA_DASHBOARD_BACKEND_HEALTH_GRACE_MS`.
+
 For a live backend during browser development:
 
 - run `.\scripts\powershell\run_dashboard.ps1` from the repository root, or
