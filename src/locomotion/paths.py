@@ -41,6 +41,7 @@ def resolve_default_policy_path(base_dir: str) -> str:
 
 def resolve_default_follower_policy_path(base_dir: str) -> str:
     candidates = [
+        os.path.abspath(os.path.join(base_dir, "artifacts", "models", "navdp_follower.onnx")),
         os.path.abspath(os.path.join(base_dir, "src", "control", "models", "navdp_follower.onnx")),
     ]
     for path in candidates:
