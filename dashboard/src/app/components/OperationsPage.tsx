@@ -15,9 +15,11 @@ import { useDashboard } from "../state";
 import {
   asRecord,
   booleanValue,
+  dashboardMockModeReason,
   formatMeters,
   formatMs,
   formatSeconds,
+  isDashboardMockMode,
   processByName,
   serviceSnapshot,
   statusLabel,
@@ -194,6 +196,8 @@ function OperationsQuickControls() {
   const [instruction, setInstruction] = useState("");
   const sessionConfig = state?.session.config;
   const locomotionConfig = form.locomotionConfig;
+  const mockMode = isDashboardMockMode(state ?? null);
+  const mockModeReason = dashboardMockModeReason(state ?? null);
   const isInteractiveSession = state?.session.active === true && sessionConfig?.plannerMode === "interactive";
   const isPointGoalValid =
     form.plannerMode !== "pointgoal" ||
@@ -220,10 +224,16 @@ function OperationsQuickControls() {
         <StatusChip label="Viewer" status={booleanValue(state?.transport.viewerEnabled) ? "ok" : "inactive"} />
       </div>
 
+      {mockMode && (
+        <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-800">
+          {mockModeReason}
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 mb-4">
         <button
           onClick={() => void startSession()}
-          disabled={loading || !isPointGoalValid || !isLocomotionConfigValid}
+          disabled={mockMode || loading || !isPointGoalValid || !isLocomotionConfigValid}
           className="inline-flex items-center gap-2 rounded-xl bg-black px-4 py-2 text-[13px] text-white disabled:opacity-50"
         >
           <Play className="size-4" />
@@ -231,7 +241,7 @@ function OperationsQuickControls() {
         </button>
         <button
           onClick={() => void stopSession()}
-          disabled={loading || state?.session.active !== true}
+          disabled={mockMode || loading || state?.session.active !== true}
           className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-[13px] disabled:opacity-50"
         >
           <Square className="size-4" />
@@ -239,7 +249,7 @@ function OperationsQuickControls() {
         </button>
         <button
           onClick={() => void cancelTask()}
-          disabled={!isInteractiveSession}
+          disabled={mockMode || !isInteractiveSession}
           className="inline-flex items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-[13px] disabled:opacity-40"
         >
           <Ban className="size-4" />
@@ -250,17 +260,23 @@ function OperationsQuickControls() {
       <div className="flex flex-wrap gap-3">
         <input
           className="min-w-[280px] flex-1 rounded-xl border border-black/10 bg-white px-3 py-2 text-[13px]"
-          placeholder={isInteractiveSession ? "현재 세션에 자연어 task를 제출합니다" : "interactive 세션이 활성화되면 task를 제출할 수 있습니다"}
+          placeholder={
+            mockMode
+              ? "mock mode에서는 task를 제출할 수 없습니다"
+              : isInteractiveSession
+                ? "현재 세션에 자연어 task를 제출합니다"
+                : "interactive 세션이 활성화되면 task를 제출할 수 있습니다"
+          }
           value={instruction}
           onChange={(event) => setInstruction(event.target.value)}
-          disabled={!isInteractiveSession}
+          disabled={mockMode || !isInteractiveSession}
         />
         <button
           onClick={() => {
             void submitTask(instruction);
             setInstruction("");
           }}
-          disabled={!isInteractiveSession || instruction.trim() === ""}
+          disabled={mockMode || !isInteractiveSession || instruction.trim() === ""}
           className="inline-flex items-center gap-2 rounded-xl bg-sky-500 px-4 py-2 text-[13px] text-white disabled:opacity-40"
         >
           <Send className="size-4" />

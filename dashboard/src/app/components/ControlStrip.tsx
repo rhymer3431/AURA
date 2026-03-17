@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Play, Square, Send, Ban } from "lucide-react";
 
 import { useDashboard } from "../state";
+import { dashboardMockModeReason, isDashboardMockMode } from "../selectors";
 
 function Toggle({
   label,
@@ -29,6 +30,8 @@ export function ControlStrip() {
   const [instruction, setInstruction] = useState("");
   const sessionConfig = state?.session.config;
   const locomotionConfig = form.locomotionConfig;
+  const mockMode = isDashboardMockMode(state ?? null);
+  const mockModeReason = dashboardMockModeReason(state ?? null);
   const isInteractiveSession = state?.session.active === true && sessionConfig?.plannerMode === "interactive";
   const isPointGoalValid =
     form.plannerMode !== "pointgoal" ||
@@ -108,7 +111,7 @@ export function ControlStrip() {
           <div className="flex gap-2 ml-auto">
             <button
               onClick={() => void startSession()}
-              disabled={loading || !isPointGoalValid || !isLocomotionConfigValid}
+              disabled={mockMode || loading || !isPointGoalValid || !isLocomotionConfigValid}
               className="inline-flex items-center gap-2 rounded-xl bg-black text-white px-4 py-2 text-[13px] disabled:opacity-50"
             >
               <Play className="size-4" />
@@ -116,7 +119,7 @@ export function ControlStrip() {
             </button>
             <button
               onClick={() => void stopSession()}
-              disabled={loading || state?.session.active !== true}
+              disabled={mockMode || loading || state?.session.active !== true}
               className="inline-flex items-center gap-2 rounded-xl bg-white border border-black/10 px-4 py-2 text-[13px] disabled:opacity-50"
             >
               <Square className="size-4" />
@@ -124,6 +127,12 @@ export function ControlStrip() {
             </button>
           </div>
         </div>
+
+        {mockMode && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-800">
+            {mockModeReason}
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-4">
           <Toggle label="viewer publish" checked={form.viewerEnabled} onChange={(checked) => setForm({ viewerEnabled: checked })} />
@@ -210,17 +219,23 @@ export function ControlStrip() {
         <div className="flex flex-wrap gap-3">
           <input
             className="flex-1 min-w-[280px] bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
-            placeholder={isInteractiveSession ? "자연어 task를 입력하세요" : "running interactive 세션에서만 task를 제출할 수 있습니다"}
+            placeholder={
+              mockMode
+                ? "mock mode에서는 task를 제출할 수 없습니다"
+                : isInteractiveSession
+                  ? "자연어 task를 입력하세요"
+                  : "running interactive 세션에서만 task를 제출할 수 있습니다"
+            }
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
-            disabled={!isInteractiveSession}
+            disabled={mockMode || !isInteractiveSession}
           />
           <button
             onClick={() => {
               void submitTask(instruction);
               setInstruction("");
             }}
-            disabled={!isInteractiveSession || instruction.trim() === ""}
+            disabled={mockMode || !isInteractiveSession || instruction.trim() === ""}
             className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2 text-[13px] disabled:opacity-40"
           >
             <Send className="size-4" />
@@ -228,7 +243,7 @@ export function ControlStrip() {
           </button>
           <button
             onClick={() => void cancelTask()}
-            disabled={!isInteractiveSession}
+            disabled={mockMode || !isInteractiveSession}
             className="inline-flex items-center gap-2 rounded-xl bg-white border border-black/10 px-4 py-2 text-[13px] disabled:opacity-40"
           >
             <Ban className="size-4" />
