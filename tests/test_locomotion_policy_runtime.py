@@ -46,14 +46,14 @@ def _build_tensorrt_engine(onnx_path: Path, engine_path: Path) -> None:
 
 
 def test_infer_policy_backend_detects_engine_suffix() -> None:
-    assert infer_policy_backend("artifacts/models/g1_policy_fp32.engine") == "tensorrt"
+    assert infer_policy_backend("artifacts/models/g1_policy_fp16.engine") == "tensorrt"
     assert infer_policy_backend("artifacts/models/policy.onnx") == "onnxruntime"
 
 
 def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> None:
     models_dir = tmp_path / "artifacts" / "models"
     models_dir.mkdir(parents=True)
-    engine_path = models_dir / "g1_policy_fp32.engine"
+    engine_path = models_dir / "g1_policy_fp16.engine"
     onnx_path = models_dir / "policy.onnx"
     engine_path.write_bytes(b"engine")
     onnx_path.write_bytes(b"onnx")
@@ -61,15 +61,24 @@ def test_resolve_default_policy_path_prefers_built_engine(tmp_path: Path) -> Non
     assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
 
 
-def test_resolve_default_policy_path_prefers_src_engine(tmp_path: Path) -> None:
+def test_resolve_default_policy_path_prefers_artifacts_fp16_engine_over_legacy_src_engine(tmp_path: Path) -> None:
     policy_dir = tmp_path / "src" / "locomotion" / "models"
     models_dir = tmp_path / "artifacts" / "models"
     policy_dir.mkdir(parents=True)
     models_dir.mkdir(parents=True)
+    preferred_engine_path = models_dir / "g1_policy_fp16.engine"
     tuned_engine_path = policy_dir / "policy_fp16.engine"
-    fallback_engine_path = models_dir / "g1_policy_fp32.engine"
+    preferred_engine_path.write_bytes(b"preferred-engine")
     tuned_engine_path.write_bytes(b"tuned-engine")
-    fallback_engine_path.write_bytes(b"fallback-engine")
+
+    assert resolve_default_policy_path(str(tmp_path)) == str(preferred_engine_path.resolve())
+
+
+def test_resolve_default_policy_path_falls_back_to_legacy_src_engine(tmp_path: Path) -> None:
+    policy_dir = tmp_path / "src" / "locomotion" / "models"
+    policy_dir.mkdir(parents=True)
+    tuned_engine_path = policy_dir / "policy_fp16.engine"
+    tuned_engine_path.write_bytes(b"tuned-engine")
 
     assert resolve_default_policy_path(str(tmp_path)) == str(tuned_engine_path.resolve())
 
@@ -78,7 +87,7 @@ def test_validate_default_policy_device_rejects_cpu_for_default_engine() -> None
     args = SimpleNamespace(policy="", onnx_device="cpu")
 
     with pytest.raises(RuntimeError, match="requires CUDA/TensorRT"):
-        _validate_default_policy_device(args, "/tmp/src/locomotion/models/policy_fp16.engine")
+        _validate_default_policy_device(args, "/tmp/artifacts/models/g1_policy_fp16.engine")
 
 
 def test_height_scan_grid_matches_official_layout() -> None:
@@ -136,7 +145,7 @@ def test_onnx_policy_session_runs_exported_policy() -> None:
 
 def test_tensorrt_policy_session_rejects_cpu_preference() -> None:
     with pytest.raises(RuntimeError, match="requires CUDA"):
-        create_policy_session("artifacts/models/g1_policy_fp32.engine", providers=[], device_preference="cpu")
+        create_policy_session("artifacts/models/g1_policy_fp16.engine", providers=[], device_preference="cpu")
 
 
 @pytest.mark.skipif(importlib.util.find_spec("tensorrt") is None, reason="TensorRT is not installed")
@@ -163,7 +172,7 @@ def test_tensorrt_policy_session_matches_onnx(tmp_path: Path) -> None:
 @pytest.mark.skipif(importlib.util.find_spec("tensorrt") is None, reason="TensorRT is not installed")
 @pytest.mark.skipif(importlib.util.find_spec("cuda") is None, reason="cuda-python is not installed")
 def test_tensorrt_policy_session_fails_for_incompatible_engine(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    engine_path = tmp_path / "g1_policy_fp32.engine"
+    engine_path = tmp_path / "g1_policy_fp16.engine"
     neighbor_onnx_path = tmp_path / "policy.onnx"
     neighbor_onnx_path.write_bytes(POLICY_PATH.read_bytes())
     engine_path.write_bytes(b"invalid-engine")

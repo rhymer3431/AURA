@@ -12,6 +12,7 @@ def repo_dir() -> str:
 
 def resolve_default_policy_path(base_dir: str) -> str:
     candidates = [
+        os.path.abspath(os.path.join(base_dir, "artifacts", "models", "g1_policy_fp16.engine")),
         os.path.abspath(os.path.join(base_dir, "src", "locomotion", "models", "policy_fp16.engine")),
         os.path.abspath(os.path.join(base_dir, "artifacts", "models", "g1_policy_fp32.engine")),
         os.path.abspath(os.path.join(base_dir, "artifacts", "models", "policy.onnx")),
