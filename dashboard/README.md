@@ -26,6 +26,14 @@ npm run tauri:build
 npm run test:run
 ```
 
+`npm run dev` now falls back to a lightweight mock `/api` surface when the dashboard backend is not listening on `127.0.0.1:8095`. This keeps the React shell usable for UI work instead of flooding Vite with `ECONNREFUSED` proxy errors.
+
+For a live backend during browser development:
+
+- run `.\scripts\powershell\run_dashboard.ps1` from the repository root, or
+- set `VITE_AURA_API_BASE` to call a backend directly from the browser, or
+- set `AURA_DASHBOARD_PROXY_TARGET` before `npm run dev` if the backend is on a different host or port.
+
 ## Notes
 
 - 브라우저 dev server는 여전히 `http://127.0.0.1:5173` 에서 동작하지만, 기본 사용 경로는 브라우저가 아니라 Tauri desktop shell입니다.
