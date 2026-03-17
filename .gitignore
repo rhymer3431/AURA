@@ -24,4 +24,5 @@ datasets/
 !artifacts/datasets/
 !artifacts/datasets/system2_memory_lora_seed/
 !artifacts/datasets/system2_memory_lora_seed/**
+/state/
 agents.md
