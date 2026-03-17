@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from pathlib import Path
 
 import numpy as np
+import pytest
 
 from control.async_planners import DualPlannerOutput, PlannerOutput
 from ipc.messages import ActionCommand
+import runtime.planning_session as planning_session_module
 from runtime.planning_session import PlanningSession
 
 
@@ -142,6 +145,14 @@ class _FakePlanner:
         return self.status
 
 
+class _FakePopen:
+    def __init__(self, returncode: int | None = None) -> None:
+        self._returncode = returncode
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+
 def _make_session() -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeDualClient]:
     session = PlanningSession(_args())
     session._intrinsic = np.eye(3, dtype=np.float32)
@@ -155,6 +166,67 @@ def _make_session() -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeN
     session._dual_client = dual_client
     assert session._activate_roaming("test startup") is True
     return session, nogoal_planner, dual_planner, navdp_client, dual_client
+
+
+def test_ensure_remote_service_ready_autostarts_local_launcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    checks = {"count": 0}
+    launches: list[Path] = []
+
+    def _fake_check(base_url: str, *, timeout_sec: float, service_name: str, context: str) -> None:
+        assert base_url == "http://127.0.0.1:8890"
+        assert timeout_sec == 1.0
+        assert service_name == "dual server"
+        assert context == "interactive task (stdin)"
+        checks["count"] += 1
+        if checks["count"] == 1:
+            raise RuntimeError("interactive task (stdin): dual server is unavailable at http://127.0.0.1:8890")
+
+    def _fake_resolve(script_name: str) -> Path:
+        assert script_name == "run_vlm_dual_server.ps1"
+        return Path("run_vlm_dual_server.ps1")
+
+    def _fake_start(script_path: Path) -> _FakePopen:
+        launches.append(script_path)
+        return _FakePopen()
+
+    monkeypatch.setattr(planning_session_module, "_check_remote_service", _fake_check)
+    monkeypatch.setattr(planning_session_module, "_resolve_local_launcher_script", _fake_resolve)
+    monkeypatch.setattr(planning_session_module, "_start_local_launcher", _fake_start)
+    monkeypatch.setattr(planning_session_module.time, "sleep", lambda _: None)
+
+    launcher_processes: dict[str, _FakePopen] = {}
+    planning_session_module._ensure_remote_service_ready(
+        "http://127.0.0.1:8890",
+        timeout_sec=1.0,
+        service_name="dual server",
+        context="interactive task (stdin)",
+        launcher_script_name="run_vlm_dual_server.ps1",
+        launcher_processes=launcher_processes,
+        startup_timeout_sec=1.0,
+    )
+
+    assert checks["count"] == 2
+    assert launches == [Path("run_vlm_dual_server.ps1")]
+    assert "http://127.0.0.1:8890" in launcher_processes
+
+
+def test_ensure_remote_service_ready_does_not_autostart_remote_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        planning_session_module,
+        "_check_remote_service",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("remote dual server unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="remote dual server unavailable"):
+        planning_session_module._ensure_remote_service_ready(
+            "http://10.0.0.5:8890",
+            timeout_sec=1.0,
+            service_name="dual server",
+            context="interactive task (stdin)",
+            launcher_script_name="run_vlm_dual_server.ps1",
+            launcher_processes={},
+            startup_timeout_sec=1.0,
+        )
 
 
 def test_interactive_roaming_uses_nogoal_planner() -> None:

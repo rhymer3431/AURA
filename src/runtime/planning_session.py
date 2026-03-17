@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 import numpy as np
 import requests
@@ -44,6 +46,94 @@ def _check_remote_service(base_url: str, *, timeout_sec: float, service_name: st
             f"{context}: {service_name} is unavailable at {url}. "
             f"Start the required server first. detail={type(exc).__name__}: {exc}"
         ) from exc
+
+
+def _is_local_service_url(base_url: str) -> bool:
+    parsed = urlparse(str(base_url).strip())
+    return str(parsed.hostname or "").strip().lower() in {"127.0.0.1", "localhost", "::1"}
+
+
+def _resolve_local_launcher_script(script_name: str) -> Path | None:
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        repo_root / str(script_name),
+        repo_root / "scripts" / "powershell" / str(script_name),
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _start_local_launcher(script_path: Path) -> subprocess.Popen[Any]:
+    return subprocess.Popen(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script_path),
+        ],
+        cwd=str(Path(__file__).resolve().parents[2]),
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def _ensure_remote_service_ready(
+    base_url: str,
+    *,
+    timeout_sec: float,
+    service_name: str,
+    context: str,
+    launcher_script_name: str | None = None,
+    launcher_processes: dict[str, subprocess.Popen[Any]] | None = None,
+    startup_timeout_sec: float = 45.0,
+) -> None:
+    try:
+        _check_remote_service(base_url, timeout_sec=timeout_sec, service_name=service_name, context=context)
+        return
+    except RuntimeError as initial_exc:
+        if launcher_script_name is None or not _is_local_service_url(base_url):
+            raise
+        launcher_path = _resolve_local_launcher_script(launcher_script_name)
+        if launcher_path is None:
+            raise
+
+        url_key = str(base_url).strip()
+        launcher_proc = launcher_processes.get(url_key) if launcher_processes is not None else None
+        if launcher_proc is None or launcher_proc.poll() is not None:
+            try:
+                launcher_proc = _start_local_launcher(launcher_path)
+            except Exception as launch_exc:  # noqa: BLE001
+                raise RuntimeError(
+                    f"{context}: {service_name} is unavailable at {url_key}. "
+                    f"Auto-start via .\\{launcher_path.name} failed. detail={type(launch_exc).__name__}: {launch_exc}"
+                ) from launch_exc
+            if launcher_processes is not None:
+                launcher_processes[url_key] = launcher_proc
+
+        deadline = time.time() + max(float(timeout_sec), float(startup_timeout_sec))
+        while time.time() < deadline:
+            try:
+                _check_remote_service(base_url, timeout_sec=timeout_sec, service_name=service_name, context=context)
+                return
+            except RuntimeError as retry_exc:
+                if launcher_proc is not None and launcher_proc.poll() is not None:
+                    raise RuntimeError(
+                        f"{context}: {service_name} is unavailable at {url_key}. "
+                        f"Auto-start via .\\{launcher_path.name} exited with code {launcher_proc.poll()}. "
+                        f"detail={retry_exc}"
+                    ) from retry_exc
+                time.sleep(0.5)
+
+        raise RuntimeError(
+            f"{context}: {service_name} is unavailable at {url_key}. "
+            f"Auto-start via .\\{launcher_path.name} did not become ready within "
+            f"{int(max(float(timeout_sec), float(startup_timeout_sec)))}s. detail={initial_exc}"
+        ) from initial_exc
 
 
 @dataclass(frozen=True)
@@ -152,6 +242,7 @@ class PlanningSession:
         self._interactive_last_dual_plan_version = -1
         self._interactive_last_nogoal_failed_calls = 0
         self._interactive_last_dual_failed_calls = 0
+        self._launcher_processes: dict[str, subprocess.Popen[Any]] = {}
 
     @property
     def navdp_backend_name(self) -> str:
@@ -231,22 +322,26 @@ class PlanningSession:
 
     def ensure_navdp_service_ready(self, *, context: str) -> None:
         try:
-            _check_remote_service(
+            _ensure_remote_service_ready(
                 str(getattr(self.args, "server_url", "")),
                 timeout_sec=float(getattr(self.args, "timeout_sec", 5.0)),
                 service_name="NavDP server",
                 context=context,
+                launcher_script_name="run_navdp_server.ps1",
+                launcher_processes=self._launcher_processes,
             )
         except RuntimeError as exc:
             raise RuntimeError(f"{exc} Suggested command: .\\run_navdp_server.ps1") from exc
 
     def ensure_dual_service_ready(self, *, context: str) -> None:
         try:
-            _check_remote_service(
+            _ensure_remote_service_ready(
                 str(getattr(self.args, "dual_server_url", "")),
                 timeout_sec=float(getattr(self.args, "timeout_sec", 5.0)),
                 service_name="dual server",
                 context=context,
+                launcher_script_name="run_vlm_dual_server.ps1",
+                launcher_processes=self._launcher_processes,
             )
         except RuntimeError as exc:
             raise RuntimeError(f"{exc} Suggested command: .\\run_vlm_dual_server.ps1") from exc
