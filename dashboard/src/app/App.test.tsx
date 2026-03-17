@@ -61,49 +61,25 @@ vi.mock("./state", () => ({
   useDashboard: () => mockDashboard,
 }));
 
-vi.mock("./components/StatCards", () => ({
-  StatCards: () => <div>StatCards</div>,
+vi.mock("./components/OperationsPage", () => ({
+  OperationsPage: () => <div>OperationsPage</div>,
 }));
 
-vi.mock("./components/PipelineFlow", () => ({
-  PipelineFlow: () => <div>PipelineFlow</div>,
+vi.mock("./components/NavigationPage", () => ({
+  NavigationPage: () => <div>NavigationPage</div>,
 }));
 
-vi.mock("./components/NavigationControlPanel", () => ({
-  NavigationControlPanel: () => <div>NavigationControlPanel</div>,
+vi.mock("./components/DiagnosticsPage", () => ({
+  DiagnosticsPage: () => <div>DiagnosticsPage</div>,
 }));
 
-vi.mock("./components/OccupancyMapPanel", () => ({
-  OccupancyMapPanel: () => <div>OccupancyMapPanel</div>,
-}));
-
-vi.mock("./components/ExternalServicesPanel", () => ({
-  ExternalServicesPanel: () => <div>ExternalServicesPanel</div>,
-}));
-
-vi.mock("./components/RobotViewer", () => ({
-  RobotViewer: () => <div>RobotViewer</div>,
-}));
-
-vi.mock("./components/ControlStrip", () => ({
-  ControlStrip: () => <div>ControlStrip</div>,
+vi.mock("./components/SessionConfigPage", () => ({
+  SessionConfigPage: () => <div>SessionConfigPage</div>,
 }));
 
 vi.mock("./components/SystemStatusWidgets", () => ({
-  ProcessesWidget: () => <div>ProcessesWidget</div>,
-  SensorsWidget: () => <div>SensorsWidget</div>,
   PerceptionWidget: () => <div>PerceptionWidget</div>,
   MemoryWidget: () => <div>MemoryWidget</div>,
-  IpcOrchestrationWidget: () => <div>IpcOrchestrationWidget</div>,
-  LogsWidget: () => <div>LogsWidget</div>,
-}));
-
-vi.mock("./components/ExecutionModesPanel", () => ({
-  ExecutionModesPanel: () => <div>ExecutionModesPanel</div>,
-}));
-
-vi.mock("./components/ArtifactsStoragePanel", () => ({
-  ArtifactsStoragePanel: () => <div>ArtifactsStoragePanel</div>,
 }));
 
 describe("App navigation", () => {
@@ -114,17 +90,16 @@ describe("App navigation", () => {
   it("renders overview by default and switches pages from the sidebar", async () => {
     render(<App />);
 
-    expect(screen.getByText("StatCards")).toBeInTheDocument();
-    expect(screen.getByText("PipelineFlow")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Pipeline Overview" })).toBeInTheDocument();
+    expect(screen.getByText("OperationsPage")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Operations" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Planner & Control" }));
+    fireEvent.click(screen.getByRole("button", { name: "Navigation" }));
 
     await waitFor(() => {
-      expect(screen.getByText("NavigationControlPanel")).toBeInTheDocument();
-      expect(screen.queryByText("PipelineFlow")).not.toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Planner & Control" })).toBeInTheDocument();
-      expect(window.location.hash).toBe("#/planner-control");
+      expect(screen.getByText("NavigationPage")).toBeInTheDocument();
+      expect(screen.queryByText("OperationsPage")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Navigation" })).toBeInTheDocument();
+      expect(window.location.hash).toBe("#/navigation");
     });
   });
 });
