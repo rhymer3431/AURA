@@ -41,6 +41,33 @@ def _ordered_pattern_values(dof_names: list[str], pattern_values: dict[str, floa
     return np.asarray(ordered, dtype=np.float32)
 
 
+def _build_policy_observation(
+    *,
+    lin_vel_b: np.ndarray,
+    ang_vel_b: np.ndarray,
+    gravity_b: np.ndarray,
+    command: np.ndarray,
+    joint_pos: np.ndarray,
+    default_pos: np.ndarray,
+    joint_vel: np.ndarray,
+    default_vel: np.ndarray,
+    previous_action: np.ndarray,
+    height_scan: np.ndarray | None,
+) -> np.ndarray:
+    segments = [
+        np.asarray(lin_vel_b, dtype=np.float32),
+        np.asarray(ang_vel_b, dtype=np.float32),
+        np.asarray(gravity_b, dtype=np.float32),
+        np.asarray(command, dtype=np.float32),
+        np.asarray(joint_pos, dtype=np.float32) - np.asarray(default_pos, dtype=np.float32),
+        np.asarray(joint_vel, dtype=np.float32) - np.asarray(default_vel, dtype=np.float32),
+        np.asarray(previous_action, dtype=np.float32),
+    ]
+    if height_scan is not None:
+        segments.append(np.asarray(height_scan, dtype=np.float32))
+    return np.concatenate(segments, dtype=np.float32)
+
+
 @dataclass(frozen=True)
 class RobotBaseState:
     position_w: np.ndarray
@@ -372,6 +399,7 @@ class G1PolicyController:
         self.previous_action = np.zeros(0, dtype=np.float32)
         self.policy_counter = 0
         self.height_scanner: _HeightScanner | None = None
+        self._include_height_scan = True
 
     def initialize(self):
         from omni.physx import get_physx_simulation_interface
@@ -406,8 +434,8 @@ class G1PolicyController:
         self.action = np.zeros(len(dof_names), dtype=np.float32)
         self.previous_action = np.zeros(len(dof_names), dtype=np.float32)
         self.policy_counter = 0
-        self.height_scanner = _HeightScanner(robot_prim_path=self.prim_path)
         self._validate_io()
+        self.height_scanner = _HeightScanner(robot_prim_path=self.prim_path) if self._include_height_scan else None
 
     def reset(self):
         self.robot.post_reset()
@@ -419,14 +447,23 @@ class G1PolicyController:
         self.policy_session.close()
 
     def _validate_io(self):
-        obs_dim = 12 + 3 * len(self.default_pos) + HEIGHT_SCAN_POINTS
+        base_obs_dim = 12 + 3 * len(self.default_pos)
+        obs_dim_with_height_scan = base_obs_dim + HEIGHT_SCAN_POINTS
         input_shape = self.policy_session.input_shape
         output_shape = self.policy_session.output_shape
 
-        if len(input_shape) >= 2 and isinstance(input_shape[-1], int) and int(input_shape[-1]) != obs_dim:
-            raise RuntimeError(
-                f"Policy input obs dim mismatch: model expects {int(input_shape[-1])}, controller builds {obs_dim}."
-            )
+        if len(input_shape) >= 2 and isinstance(input_shape[-1], int):
+            input_dim = int(input_shape[-1])
+            if input_dim == base_obs_dim:
+                self._include_height_scan = False
+            elif input_dim == obs_dim_with_height_scan:
+                self._include_height_scan = True
+            else:
+                raise RuntimeError(
+                    "Policy input obs dim mismatch: "
+                    f"model expects {input_dim}, controller supports {base_obs_dim} (without height scan) "
+                    f"or {obs_dim_with_height_scan} (with height scan)."
+                )
         if len(output_shape) >= 2 and isinstance(output_shape[-1], int) and int(output_shape[-1]) != len(
             self.default_pos
         ):
@@ -452,7 +489,6 @@ class G1PolicyController:
         base_state = self.get_base_state()
         lin_vel_w = base_state.lin_vel_w
         ang_vel_w = base_state.ang_vel_w
-        pos_w = base_state.position_w
         quat_w = base_state.quat_wxyz
 
         rot_wb = quat_to_rot_matrix(quat_w)
@@ -463,23 +499,25 @@ class G1PolicyController:
 
         joint_pos = np.asarray(self.robot.get_joint_positions(), dtype=np.float32)
         joint_vel = np.asarray(self.robot.get_joint_velocities(), dtype=np.float32)
-        if self.height_scanner is None:
-            height_scan = np.full(HEIGHT_SCAN_POINTS, np.clip(float(pos_w[2]) - HEIGHT_SCAN_OFFSET, -1.0, 1.0), dtype=np.float32)
-        else:
-            height_scan = self.height_scanner.scan(base_state)
+        height_scan: np.ndarray | None = None
+        if self._include_height_scan:
+            pos_w = base_state.position_w
+            if self.height_scanner is None:
+                height_scan = np.full(HEIGHT_SCAN_POINTS, np.clip(float(pos_w[2]) - HEIGHT_SCAN_OFFSET, -1.0, 1.0), dtype=np.float32)
+            else:
+                height_scan = self.height_scanner.scan(base_state)
 
-        return np.concatenate(
-            (
-                lin_vel_b,
-                ang_vel_b,
-                gravity_b,
-                command,
-                joint_pos - self.default_pos,
-                joint_vel - self.default_vel,
-                self.previous_action,
-                height_scan,
-            ),
-            dtype=np.float32,
+        return _build_policy_observation(
+            lin_vel_b=lin_vel_b,
+            ang_vel_b=ang_vel_b,
+            gravity_b=gravity_b,
+            command=command,
+            joint_pos=joint_pos,
+            default_pos=self.default_pos,
+            joint_vel=joint_vel,
+            default_vel=self.default_vel,
+            previous_action=self.previous_action,
+            height_scan=height_scan,
         )
 
     def forward(self, step_index: int, command: np.ndarray):

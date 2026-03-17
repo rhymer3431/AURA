@@ -11,10 +11,10 @@ $DefaultIsaacPython = "C:\isaac-sim\python.bat"
 $IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
 
 $DefaultPolicyCandidates = @(
+    (Join-Path $RepoDir "artifacts\models\g1_policy_fp16.engine"),
     (Join-Path $RepoDir "artifacts\models\g1_policy_fp32.engine"),
     (Join-Path $RepoDir "artifacts\models\policy.onnx"),
     (Join-Path $RepoDir "policy.onnx"),
-    (Join-Path $RepoDir "artifacts\models\g1_policy_fp16.engine"),
     (Join-Path $RepoDir "src\locomotion\models\policy_fp16.engine")
 )
 $ResolvedDefaultPolicy = $DefaultPolicyCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1

@@ -8,7 +8,9 @@ import numpy as np
 import pytest
 
 from locomotion.controller import (
+    G1PolicyController,
     _build_height_scan_grid,
+    _build_policy_observation,
     _extract_raycast_hit_path,
     _extract_raycast_hit_position,
     _path_has_ground_token,
@@ -50,11 +52,11 @@ def test_infer_policy_backend_detects_engine_suffix() -> None:
     assert infer_policy_backend("artifacts/models/policy.onnx") == "onnxruntime"
 
 
-def test_resolve_default_policy_path_prefers_artifacts_fp32_engine(tmp_path: Path) -> None:
+def test_resolve_default_policy_path_prefers_artifacts_fp16_engine(tmp_path: Path) -> None:
     models_dir = tmp_path / "artifacts" / "models"
     models_dir.mkdir(parents=True)
-    (models_dir / "g1_policy_fp16.engine").write_bytes(b"smaller-engine")
-    engine_path = models_dir / "g1_policy_fp32.engine"
+    engine_path = models_dir / "g1_policy_fp16.engine"
+    (models_dir / "g1_policy_fp32.engine").write_bytes(b"fallback-engine")
     onnx_path = models_dir / "policy.onnx"
     engine_path.write_bytes(b"engine")
     onnx_path.write_bytes(b"onnx")
@@ -62,10 +64,10 @@ def test_resolve_default_policy_path_prefers_artifacts_fp32_engine(tmp_path: Pat
     assert resolve_default_policy_path(str(tmp_path)) == str(engine_path.resolve())
 
 
-def test_resolve_default_policy_path_falls_back_to_artifacts_fp16_engine(tmp_path: Path) -> None:
+def test_resolve_default_policy_path_falls_back_to_artifacts_fp32_engine(tmp_path: Path) -> None:
     models_dir = tmp_path / "artifacts" / "models"
     models_dir.mkdir(parents=True)
-    fallback_engine_path = models_dir / "g1_policy_fp16.engine"
+    fallback_engine_path = models_dir / "g1_policy_fp32.engine"
     fallback_engine_path.write_bytes(b"fallback-engine")
 
     assert resolve_default_policy_path(str(tmp_path)) == str(fallback_engine_path.resolve())
@@ -84,7 +86,63 @@ def test_validate_default_policy_device_rejects_cpu_for_default_engine() -> None
     args = SimpleNamespace(policy="", onnx_device="cpu")
 
     with pytest.raises(RuntimeError, match="requires CUDA/TensorRT"):
-        _validate_default_policy_device(args, "/tmp/artifacts/models/g1_policy_fp32.engine")
+        _validate_default_policy_device(args, "/tmp/artifacts/models/g1_policy_fp16.engine")
+
+
+def test_build_policy_observation_without_height_scan_matches_123_dim_layout() -> None:
+    obs = _build_policy_observation(
+        lin_vel_b=np.zeros(3, dtype=np.float32),
+        ang_vel_b=np.zeros(3, dtype=np.float32),
+        gravity_b=np.asarray([0.0, 0.0, -1.0], dtype=np.float32),
+        command=np.zeros(3, dtype=np.float32),
+        joint_pos=np.zeros(37, dtype=np.float32),
+        default_pos=np.zeros(37, dtype=np.float32),
+        joint_vel=np.zeros(37, dtype=np.float32),
+        default_vel=np.zeros(37, dtype=np.float32),
+        previous_action=np.zeros(37, dtype=np.float32),
+        height_scan=None,
+    )
+
+    assert obs.shape == (123,)
+
+
+def test_build_policy_observation_with_height_scan_matches_310_dim_layout() -> None:
+    obs = _build_policy_observation(
+        lin_vel_b=np.zeros(3, dtype=np.float32),
+        ang_vel_b=np.zeros(3, dtype=np.float32),
+        gravity_b=np.asarray([0.0, 0.0, -1.0], dtype=np.float32),
+        command=np.zeros(3, dtype=np.float32),
+        joint_pos=np.zeros(37, dtype=np.float32),
+        default_pos=np.zeros(37, dtype=np.float32),
+        joint_vel=np.zeros(37, dtype=np.float32),
+        default_vel=np.zeros(37, dtype=np.float32),
+        previous_action=np.zeros(37, dtype=np.float32),
+        height_scan=np.zeros(187, dtype=np.float32),
+    )
+
+    assert obs.shape == (310,)
+
+
+def test_validate_io_disables_height_scan_for_123_dim_policy() -> None:
+    controller = object.__new__(G1PolicyController)
+    controller.default_pos = np.zeros(37, dtype=np.float32)
+    controller.policy_session = SimpleNamespace(input_shape=(1, 123), output_shape=(1, 37))
+    controller._include_height_scan = True
+
+    controller._validate_io()
+
+    assert controller._include_height_scan is False
+
+
+def test_validate_io_keeps_height_scan_for_310_dim_policy() -> None:
+    controller = object.__new__(G1PolicyController)
+    controller.default_pos = np.zeros(37, dtype=np.float32)
+    controller.policy_session = SimpleNamespace(input_shape=(1, 310), output_shape=(1, 37))
+    controller._include_height_scan = False
+
+    controller._validate_io()
+
+    assert controller._include_height_scan is True
 
 
 def test_height_scan_grid_matches_official_layout() -> None:
