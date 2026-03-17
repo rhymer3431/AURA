@@ -1,5 +1,3 @@
-"""Legacy mission-orchestration implementation kept for compatibility."""
-
 from __future__ import annotations
 
 import math
@@ -31,8 +29,6 @@ class TaskOrchestratorConfig:
 
 
 class TaskOrchestrator:
-    """Compatibility implementation behind the MissionManager facade."""
-
     def __init__(self, memory_service: MemoryService, *, config: TaskOrchestratorConfig | None = None) -> None:
         self.memory_service = memory_service
         self.config = config or TaskOrchestratorConfig()

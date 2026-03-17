@@ -1,5 +1,3 @@
-"""World-model ingress and mission coordination for runtime observation batches."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -35,8 +33,6 @@ class BusCycleResult:
 
 
 class Supervisor:
-    """Compatibility-preserving ingress for perception, memory, and mission updates."""
-
     def __init__(
         self,
         *,
@@ -71,7 +67,7 @@ class Supervisor:
         self.orchestrator.submit_task(request)
         return request
 
-    def update_mission(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
+    def ingest(self, batch: IsaacObservationBatch, *, publish: bool = True) -> None:
         if publish:
             self.bridge.publish_observation_batch(batch)
         if batch.speaker_events:
@@ -79,16 +75,10 @@ class Supervisor:
                 self.orchestrator.on_speaker_event(event)
         if batch.observations:
             self.orchestrator.on_observations(batch.observations)
-        return batch
 
-    def ingest(self, batch: IsaacObservationBatch, *, publish: bool = True) -> None:
-        # Deprecated compatibility wrapper. New runtime code should call update_mission().
-        self.update_mission(batch, publish=publish)
-
-    def update_world_model(self, batch: IsaacObservationBatch) -> IsaacObservationBatch:
-        """Run perception and memory-write ingress before mission consumption."""
-
+    def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
         if batch.rgb_image is None or batch.depth_image_m is None:
+            self.ingest(batch, publish=publish)
             return batch
         intrinsic = batch.camera_intrinsic
         if intrinsic is None:
@@ -129,7 +119,7 @@ class Supervisor:
                 ),
             },
         )
-        return IsaacObservationBatch(
+        enriched = IsaacObservationBatch(
             frame_header=enriched_header,
             robot_pose_xyz=batch.robot_pose_xyz,
             robot_yaw_rad=batch.robot_yaw_rad,
@@ -141,10 +131,7 @@ class Supervisor:
             speaker_events=[*batch.speaker_events, *frame_result.speaker_events],
             capture_report=dict(batch.capture_report),
         )
-
-    def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
-        enriched = self.update_world_model(batch)
-        self.update_mission(enriched, publish=publish)
+        self.ingest(enriched, publish=publish)
         return enriched
 
     def step(
@@ -238,7 +225,7 @@ class Supervisor:
             )
         self.bridge.publish_health(
             HealthPing(
-                component="memory_agent" if not isinstance(self.bus, InprocBus) else "supervisor_loopback",
+                component="memory_agent" if not isinstance(self.bus, InprocBus) else "local_stack",
                 details={"snapshot": self.snapshot()},
             )
         )

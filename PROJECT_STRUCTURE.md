@@ -12,21 +12,24 @@
 │   │   ├── MEMORY_ARCHITECTURE.md
 │   │   └── RUNTIME_MODES.md
 │   └── refactor_baseline/
+├── exts/
+│   └── isaac.aura.live_smoke/
 ├── logs/
 ├── scripts/
 │   └── powershell/
+│       ├── legacy/
+│       ├── run_g1_object_search_demo.ps1
+│       ├── run_g1_pointgoal.ps1
 │       ├── run_aura_runtime.ps1
-│       ├── run_dashboard.ps1
-│       ├── run_dual_server.ps1
-│       ├── run_internvla_system2.ps1
 │       ├── run_local_stack.ps1
-│       ├── run_memory_agent.ps1
-│       ├── run_memory_monitor.ps1
-│       ├── run_navdp_server.ps1
-│       ├── run_system2_optional.ps1
-│       └── run_vlm_dual_server.ps1
+│       ├── run_live_smoke.ps1
+│       ├── run_live_smoke_attach.ps1
+│       ├── run_live_smoke_extension.ps1
+│       ├── run_live_smoke_preflight.ps1
+│       └── run_memory_agent.ps1
 ├── src/
 │   ├── adapters/
+│   │   ├── legacy_http/
 │   │   └── sensors/
 │   │       ├── d455_mount.py
 │   │       ├── d455_sensor.py
@@ -34,15 +37,14 @@
 │   │       ├── isaac_bridge_adapter.py
 │   │       └── isaac_live_source.py
 │   ├── apps/
-│   │   ├── deprecated/
-│   │   ├── dashboard_backend_app.py
+│   │   ├── legacy_http/
+│   │   ├── editor_smoke_entry.py
 │   │   ├── frame_bridge_app.py
 │   │   ├── frame_bridge_editor_app.py
+│   │   ├── live_smoke_app.py
 │   │   ├── local_stack_app.py
 │   │   ├── memory_agent_app.py
-│   │   ├── live_smoke_app.py
-│   │   ├── runtime_common.py
-│   │   └── webrtc_gateway_app.py
+│   │   └── runtime_common.py
 │   ├── common/
 │   ├── control/
 │   ├── inference/
@@ -52,9 +54,6 @@
 │   │   ├── navdp/
 │   │   ├── trackers/
 │   │   └── vlm/
-│   ├── modules/
-│   ├── mission/
-│   ├── planning/
 │   ├── ipc/
 │   │   ├── messages.py
 │   │   ├── transport_health.py
@@ -71,20 +70,18 @@
 │   │   ├── pipeline.py
 │   │   └── reid_store.py
 │   ├── runtime/
-│   │   ├── aura_runtime.py
-│   │   ├── memory_agent_runtime.py
-│   │   ├── navigation_runtime.py
-│   │   ├── planning_session.py
-│   │   ├── subgoal_executor.py
-│   │   └── supervisor.py
+│   │   ├── bootstrap_diagnostics.py
+│   │   ├── bootstrap_profiles.py
+│   │   ├── compatibility_report.py
+│   │   ├── isaac_launch_modes.py
+│   │   ├── live_smoke_runner.py
+│   │   ├── recommendation_engine.py
+│   │   └── smoke_result_model.py
 │   ├── services/
 │   │   ├── attention_service.py
-│   │   ├── dual_orchestrator.py
 │   │   ├── follow_service.py
 │   │   ├── memory_service.py
-│   │   ├── mission_manager.py
 │   │   ├── object_search_service.py
-│   │   ├── planning_coordinator.py
 │   │   ├── semantic_consolidation.py
 │   │   └── task_orchestrator.py
 │   └── vendor/
@@ -101,43 +98,59 @@
 ```
 
 ## Responsibilities
-- `src/runtime/navigation_runtime.py`
-  - canonical main runtime owner coordinating observation, world model, mission, planning, execution, and runtime I/O
 - `src/runtime/planning_session.py`
-  - planner-owned session facade for point-goal, no-goal, and dual backends
+  - direct in-process NavDP facade for point-goal and no-goal execution
 - `src/runtime/subgoal_executor.py`
-  - execution backend that turns planner output into locomotion commands
+  - shared low-level execution helper for `PlanningSession`, `TrajectoryTracker`, and `ActionStatus`
 - `src/runtime/aura_runtime.py`
-  - deprecated compatibility wrapper for `NavigationRuntime`
-- `src/modules/`
-  - phase 1 runtime module facades for observation, world model, mission, planning, execution, and runtime I/O
-- `src/mission/mission_manager.py`
-  - mission-module facade over the legacy `TaskOrchestrator`
-- `src/planning/coordinator.py`
-  - planning-module facade over the legacy `DualOrchestrator`
+  - end-to-end G1 runtime entry coordinating planning, memory ingress, and execution
 - `src/runtime/frame_bridge_runtime.py`
   - internal frame bridge bootstrap for live frame publishing
 - `src/runtime/live_smoke_runner.py`
-  - deprecated diagnostics runtime pending decommission
+  - phase-based live smoke diagnostics, smoke tier aggregation, and minimal perception/memory ingress validation
+- `src/runtime/bootstrap_profiles.py`
+  - bootstrap profile selection for standalone/editor/extension smoke paths
+- `src/runtime/compatibility_report.py`
+  - structured environment compatibility report and recommended launch mode/profile
+- `src/runtime/recommendation_engine.py`
+  - next-action recommendations from compatibility + failed phase + smoke result
+- `src/runtime/smoke_result_model.py`
+  - sensor/pipeline/memory tier result model
 - `src/apps/live_smoke_app.py`
-  - deprecated diagnostics shim pending decommission
-- `src/apps/local_stack_app.py`
-  - deprecated single-process shim pending decommission
+  - preflight/smoke CLI entrypoint
+- `src/apps/editor_smoke_entry.py`
+  - official in-editor smoke callable reused by editor-assisted and extension mode
 - `src/apps/frame_bridge_editor_app.py`
   - internal frame bridge attach helper for existing Kit/Isaac sessions
-- `src/dashboard_backend/` and `src/webrtc/`
-  - supporting dashboard/viewer shell around the canonical runtime
+- `src/adapters/sensors/d455_mount.py`
+  - D455 asset resolution and stage mount helper
+- `exts/isaac.aura.live_smoke`
+  - packaged Isaac extension with menu/action entry for running live smoke in-editor
 
 ## Default Execution Path
-- Canonical:
-  - `runtime.navigation_runtime`
-- Supporting:
-  - `apps.memory_agent_app`
-  - `apps.dashboard_backend_app`
-  - `apps.webrtc_gateway_app`
-- Deprecated / decommission:
+- Local debug:
   - `apps.local_stack_app`
+- Two-process:
+  - `apps.memory_agent_app`
+  - internal `apps.frame_bridge_app`
+- Live smoke diagnostics:
   - `apps.live_smoke_app`
+- In-editor smoke:
+  - `apps.editor_smoke_entry`
+  - `exts/isaac.aura.live_smoke`
+
+## Live Smoke Concepts
+- Official launch modes:
+  - `standalone_python`
+  - `editor_assisted`
+  - `extension_mode`
+- Deprecated alias:
+  - `full_app_attach`
+- Smoke tiers:
+  - `sensor`
+  - `pipeline`
+  - `memory`
+  - `full`
 
 ## Current Limits
 - TensorRT execution still depends on a matching engine/runtime/CUDA environment.

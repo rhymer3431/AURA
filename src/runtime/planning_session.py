@@ -1,5 +1,3 @@
-"""Planner-owned session that coordinates System1/System2 backends."""
-
 from __future__ import annotations
 
 import argparse
@@ -193,8 +191,6 @@ class GlobalRouteState:
 
 
 class PlanningSession:
-    """Planning facade that keeps backend ownership inside the runtime planning module."""
-
     def __init__(
         self,
         args: argparse.Namespace,
@@ -401,8 +397,6 @@ class PlanningSession:
             return True
 
     def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
-        """Compatibility capture helper used by ObservationModule and legacy callers."""
-
         if self.sensor is None:
             raise RuntimeError("PlanningSession.initialize() must be called first.")
         rgb, depth, sensor_meta = self.sensor.capture_rgbd_with_meta(env)
@@ -433,8 +427,6 @@ class PlanningSession:
         robot_quat_wxyz: np.ndarray,
         env=None,  # noqa: ANN001
     ) -> TrajectoryUpdate:
-        """Legacy convenience wrapper that still performs capture before planning."""
-
         observation = self.capture_observation(frame_id, env=env)
         if observation is None:
             return TrajectoryUpdate(
@@ -445,25 +437,6 @@ class PlanningSession:
                 action_command=action_command,
                 stop=True,
             )
-        return self.plan(
-            observation,
-            action_command=action_command,
-            robot_pos_world=robot_pos_world,
-            robot_yaw=robot_yaw,
-            robot_quat_wxyz=robot_quat_wxyz,
-        )
-
-    def plan(
-        self,
-        observation: ExecutionObservation,
-        *,
-        action_command: ActionCommand | None,
-        robot_pos_world: np.ndarray,
-        robot_yaw: float,
-        robot_quat_wxyz: np.ndarray,
-    ) -> TrajectoryUpdate:
-        """Canonical planner entry used once observation ownership is externalized."""
-
         return self.plan_with_observation(
             observation,
             action_command=action_command,

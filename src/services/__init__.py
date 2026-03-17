@@ -7,9 +7,7 @@ _EXPORTS = {
     "DualOrchestrator": ("services.dual_orchestrator", "DualOrchestrator"),
     "MemoryPolicyService": ("services.memory_policy_service", "MemoryPolicyService"),
     "MemoryService": ("services.memory_service", "MemoryService"),
-    "MissionManager": ("mission.mission_manager", "MissionManager"),
     "NavDPInferenceService": ("services.navdp_inference_service", "NavDPInferenceService"),
-    "PlanningCoordinator": ("planning.coordinator", "PlanningCoordinator"),
     "TaskOrchestrator": ("services.task_orchestrator", "TaskOrchestrator"),
 }
 

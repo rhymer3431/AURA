@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
-$EntryModule = "runtime.navigation_runtime"
+$EntryModule = "runtime.aura_runtime"
 $ViewerScript = Join-Path $ScriptDir "run_g1_viewer.ps1"
 $ProcessLogDir = Join-Path $RepoDir "tmp\process_logs"
 $SrcDir = Join-Path $RepoDir "src"
@@ -341,7 +341,7 @@ if (-not $HasSceneOverride) {
     }
 }
 
-Write-Host "[AURA Runtime] Starting runtime.navigation_runtime"
+Write-Host "[AURA Runtime] Starting runtime.aura_runtime"
 Write-Host "[AURA Runtime] python=`"$IsaacPython`""
 Write-Host "[AURA Runtime] module=`"$EntryModule`""
 Write-Host "[AURA Runtime] default policy=`"$PolicyPath`""

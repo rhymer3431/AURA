@@ -1,5 +1,3 @@
-"""Legacy world-model service that still combines memory read and write APIs."""
-
 from __future__ import annotations
 
 import re
@@ -32,8 +30,6 @@ from services.semantic_consolidation import SemanticConsolidationService
 
 
 class MemoryService:
-    """Compatibility memory owner used by world-model read/write facades."""
-
     def __init__(self, *, db_path: str | None = None, keyframe_dir: str | None = None) -> None:
         self.spatial_store = SpatialMemoryStore()
         self.temporal_store = TemporalMemoryStore()
