@@ -108,6 +108,7 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "--cmd-max-wz",
         "1.0",
     )
+    assert dict(created_specs[-1].env)["ISAAC_SIM_PYTHON"].endswith("scripts/windows/isaac_console_python.bat")
     assert [item["name"] for item in snapshot if item["state"] == "running"] == ["navdp", "system2", "dual", "runtime"]
 
     asyncio.run(manager.stop_all())
@@ -258,6 +259,7 @@ def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.
     assert dict(dual_spec.env)["DUAL_VLM_URL"] == "http://127.0.0.1:18080"
     assert "--server-url" in runtime_spec.args
     assert "http://127.0.0.1:18888" in runtime_spec.args
+    assert dict(runtime_spec.env)["ISAAC_SIM_PYTHON"].endswith("scripts/windows/isaac_console_python.bat")
     assert "--dual-server-url" in runtime_spec.args
     assert "http://127.0.0.1:18890" in runtime_spec.args
 
