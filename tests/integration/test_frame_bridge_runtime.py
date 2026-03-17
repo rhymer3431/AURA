@@ -29,6 +29,8 @@ class _FakeController:
         return SimpleNamespace(
             position_w=np.asarray([0.0, 0.0, 0.0], dtype=np.float32),
             quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+            lin_vel_w=np.zeros(3, dtype=np.float32),
+            ang_vel_w=np.zeros(3, dtype=np.float32),
         )
 
 

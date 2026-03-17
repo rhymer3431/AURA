@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, replace
+from typing import Any
 
 import numpy as np
 
 from common.geometry import within_xy_radius, wrap_to_pi, xy_distance
-from control.navdp_follower import NavDPFollower, NavDPFollowerConfig
 from control.trajectory_tracker import TrajectoryTracker, TrajectoryTrackerConfig
 from ipc.messages import ActionCommand, ActionStatus
-from locomotion.paths import repo_dir, resolve_default_follower_policy_path
 
 from .planning_session import PlannerStats, PlanningSession, TrajectoryUpdate
 
@@ -58,7 +57,7 @@ class SubgoalExecutor:
         args,
         *,
         planning_session: PlanningSession | None = None,
-        follower: NavDPFollower | None = None,
+        follower: Any | None = None,
     ) -> None:
         self.args = args
         self._planning_session = planning_session or PlanningSession(args)
@@ -74,15 +73,9 @@ class SubgoalExecutor:
                 cmd_yaw_accel_limit=float(args.cmd_yaw_accel_limit),
             )
         )
-        self._follower = follower or NavDPFollower(
-            NavDPFollowerConfig(
-                policy_path=resolve_default_follower_policy_path(repo_dir()),
-                onnx_device=str(getattr(args, "onnx_device", "auto")),
-                max_vx=float(args.cmd_max_vx),
-                max_vy=float(args.cmd_max_vy),
-                max_wz=float(args.cmd_max_wz),
-            )
-        )
+        # Deprecated compatibility slot: older callers may still pass a follower,
+        # but the runtime has been restored to direct tracker-owned command output.
+        del follower
         self._obstacle_defense = ObstacleDefenseConfig(
             enabled=bool(getattr(args, "obstacle_defense_enabled", True)),
             stop_distance_m=float(getattr(args, "obstacle_stop_distance_m", 0.45)),
@@ -110,10 +103,7 @@ class SubgoalExecutor:
         self._planning_session.initialize(simulation_app, stage)
 
     def shutdown(self) -> None:
-        try:
-            self._planning_session.shutdown()
-        finally:
-            self._follower.close()
+        self._planning_session.shutdown()
 
     def command(self) -> np.ndarray:
         return self._command.copy()
@@ -130,6 +120,7 @@ class SubgoalExecutor:
         robot_yaw: float,
         robot_quat_wxyz: np.ndarray,
     ) -> SubgoalExecutionResult:
+        del robot_lin_vel_world, robot_ang_vel_world
         update = self._plan_command(
             frame_idx=frame_idx,
             observation=observation,
@@ -165,22 +156,13 @@ class SubgoalExecutor:
         elif update.planner_control_mode in {"stop", "wait"}:
             self._command = np.zeros(3, dtype=np.float32)
         else:
-            target_pose = self._tracker.compute_target_pose(
+            tracker_result = self._tracker.compute_command(
                 np.asarray(robot_pos_world, dtype=np.float32),
                 np.asarray(robot_quat_wxyz, dtype=np.float32),
                 now=now,
                 force_stop=evaluation.force_stop,
             )
-            if target_pose.stale:
-                self._command = np.zeros(3, dtype=np.float32)
-            else:
-                follower_result = self._follower.compute_command(
-                    pose_command_b=target_pose.pose_command_b,
-                    base_lin_vel_w=np.asarray(robot_lin_vel_world, dtype=np.float32),
-                    base_ang_vel_w=np.asarray(robot_ang_vel_world, dtype=np.float32),
-                    robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
-                )
-                self._command = follower_result.command
+            self._command = tracker_result.command
         defense = self._apply_obstacle_defense(observation, self._command, now=now)
         self._command = defense.command
 
