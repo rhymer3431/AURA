@@ -113,6 +113,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout-sec", dest="timeout_sec", type=float, default=5.0)
     parser.add_argument("--reset-timeout-sec", dest="reset_timeout_sec", type=float, default=15.0)
     parser.add_argument("--retry", type=int, default=1)
+    parser.add_argument("--sensor-wait-budget-ms", dest="sensor_wait_budget_ms", type=int, default=0)
+    parser.add_argument("--recovery-turn-retry-limit", dest="recovery_turn_retry_limit", type=int, default=1)
+    parser.add_argument("--s2-retry-backoff-ms", dest="s2_retry_backoff_ms", type=int, default=1000)
     parser.add_argument("--stop-threshold", dest="stop_threshold", type=float, default=-3.0)
     parser.add_argument("--interactive-prompt", dest="interactive_prompt", type=str, default=DEFAULT_INTERACTIVE_PROMPT)
     parser.add_argument("--interactive-idle-log-interval", dest="interactive_idle_log_interval", type=int, default=120)
@@ -158,6 +161,12 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--global-waypoint-spacing-m must be positive")
     if float(getattr(args, "global_inflation_radius_m", 0.25)) < 0.0:
         raise ValueError("--global-inflation-radius-m must be non-negative")
+    if int(getattr(args, "sensor_wait_budget_ms", 0)) < 0:
+        raise ValueError("--sensor-wait-budget-ms must be non-negative")
+    if int(getattr(args, "recovery_turn_retry_limit", 1)) < 0:
+        raise ValueError("--recovery-turn-retry-limit must be non-negative")
+    if int(getattr(args, "s2_retry_backoff_ms", 1000)) < 0:
+        raise ValueError("--s2-retry-backoff-ms must be non-negative")
     global_map_image = str(getattr(args, "global_map_image", "")).strip()
     global_map_config = str(getattr(args, "global_map_config", "")).strip()
     if global_map_config != "" and global_map_image == "":

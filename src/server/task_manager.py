@@ -194,7 +194,8 @@ class TaskManager:
                 notices.append(notice)
         return notices
 
-    def sync_after_update(self, update: TrajectoryUpdate, *, memory_client) -> None:  # noqa: ANN001
+    def sync_after_update(self, update: TrajectoryUpdate, *, memory_client) -> bool:  # noqa: ANN001
+        reset_recovery = False
         if self.mode == "interactive":
             current_phase = str(update.interactive_phase or "")
             current_command_id = int(update.interactive_command_id)
@@ -223,9 +224,10 @@ class TaskManager:
                     clear_reason = str(update.stats.last_error)
                 memory_client.clear_planner_task(task_state=clear_state, reason=clear_reason)
                 self._task = TaskSnapshot(task_id=self._task.task_id, instruction="", mode="interactive", state=clear_state)
+                reset_recovery = True
             self._last_interactive_phase = current_phase
             self._last_interactive_command_id = current_command_id
-            return
+            return reset_recovery
 
         if self.mode == "dual" and bool(update.stop) and update.planner_control_mode == "stop":
             memory_client.clear_planner_task(
@@ -233,6 +235,8 @@ class TaskManager:
                 reason="dual task complete",
             )
             self._task = TaskSnapshot(task_id="dual", instruction=self._task.instruction, mode="dual", state="completed")
+            reset_recovery = True
+        return reset_recovery
 
     @staticmethod
     def _planner_managed_command(*, task_id: str, source: str) -> ActionCommand:

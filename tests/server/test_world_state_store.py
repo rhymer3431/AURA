@@ -16,6 +16,7 @@ from ipc.messages import FrameHeader
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from schemas.commands import ResolvedCommand
 from schemas.events import FrameEvent, WorkerMetadata
+from schemas.recovery import RecoveryState, RecoveryStateSnapshot
 from schemas.world_state import TaskSnapshot, WorldStateSnapshot
 from runtime.subgoal_executor import CommandEvaluation
 from server.world_state_store import WorldStateStore
@@ -64,8 +65,10 @@ def test_world_state_store_tracks_frame_memory_and_plan_versions() -> None:
     store.ingest_frame(frame_event)
     store.record_perception(batch)
     store.record_memory_context(type("Bundle", (), {"instruction": "dock", "text_lines": [1, 2], "keyframes": [1], "crop_path": "", "latent_backend_hint": "stub"})())
-    store.record_planning_result(update)
-    store.record_command_decision(resolved)
+    recovery = RecoveryStateSnapshot(current_state=RecoveryState.REPLAN_PENDING.value, last_trigger_reason="trajectory_stale")
+    store.set_recovery_state(recovery)
+    store.record_planning_result(update, recovery_state=recovery)
+    store.record_command_decision(resolved, recovery_state=recovery)
 
     snapshot = store.snapshot()
     assert snapshot.task.task_id == "interactive"
@@ -75,6 +78,8 @@ def test_world_state_store_tracks_frame_memory_and_plan_versions() -> None:
     assert snapshot.planning.active_nav_plan["plan_version"] == 7
     assert snapshot.planning.last_s2_result["goal_version"] == 4
     assert snapshot.execution.last_command_decision["source"] == "manual"
+    assert snapshot.safety.recovery_state.current_state == "REPLAN_PENDING"
+    assert snapshot.safety.stale is True
 
     round_trip = WorldStateSnapshot.from_dict(snapshot.to_dict())
     assert round_trip == snapshot

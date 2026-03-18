@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
 
 from ipc.messages import FrameHeader
 from server.snapshot_adapter import SnapshotAdapter
+from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (
     ExecutionStateSnapshot,
     MemoryStateSnapshot,
@@ -84,7 +85,19 @@ def _snapshot() -> WorldStateSnapshot:
             active_command_type="NAV_TO_POSE",
             active_target={"action_type": "NAV_TO_POSE", "target_track_id": "track-1"},
         ),
-        safety=SafetyStateSnapshot(safe_stop=False, stale=False, timeout=False, sensor_unavailable=False, recovery_state={"state": "normal"}),
+        safety=SafetyStateSnapshot(
+            safe_stop=False,
+            stale=True,
+            timeout=False,
+            sensor_unavailable=False,
+            recovery_state=RecoveryStateSnapshot(
+                current_state="REPLAN_PENDING",
+                entered_at_ns=55,
+                retry_count=1,
+                backoff_until_ns=88,
+                last_trigger_reason="trajectory_stale",
+            ),
+        ),
         runtime=RuntimeStateSnapshot(
             launch_mode="g1_view",
             viewer_publish=True,
@@ -133,7 +146,9 @@ def test_snapshot_adapter_preserves_legacy_runtime_contract() -> None:
     assert payload["modes"]["plannerMode"] == "interactive"
     assert payload["planner"]["planVersion"] == 4
     assert payload["planner"]["interactiveInstruction"] == "go to apple"
+    assert payload["planner"]["recoveryState"] == "REPLAN_PENDING"
     assert payload["sensor"]["frameId"] == 11
+    assert payload["sensor"]["stale"] is True
     assert payload["perception"]["detectorBackend"] == "stub"
     assert payload["memory"]["objectCount"] == 2
     assert payload["transport"]["viewerPublish"] is True
@@ -169,9 +184,11 @@ def test_snapshot_adapter_uses_world_state_for_webrtc_payloads() -> None:
     assert state_payload["planVersion"] == 4
     assert state_payload["active_command_type"] == "NAV_TO_POSE"
     assert state_payload["system2PixelGoal"] == [24, 18]
+    assert state_payload["recoveryState"] == "REPLAN_PENDING"
 
     assert frame_meta is not None
     assert frame_meta["robot_pose_xyz"] == [1.0, 2.0, 3.0]
     assert frame_meta["planVersion"] == 4
+    assert frame_meta["stale"] is True
     assert frame_meta["activeTarget"]["target_track_id"] == "track-1"
     assert frame_meta["detections"][0]["class_name"] == "apple"

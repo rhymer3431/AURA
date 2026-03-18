@@ -261,6 +261,43 @@ class PlannerCoordinator:
             error=str(locomotion_result.error or locomotion_result.discard_reason),
         )
 
+    def skip_execution(
+        self,
+        *,
+        frame_event: FrameEvent,
+        action_command: ActionCommand | None,
+        reason: str,
+    ) -> LocomotionProposal:
+        trajectory = self._runtime_state.trajectory
+        return LocomotionProposal(
+            command_vector=np.zeros(3, dtype=np.float32),
+            trajectory_update=TrajectoryUpdate(
+                trajectory_world=np.asarray(trajectory.trajectory_world, dtype=np.float32).copy(),
+                plan_version=int(trajectory.plan_version),
+                stats=PlannerStats(last_plan_step=int(frame_event.frame_id)),
+                source_frame_id=int(frame_event.frame_id),
+                action_command=action_command,
+                stop=False,
+                planner_control_mode=trajectory.planner_control_mode,
+                planner_yaw_delta_rad=trajectory.planner_yaw_delta_rad,
+                stale_sec=float(trajectory.stale_sec),
+                goal_version=int(self._runtime_state.goal.goal_version),
+                traj_version=int(self._runtime_state.goal.traj_version),
+                used_cached_traj=bool(trajectory.used_cached_traj),
+                sensor_meta=dict(frame_event.sensor_meta),
+                interactive_phase=str(self._runtime_state.interactive.phase),
+                interactive_command_id=int(self._runtime_state.interactive.active_command_id),
+                interactive_instruction=str(self._runtime_state.interactive.active_instruction),
+            ),
+            evaluation=CommandEvaluation(
+                force_stop=False,
+                goal_distance_m=-1.0,
+                yaw_error_rad=0.0,
+                reached_goal=False,
+            ),
+            metadata={"recovery_skip_reason": str(reason)},
+        )
+
     def _plan_trajectory(
         self,
         *,

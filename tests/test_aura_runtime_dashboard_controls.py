@@ -13,7 +13,8 @@ if str(SRC) not in sys.path:
 from ipc.messages import ActionCommand, HealthPing, RuntimeControlRequest, TaskRequest
 from runtime.aura_runtime import AuraRuntimeCommandSource
 from runtime.subgoal_executor import CommandEvaluation
-from schemas.world_state import PlanningStateSnapshot, RuntimeStateSnapshot, TaskSnapshot, WorldStateSnapshot
+from schemas.recovery import RecoveryStateSnapshot
+from schemas.world_state import PlanningStateSnapshot, RuntimeStateSnapshot, SafetyStateSnapshot, TaskSnapshot, WorldStateSnapshot
 
 
 class _FakePlanningSession:
@@ -71,6 +72,16 @@ class _FakeServer:
                 interactive_command_id=7,
                 interactive_instruction="inspect loading dock",
                 global_route={"enabled": True, "active": True, "waypoint_index": 0, "waypoint_count": 2},
+            ),
+            safety=SafetyStateSnapshot(
+                stale=True,
+                recovery_state=RecoveryStateSnapshot(
+                    current_state="REPLAN_PENDING",
+                    entered_at_ns=12,
+                    retry_count=1,
+                    backoff_until_ns=48,
+                    last_trigger_reason="trajectory_stale",
+                ),
             ),
             runtime=RuntimeStateSnapshot(
                 launch_mode="headless",
@@ -215,6 +226,7 @@ def test_publish_runtime_snapshot_contains_world_state_and_legacy_contract() -> 
     assert payload["worldState"]["task"]["task_id"] == "interactive"
     assert payload["snapshot"]["modes"]["plannerMode"] == "interactive"
     assert payload["snapshot"]["planner"]["planVersion"] == 4
+    assert payload["snapshot"]["planner"]["recoveryState"] == "REPLAN_PENDING"
     assert payload["snapshot"]["transport"]["viewerPublish"] is False
 
 

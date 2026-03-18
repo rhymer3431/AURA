@@ -14,12 +14,14 @@ if str(SRC) not in sys.path:
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacObservationBatch
 from ipc.inproc_bus import InprocBus
 from ipc.messages import ActionStatus, CapabilityReport, FrameHeader, HealthPing, RuntimeNotice
+from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (
     ExecutionStateSnapshot,
     PerceptionStateSnapshot,
     PlanningStateSnapshot,
     RobotStateSnapshot,
     RuntimeStateSnapshot,
+    SafetyStateSnapshot,
     TaskSnapshot,
     WorldStateSnapshot,
 )
@@ -106,6 +108,19 @@ def test_observation_subscriber_caches_frames_and_events() -> None:
                                 active_command_type="NAV_TO_POSE",
                                 active_target={"action_type": "NAV_TO_POSE", "target_track_id": "server-track"},
                             ),
+                            safety=SafetyStateSnapshot(
+                                safe_stop=False,
+                                stale=True,
+                                timeout=False,
+                                sensor_unavailable=False,
+                                recovery_state=RecoveryStateSnapshot(
+                                    current_state="REPLAN_PENDING",
+                                    entered_at_ns=44,
+                                    retry_count=1,
+                                    backoff_until_ns=88,
+                                    last_trigger_reason="trajectory_stale",
+                                ),
+                            ),
                             runtime=RuntimeStateSnapshot(frame_available=True),
                         ).to_dict()
                     },
@@ -125,6 +140,7 @@ def test_observation_subscriber_caches_frames_and_events() -> None:
             assert snapshot["planVersion"] == 4
             assert snapshot["active_command_type"] == "NAV_TO_POSE"
             assert snapshot["interactiveInstruction"] == "inspect apple"
+            assert snapshot["recoveryState"] == "REPLAN_PENDING"
             assert snapshot["activeTarget"]["target_track_id"] == "server-track"
 
             telemetry = subscriber.build_frame_meta()
@@ -132,6 +148,7 @@ def test_observation_subscriber_caches_frames_and_events() -> None:
             assert telemetry["detections"][0]["class_name"] == "apple"
             assert telemetry["trajectory_pixels"] == [[5, 6], [7, 8]]
             assert telemetry["planVersion"] == 4
+            assert telemetry["stale"] is True
             assert telemetry["activeTarget"]["target_track_id"] == "server-track"
 
             event_kinds = {

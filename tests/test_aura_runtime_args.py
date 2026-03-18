@@ -149,6 +149,9 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
     assert args.obstacle_backoff_vx_mps == 0.18
     assert args.obstacle_recovery_hold_sec == 0.75
     assert args.exit_on_pointgoal_failure is True
+    assert args.sensor_wait_budget_ms == 0
+    assert args.recovery_turn_retry_limit == 1
+    assert args.s2_retry_backoff_ms == 1000
     assert args.global_map_image == ""
     assert args.global_map_config == ""
     assert args.global_waypoint_spacing_m == 0.75

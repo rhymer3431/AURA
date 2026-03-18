@@ -310,4 +310,6 @@ class WorldStateSnapshot:
             memory=MemoryStateSnapshot.from_dict(data.get("memory")),
             planning=PlanningStateSnapshot.from_dict(data.get("planning")),
             execution=ExecutionStateSnapshot.from_dict(data.get("execution")),
-       
+            safety=SafetyStateSnapshot.from_dict(data.get("safety")),
+            runtime=RuntimeStateSnapshot.from_dict(data.get("runtime")),
+        )

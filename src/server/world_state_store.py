@@ -6,6 +6,7 @@ from typing import Any
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from ipc.messages import ActionCommand, ActionStatus
 from runtime.planning_session import TrajectoryUpdate
+from schemas.recovery import RecoveryState, RecoveryStateSnapshot
 from server.planner_runtime_state import PlannerRuntimeState
 
 from schemas.commands import ResolvedCommand
@@ -48,6 +49,9 @@ class WorldStateStore:
         )
         self._snapshot = replace(self._snapshot, task=task, memory=memory)
 
+    def recovery_state(self) -> RecoveryStateSnapshot:
+        return RecoveryStateSnapshot.from_dict(self._snapshot.safety.recovery_state.to_dict())
+
     def ingest_frame(self, frame_event: FrameEvent) -> None:
         sensor_health = dict(self._snapshot.robot.sensor_health)
         sensor_health.update(
@@ -62,10 +66,6 @@ class WorldStateStore:
         stale_info = dict(self._snapshot.planning.stale_info)
         stale_info["last_frame_id"] = int(frame_event.frame_id)
         stale_info["last_frame_timestamp_ns"] = int(frame_event.timestamp_ns)
-        safety = replace(
-            self._snapshot.safety,
-            sensor_unavailable=bool(frame_event.observation is None),
-        )
         self._snapshot = replace(
             self._snapshot,
             robot=replace(
@@ -79,7 +79,6 @@ class WorldStateStore:
                 sensor_meta=dict(frame_event.sensor_meta),
             ),
             planning=replace(self._snapshot.planning, stale_info=stale_info),
-            safety=safety,
             runtime=replace(self._snapshot.runtime, frame_available=bool(frame_event.observation is not None)),
         )
 
@@ -169,7 +168,13 @@ class WorldStateStore:
             ),
         )
 
-    def record_planning_result(self, update: TrajectoryUpdate, planner_state: PlannerRuntimeState | None = None) -> None:
+    def record_planning_result(
+        self,
+        update: TrajectoryUpdate,
+        planner_state: PlannerRuntimeState | None = None,
+        *,
+        recovery_state: RecoveryStateSnapshot | None = None,
+    ) -> None:
         stale_info = dict(self._snapshot.planning.stale_info)
         stale_info["planner_stale_sec"] = float(update.stale_sec)
         stale_info["goal_version"] = int(update.goal_version)
@@ -240,17 +245,13 @@ class WorldStateStore:
             stale_info=stale_info,
             global_route=global_route,
         )
-        safety = replace(
-            self._snapshot.safety,
-            stale=bool(float(update.stale_sec) > 0.0),
-        )
         self._snapshot = replace(
             self._snapshot,
             planning=planning,
-            safety=safety,
+            safety=self._safety_with_recovery(recovery_state),
         )
 
-    def record_command_decision(self, resolved: ResolvedCommand) -> None:
+    def record_command_decision(self, resolved: ResolvedCommand, *, recovery_state: RecoveryStateSnapshot | None = None) -> None:
         action_command = resolved.action_command
         execution = ExecutionStateSnapshot(
             last_command_decision={
@@ -260,10 +261,19 @@ class WorldStateStore:
                 "safety_override": bool(resolved.safety_override),
                 "status": None if resolved.status is None else str(resolved.status.state),
                 "command_vector": [float(v) for v in resolved.command_vector.tolist()],
+                "recovery_state": dict(resolved.metadata.get("recovery_state", {}))
+                if isinstance(resolved.metadata.get("recovery_state"), dict)
+                else {},
+                "recovery_reason": str(resolved.metadata.get("recovery_reason", "")),
+                "retry_count": int(resolved.metadata.get("retry_count", 0) or 0),
+                "backoff_until_ns": int(resolved.metadata.get("backoff_until_ns", 0) or 0),
             },
             last_action_status=_status_summary(resolved.status),
             active_overrides={
                 "safety_override": bool(resolved.safety_override),
+                "recovery_state": dict(resolved.metadata.get("recovery_state", {}))
+                if isinstance(resolved.metadata.get("recovery_state"), dict)
+                else {},
             },
             locomotion_proposal_summary={
                 "goal_distance_m": float(resolved.evaluation.goal_distance_m),
@@ -276,32 +286,46 @@ class WorldStateStore:
             active_command_type="" if action_command is None else str(action_command.action_type),
             active_target=_active_target_summary(action_command),
         )
-        safety_reason = str(resolved.metadata.get("safety_reason", "") or "")
-        safety = replace(
-            self._snapshot.safety,
-            safe_stop=bool(
-                resolved.safety_override
-                or execution.active_command_type == "STOP"
-                or bool(resolved.evaluation.force_stop)
-            ),
-            stale=bool(self._snapshot.safety.stale or safety_reason == "trajectory_stale"),
-            timeout=bool(safety_reason == "timeout"),
-            sensor_unavailable=bool(self._snapshot.safety.sensor_unavailable or safety_reason == "sensor_unavailable"),
-        )
         self._snapshot = replace(
             self._snapshot,
             execution=execution,
-            safety=safety,
+            safety=self._safety_with_recovery(recovery_state),
         )
 
-    def update_recovery_state(self, payload: dict[str, Any]) -> None:
+    def set_recovery_state(self, recovery_state: RecoveryStateSnapshot) -> None:
         self._snapshot = replace(
             self._snapshot,
-            safety=replace(self._snapshot.safety, recovery_state=dict(payload)),
+            safety=self._safety_with_recovery(recovery_state),
+        )
+
+    def reset_recovery_state(self, *, entered_at_ns: int = 0, reason: str = "") -> None:
+        self._snapshot = replace(
+            self._snapshot,
+            safety=self._safety_with_recovery(
+                RecoveryStateSnapshot(
+                    current_state=RecoveryState.NORMAL.value,
+                    entered_at_ns=int(entered_at_ns),
+                    retry_count=0,
+                    backoff_until_ns=0,
+                    last_trigger_reason=str(reason),
+                )
+            ),
         )
 
     def snapshot(self) -> WorldStateSnapshot:
         return WorldStateSnapshot.from_dict(self._snapshot.to_dict())
+
+    def _safety_with_recovery(self, recovery_state: RecoveryStateSnapshot | None) -> SafetyStateSnapshot:
+        current = self.recovery_state() if recovery_state is None else recovery_state
+        state = current.state
+        trigger = str(current.last_trigger_reason)
+        return SafetyStateSnapshot(
+            safe_stop=state in {RecoveryState.SAFE_STOP, RecoveryState.FAILED},
+            stale=state in {RecoveryState.REPLAN_PENDING, RecoveryState.WAIT_SENSOR} or trigger == "trajectory_stale",
+            timeout=trigger == "timeout",
+            sensor_unavailable=state == RecoveryState.WAIT_SENSOR or trigger == "sensor_missing",
+            recovery_state=current,
+        )
 
 
 def _status_summary(status: ActionStatus | None) -> dict[str, object]:

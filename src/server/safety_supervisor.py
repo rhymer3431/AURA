@@ -1,49 +1,78 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass
 
-import numpy as np
-
-from ipc.messages import ActionStatus
-from schemas.commands import ResolvedCommand
 from schemas.events import FrameEvent
+from schemas.recovery import RecoveryStateSnapshot
+
+from .recovery_state import RecoveryEvent, RecoveryPolicy, apply_recovery_event
+
+
+@dataclass(frozen=True)
+class SafetyDecision:
+    recovery_state: RecoveryStateSnapshot
+    safety_override: bool
+    safety_reason: str = ""
 
 
 class SafetySupervisor:
     def __init__(self, args) -> None:
-        self._safety_timeout_sec = float(getattr(args, "safety_timeout_sec", 20.0))
-        self._traj_max_stale_sec = float(getattr(args, "traj_max_stale_sec", 4.0))
+        self._policy = RecoveryPolicy.from_args(args)
 
-    def apply(self, *, frame_event: FrameEvent, resolved: ResolvedCommand) -> ResolvedCommand:
-        should_override = frame_event.observation is None
-        safety_reason = "sensor_unavailable" if should_override else ""
-        stale_sec = float(resolved.trajectory_update.stale_sec)
-        if stale_sec > self._traj_max_stale_sec > 0.0:
-            should_override = True
-            safety_reason = "trajectory_stale"
+    @property
+    def policy(self) -> RecoveryPolicy:
+        return self._policy
 
-        frame_age_sec = max((float(frame_event.metadata.timestamp_ns) - float(frame_event.timestamp_ns)) / 1.0e9, 0.0)
-        if frame_age_sec > self._safety_timeout_sec > 0.0:
-            should_override = True
-            safety_reason = "timeout"
-
-        if not should_override:
-            return resolved
-
-        status = resolved.status
-        if status is not None and status.state == "running":
-            status = replace(status, state="stale", success=False, reason="safety override")
-        elif status is None and resolved.action_command is not None:
-            status = ActionStatus(
-                command_id=str(resolved.action_command.command_id),
-                state="stale",
-                success=False,
-                reason="safety override",
+    def evaluate(
+        self,
+        *,
+        frame_event: FrameEvent,
+        trajectory_update,
+        recovery_state: RecoveryStateSnapshot,
+        now_ns: int,
+    ) -> SafetyDecision:  # noqa: ANN001
+        current = recovery_state
+        frame_age_ms = max((float(frame_event.metadata.timestamp_ns) - float(frame_event.timestamp_ns)) / 1.0e6, 0.0)
+        if frame_age_ms > float(self._policy.safe_stop_timeout_ms) > 0.0:
+            next_state = apply_recovery_event(
+                current,
+                RecoveryEvent(kind="timeout", reason="timeout"),
+                now_ns=now_ns,
+                policy=self._policy,
             )
-        return replace(
-            resolved,
-            command_vector=np.zeros(3, dtype=np.float32),
-            status=status,
-            safety_override=True,
-            metadata={**dict(resolved.metadata), "safety_override": True, "safety_reason": safety_reason},
-        )
+            return SafetyDecision(recovery_state=next_state, safety_override=True, safety_reason="timeout")
+
+        if frame_event.observation is None:
+            next_state = apply_recovery_event(
+                current,
+                RecoveryEvent(kind="sensor_missing", reason="sensor_missing"),
+                now_ns=now_ns,
+                policy=self._policy,
+            )
+            return SafetyDecision(
+                recovery_state=next_state,
+                safety_override=next_state.current_state != "NORMAL",
+                safety_reason="sensor_missing" if next_state.current_state != "NORMAL" else "",
+            )
+
+        if current.current_state == "WAIT_SENSOR":
+            next_state = apply_recovery_event(
+                current,
+                RecoveryEvent(kind="sensor_restored", reason="sensor_restored"),
+                now_ns=now_ns,
+                policy=self._policy,
+            )
+            if next_state != current:
+                return SafetyDecision(recovery_state=next_state, safety_override=False, safety_reason="")
+
+        stale_ms = max(float(getattr(trajectory_update, "stale_sec", -1.0)), 0.0) * 1000.0
+        if stale_ms > float(self._policy.max_stale_age_ms) > 0.0:
+            next_state = apply_recovery_event(
+                current,
+                RecoveryEvent(kind="trajectory_stale", reason="trajectory_stale"),
+                now_ns=now_ns,
+                policy=self._policy,
+            )
+            return SafetyDecision(recovery_state=next_state, safety_override=False, safety_reason="trajectory_stale")
+
+        return SafetyDecision(recovery_state=current, safety_override=False, safety_reason="")

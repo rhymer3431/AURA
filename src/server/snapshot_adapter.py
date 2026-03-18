@@ -28,6 +28,11 @@ class SnapshotAdapter:
             "globalRouteWaypointCount": int(world_state.planning.global_route.get("waypoint_count", 0) or 0),
             "globalRouteEnabled": bool(world_state.planning.global_route.get("enabled", False)),
             "globalRouteActive": bool(world_state.planning.global_route.get("active", False)),
+            "recoveryState": str(world_state.safety.recovery_state.current_state),
+            "recoveryEnteredAtNs": int(world_state.safety.recovery_state.entered_at_ns),
+            "recoveryRetryCount": int(world_state.safety.recovery_state.retry_count),
+            "recoveryBackoffUntilNs": int(world_state.safety.recovery_state.backoff_until_ns),
+            "recoveryReason": str(world_state.safety.recovery_state.last_trigger_reason),
         }
         if world_state.planning.system2_pixel_goal is not None:
             planner["system2PixelGoal"] = list(world_state.planning.system2_pixel_goal)
@@ -56,6 +61,10 @@ class SnapshotAdapter:
                 "robotYawRad": None if world_state.robot.frame_id < 0 else float(world_state.robot.yaw_rad),
                 "sensorMeta": dict(world_state.robot.sensor_meta),
                 "captureReport": dict(world_state.robot.capture_report),
+                "safeStop": bool(world_state.safety.safe_stop),
+                "stale": bool(world_state.safety.stale),
+                "timeout": bool(world_state.safety.timeout),
+                "sensorUnavailable": bool(world_state.safety.sensor_unavailable),
             },
             "perception": {
                 "detectorBackend": str(world_state.perception.detector_backend),
@@ -81,6 +90,10 @@ class SnapshotAdapter:
                 "telemetryEndpoint": str(world_state.runtime.telemetry_endpoint),
                 "shmName": str(world_state.runtime.shm_name),
                 "frameAvailable": bool(world_state.runtime.frame_available),
+                "safeStop": bool(world_state.safety.safe_stop),
+                "stale": bool(world_state.safety.stale),
+                "timeout": bool(world_state.safety.timeout),
+                "sensorUnavailable": bool(world_state.safety.sensor_unavailable),
             },
         }
 
@@ -165,6 +178,15 @@ class SnapshotAdapter:
             "interactivePhase": str(world_state.planning.interactive_phase),
             "interactiveCommandId": int(world_state.planning.interactive_command_id),
             "interactiveInstruction": str(world_state.planning.interactive_instruction),
+            "recoveryState": str(world_state.safety.recovery_state.current_state),
+            "recoveryEnteredAtNs": int(world_state.safety.recovery_state.entered_at_ns),
+            "recoveryRetryCount": int(world_state.safety.recovery_state.retry_count),
+            "recoveryBackoffUntilNs": int(world_state.safety.recovery_state.backoff_until_ns),
+            "recoveryReason": str(world_state.safety.recovery_state.last_trigger_reason),
+            "safeStop": bool(world_state.safety.safe_stop),
+            "stale": bool(world_state.safety.stale),
+            "timeout": bool(world_state.safety.timeout),
+            "sensorUnavailable": bool(world_state.safety.sensor_unavailable),
         }
         active_target = dict(world_state.execution.active_target)
         if active_target:
@@ -231,6 +253,15 @@ class SnapshotAdapter:
             "interactivePhase": str(world_state.planning.interactive_phase),
             "interactiveCommandId": int(world_state.planning.interactive_command_id),
             "interactiveInstruction": str(world_state.planning.interactive_instruction),
+            "recoveryState": str(world_state.safety.recovery_state.current_state),
+            "recoveryEnteredAtNs": int(world_state.safety.recovery_state.entered_at_ns),
+            "recoveryRetryCount": int(world_state.safety.recovery_state.retry_count),
+            "recoveryBackoffUntilNs": int(world_state.safety.recovery_state.backoff_until_ns),
+            "recoveryReason": str(world_state.safety.recovery_state.last_trigger_reason),
+            "safeStop": bool(world_state.safety.safe_stop),
+            "stale": bool(world_state.safety.stale),
+            "timeout": bool(world_state.safety.timeout),
+            "sensorUnavailable": bool(world_state.safety.sensor_unavailable),
         }
         active_target = dict(world_state.execution.active_target)
         if active_target:

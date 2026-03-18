@@ -13,9 +13,11 @@ if str(SRC) not in sys.path:
 
 from dashboard_backend.config import DashboardBackendConfig
 from dashboard_backend.state import StateAggregator
+from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (
     PlanningStateSnapshot,
     RuntimeStateSnapshot,
+    SafetyStateSnapshot,
     TaskSnapshot,
     WorldStateSnapshot,
 )
@@ -108,6 +110,16 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
                         planner_mode="interactive",
                         interactive_instruction="dock",
                     ),
+                    safety=SafetyStateSnapshot(
+                        stale=True,
+                        recovery_state=RecoveryStateSnapshot(
+                            current_state="REPLAN_PENDING",
+                            entered_at_ns=10,
+                            retry_count=1,
+                            backoff_until_ns=20,
+                            last_trigger_reason="trajectory_stale",
+                        ),
+                    ),
                     runtime=RuntimeStateSnapshot(viewer_publish=True),
                 ).to_dict()
             },
@@ -118,4 +130,5 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     assert "_runtime_snapshot" not in aggregator.__dict__
     assert state["runtime"]["modes"]["plannerMode"] == "interactive"
     assert state["runtime"]["interactiveInstruction"] == "dock"
+    assert state["runtime"]["recoveryState"] == "REPLAN_PENDING"
     assert state["transport"]["viewerPublish"] is True

@@ -64,9 +64,9 @@ class MainControlServer:
             locomotion_client=ExecutorLocomotionClient(executor),
         )
         self._task_manager = TaskManager(args)
-        self._decision_engine = DecisionEngine()
         self._command_resolver = CommandResolver()
         self._safety_supervisor = SafetySupervisor(args)
+        self._decision_engine = DecisionEngine(policy=self._safety_supervisor.policy)
         self._world_state = WorldStateStore(
             initial_mode=str(getattr(args, "planner_mode", "")),
             runtime=RuntimeStateSnapshot(
@@ -102,6 +102,7 @@ class MainControlServer:
         )
         self._world_state.set_mode(self._task_manager.mode)
         self._world_state.update_task(self._task_manager.snapshot())
+        self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
         return notices
 
     def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str = "") -> tuple[int, object]:
@@ -113,6 +114,7 @@ class MainControlServer:
             memory_client=self._memory_client,
         )
         self._world_state.update_task(self._task_manager.snapshot())
+        self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
         return command_id, notice
 
     def cancel_interactive_task(self, *, source: str) -> tuple[bool, object | None]:
@@ -122,6 +124,8 @@ class MainControlServer:
             memory_client=self._memory_client,
         )
         self._world_state.update_task(self._task_manager.snapshot())
+        if cancelled:
+            self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
         return cancelled, notice
 
     def snapshot(self) -> WorldStateSnapshot:
@@ -139,7 +143,9 @@ class MainControlServer:
         robot_yaw: float,
         robot_quat_wxyz: np.ndarray,
     ) -> ServerTickResult:
+        now_ns = time.time_ns()
         notices = []
+        initial_task = self._task_manager.snapshot()
         for event in task_events:
             notices.extend(
                 self._task_manager.handle_event(
@@ -151,16 +157,22 @@ class MainControlServer:
 
         self._world_state.set_mode(self._task_manager.mode)
         self._world_state.update_task(self._task_manager.snapshot())
+        if self._task_manager.snapshot() != initial_task:
+            self._world_state.reset_recovery_state(entered_at_ns=now_ns, reason="task_reset")
         self._world_state.ingest_frame(frame_event)
+        current_world_state = self._world_state.snapshot()
         current_task = self._task_manager.snapshot()
+        current_recovery = current_world_state.recovery_state
 
         active_memory_instruction = self._planner_coordinator.active_memory_instruction()
         directive = self._decision_engine.evaluate(
-            world_state=self._world_state.snapshot(),
+            world_state=current_world_state,
             task=current_task,
             frame_event=frame_event,
             manual_command_present=self._task_manager.manual_command() is not None,
             active_memory_instruction=active_memory_instruction,
+            recovery_state=current_recovery,
+            now_ns=now_ns,
         )
 
         observation, perception_result, memory_result = self._planner_coordinator.enrich_observation(
@@ -202,31 +214,65 @@ class MainControlServer:
             manual_command=proposal.action_command,
         )
 
-        execution = self._planner_coordinator.execute(
-            frame_event=frame_event,
-            observation=observation,
+        if directive.allow_planning:
+            execution = self._planner_coordinator.execute(
+                frame_event=frame_event,
+                observation=observation,
+                action_command=proposal.action_command,
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_lin_vel_world=np.asarray(robot_lin_vel_world, dtype=np.float32),
+                robot_ang_vel_world=np.asarray(robot_ang_vel_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+                robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
+            )
+        else:
+            execution = self._planner_coordinator.skip_execution(
+                frame_event=frame_event,
+                action_command=proposal.action_command,
+                reason=str(directive.reason),
+            )
+        planning_evaluation = self._decision_engine.evaluate_planning_outcome(
+            world_state=current_world_state,
+            task=current_task,
+            recovery_state=current_recovery,
+            trajectory_update=execution.trajectory_update,
             action_command=proposal.action_command,
-            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
-            robot_lin_vel_world=np.asarray(robot_lin_vel_world, dtype=np.float32),
-            robot_ang_vel_world=np.asarray(robot_ang_vel_world, dtype=np.float32),
-            robot_yaw=float(robot_yaw),
-            robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
+            now_ns=now_ns,
         )
+        safety_decision = self._safety_supervisor.evaluate(
+            frame_event=frame_event,
+            trajectory_update=execution.trajectory_update,
+            recovery_state=planning_evaluation.recovery_state,
+            now_ns=now_ns,
+        )
+        final_recovery = safety_decision.recovery_state
+        self._world_state.set_recovery_state(final_recovery)
         resolved = self._command_resolver.resolve_execution(
             proposal=proposal,
             execution=execution,
+            recovery_state=final_recovery,
+            safety_decision=safety_decision,
         )
-        resolved = self._safety_supervisor.apply(
-            frame_event=frame_event,
-            resolved=resolved,
+        task_reset = self._task_manager.sync_after_update(
+            resolved.trajectory_update,
+            memory_client=self._memory_client,
         )
-        self._task_manager.sync_after_update(resolved.trajectory_update, memory_client=self._memory_client)
         self._world_state.update_task(self._task_manager.snapshot())
+        if task_reset:
+            self._world_state.reset_recovery_state(entered_at_ns=now_ns, reason="task_reset")
+            final_recovery = self._world_state.recovery_state()
+            resolved = self._command_resolver.resolve_execution(
+                proposal=proposal,
+                execution=execution,
+                recovery_state=final_recovery,
+                safety_decision=safety_decision,
+            )
         self._world_state.record_planning_result(
             resolved.trajectory_update,
             planner_state=self._planner_coordinator.runtime_state,
+            recovery_state=final_recovery,
         )
-        self._world_state.record_command_decision(resolved)
+        self._world_state.record_command_decision(resolved, recovery_state=final_recovery)
 
         frame_header = None if enriched_batch is None else enriched_batch.frame_header
         capture_report = {} if enriched_batch is None else dict(enriched_batch.capture_report)
