@@ -9,7 +9,7 @@ function Quote-ForSingleQuotedString {
     return $Value -replace "'", "''"
 }
 
-function Join-SingleQuotedArgs {
+function Join-PowerShellArrayLiteralArgs {
     param(
         [string[]]$Values
     )
@@ -22,7 +22,7 @@ function Join-SingleQuotedArgs {
     foreach ($Value in $Values) {
         $Quoted += "'" + (Quote-ForSingleQuotedString $Value) + "'"
     }
-    return [string]::Join(" ", $Quoted)
+    return [string]::Join(", ", $Quoted)
 }
 
 function Test-PythonModules {
@@ -34,8 +34,27 @@ function Test-PythonModules {
     )
 
     $ModuleList = [string]::Join(",", $Modules)
-    & $PythonPath -c "import importlib.util; import sys; missing=[name for name in '$ModuleList'.split(',') if importlib.util.find_spec(name) is None]; sys.exit(0 if len(missing) == 0 else 1)"
-    return $LASTEXITCODE -eq 0
+    $TempScript = Join-Path ([System.IO.Path]::GetTempPath()) ("aura_dashboard_module_check_{0}.py" -f [System.Guid]::NewGuid().ToString("N"))
+    $PythonCode = @"
+import importlib.util
+import sys
+
+missing = [name for name in '$ModuleList'.split(',') if name and importlib.util.find_spec(name) is None]
+sys.exit(0 if len(missing) == 0 else 1)
+"@
+    try {
+        Set-Content -Path $TempScript -Value $PythonCode -Encoding UTF8
+        $Process = Start-Process `
+            -FilePath $PythonPath `
+            -ArgumentList @($TempScript) `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+        return $Process.ExitCode -eq 0
+    }
+    finally {
+        Remove-Item -Path $TempScript -Force -ErrorAction SilentlyContinue
+    }
 }
 
 function Wait-HttpReady {
@@ -70,10 +89,84 @@ function Wait-HttpReady {
     return $false
 }
 
+function Resolve-BackendHealthUrl {
+    param(
+        [string[]]$Values
+    )
+
+    $HostValue = "127.0.0.1"
+    $PortValue = "8095"
+    for ($Index = 0; $Index -lt $Values.Count; $Index += 1) {
+        $Value = [string]$Values[$Index]
+        if ($Value -eq "--host" -and $Index + 1 -lt $Values.Count) {
+            $HostValue = [string]$Values[$Index + 1]
+            $Index += 1
+            continue
+        }
+        if ($Value.StartsWith("--host=")) {
+            $HostValue = $Value.Substring("--host=".Length)
+            continue
+        }
+        if ($Value -eq "--port" -and $Index + 1 -lt $Values.Count) {
+            $PortValue = [string]$Values[$Index + 1]
+            $Index += 1
+            continue
+        }
+        if ($Value.StartsWith("--port=")) {
+            $PortValue = $Value.Substring("--port=".Length)
+        }
+    }
+
+    if ($HostValue -eq "0.0.0.0" -or $HostValue -eq "localhost" -or $HostValue.Contains(":")) {
+        $HostValue = "127.0.0.1"
+    }
+
+    return "http://${HostValue}:${PortValue}/api/bootstrap"
+}
+
+function Get-LogTail {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [int]$Tail = 80
+    )
+
+    if (-not (Test-Path $Path)) {
+        return ""
+    }
+    try {
+        return ((Get-Content -Path $Path -Tail $Tail -ErrorAction Stop) -join [Environment]::NewLine)
+    }
+    catch {
+        return ""
+    }
+}
+
+function Invoke-NativeCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [string[]]$ArgumentList = @(),
+        [switch]$NoNewWindow
+    )
+
+    $StartProcessParams = @{
+        FilePath     = $FilePath
+        ArgumentList = $ArgumentList
+        Wait         = $true
+        PassThru     = $true
+    }
+    if ($NoNewWindow.IsPresent) {
+        $StartProcessParams["NoNewWindow"] = $true
+    }
+    return Start-Process @StartProcessParams
+}
+
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir ".."))
 $DashboardDir = Join-Path $RepoDir "dashboard"
 $SrcDir = Join-Path $RepoDir "src"
+$LogDir = Join-Path $RepoDir ".logs\dashboard"
 $PowerShellExe = Join-Path $PSHOME "powershell.exe"
 $DefaultPythonExe = "C:\Users\mango\anaconda3\python.exe"
 $PythonExe = if ($env:AURA_DASHBOARD_PYTHON_EXE) {
@@ -128,8 +221,8 @@ if ($CargoCmdIsPath) {
 }
 if (-not (Test-PythonModules -PythonPath $PythonExe -Modules @("aiohttp", "aiortc", "av", "zmq"))) {
     Write-Host "[AURA_DASHBOARD] installing missing backend Python modules: aiohttp aiortc av pyzmq"
-    & $PythonExe -m pip install aiohttp aiortc av pyzmq
-    if ($LASTEXITCODE -ne 0) {
+    $InstallProcess = Invoke-NativeCommand -FilePath $PythonExe -ArgumentList @("-m", "pip", "install", "aiohttp", "aiortc", "av", "pyzmq") -NoNewWindow
+    if ($InstallProcess.ExitCode -ne 0) {
         throw "Failed to install required backend Python modules into $PythonExe"
     }
 }
@@ -149,8 +242,18 @@ if (Test-Path '$CargoBinDirEsc') {
 }
 "@
 }
-$BackendArgText = Join-SingleQuotedArgs $args
-$BackendHealthUrl = "http://127.0.0.1:8095/api/bootstrap"
+$BackendArgListLiteral = Join-PowerShellArrayLiteralArgs $args
+$BackendHealthUrl = Resolve-BackendHealthUrl -Values $args
+$BackendReadyTimeoutSec = if ($env:AURA_DASHBOARD_BACKEND_READY_TIMEOUT_SEC) {
+    [int]$env:AURA_DASHBOARD_BACKEND_READY_TIMEOUT_SEC
+} else {
+    60
+}
+$BackendStdoutLog = Join-Path $LogDir "backend.stdout.log"
+$BackendStderrLog = Join-Path $LogDir "backend.stderr.log"
+
+New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+Remove-Item -Path $BackendStdoutLog, $BackendStderrLog -Force -ErrorAction SilentlyContinue
 
 $BackendCommand = @"
 `$ErrorActionPreference = 'Stop'
@@ -162,8 +265,10 @@ if ([string]::IsNullOrWhiteSpace(`$PreviousPythonPath)) {
     `$env:PYTHONPATH = '$SrcDirEsc' + [System.IO.Path]::PathSeparator + `$PreviousPythonPath
 }
 try {
-    & '$PythonExeEsc' -m $EntryModule $BackendArgText
-    exit `$LASTEXITCODE
+    `$PythonProcess = Start-Process -FilePath '$PythonExeEsc' -ArgumentList @('-m', '$EntryModule'$(
+if (-not [string]::IsNullOrWhiteSpace($BackendArgListLiteral)) { ", $BackendArgListLiteral" } else { "" }
+)) -Wait -PassThru -NoNewWindow
+    exit `$PythonProcess.ExitCode
 }
 finally {
     if ([string]::IsNullOrWhiteSpace(`$PreviousPythonPath)) {
@@ -179,29 +284,32 @@ $DesktopCommand = @"
 Set-Location '$DashboardDirEsc'
 $CargoPathBootstrap
 if (-not (Test-Path 'node_modules')) {
-    & '$NpmCmdEsc' install
-    if (`$LASTEXITCODE -ne 0) {
-        exit `$LASTEXITCODE
+    `$NpmInstall = Start-Process -FilePath '$NpmCmdEsc' -ArgumentList @('install') -Wait -PassThru -NoNewWindow
+    if (`$NpmInstall.ExitCode -ne 0) {
+        exit `$NpmInstall.ExitCode
     }
 }
-& '$CargoCmdEsc' -V
-if (`$LASTEXITCODE -ne 0) {
-    exit `$LASTEXITCODE
+`$CargoVersion = Start-Process -FilePath '$CargoCmdEsc' -ArgumentList @('-V') -Wait -PassThru -NoNewWindow
+if (`$CargoVersion.ExitCode -ne 0) {
+    exit `$CargoVersion.ExitCode
 }
-& '$NpmCmdEsc' run tauri:dev
-exit `$LASTEXITCODE
+`$TauriProcess = Start-Process -FilePath '$NpmCmdEsc' -ArgumentList @('run', 'tauri:dev') -Wait -PassThru -NoNewWindow
+exit `$TauriProcess.ExitCode
 "@
 
 $BackendProcess = Start-Process `
     -FilePath $PowerShellExe `
     -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", $BackendCommand) `
     -WorkingDirectory $RepoDir `
+    -RedirectStandardOutput $BackendStdoutLog `
+    -RedirectStandardError $BackendStderrLog `
     -PassThru
 
-Write-Host "[AURA_DASHBOARD] backend pid=$($BackendProcess.Id) url=http://127.0.0.1:8095"
+Write-Host "[AURA_DASHBOARD] backend pid=$($BackendProcess.Id) url=$($BackendHealthUrl -replace '/api/bootstrap$', '')"
 Write-Host "[AURA_DASHBOARD] waiting for backend readiness at $BackendHealthUrl"
+Write-Host "[AURA_DASHBOARD] backend logs: $BackendStdoutLog / $BackendStderrLog"
 
-if (-not (Wait-HttpReady -Url $BackendHealthUrl -TimeoutSec 20 -Process $BackendProcess)) {
+if (-not (Wait-HttpReady -Url $BackendHealthUrl -TimeoutSec $BackendReadyTimeoutSec -Process $BackendProcess)) {
     $BackendProcess.Refresh()
     if (-not $BackendProcess.HasExited) {
         try {
@@ -210,7 +318,16 @@ if (-not (Wait-HttpReady -Url $BackendHealthUrl -TimeoutSec 20 -Process $Backend
         catch {
         }
     }
-    throw "Dashboard backend did not become ready at $BackendHealthUrl. Inspect the backend PowerShell window for startup errors."
+    $StdoutTail = Get-LogTail -Path $BackendStdoutLog
+    $StderrTail = Get-LogTail -Path $BackendStderrLog
+    $TailMessage = ""
+    if (-not [string]::IsNullOrWhiteSpace($StdoutTail)) {
+        $TailMessage += "`n[backend stdout tail]`n$StdoutTail"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($StderrTail)) {
+        $TailMessage += "`n[backend stderr tail]`n$StderrTail"
+    }
+    throw "Dashboard backend did not become ready at $BackendHealthUrl within ${BackendReadyTimeoutSec}s. Logs: $BackendStdoutLog / $BackendStderrLog$TailMessage"
 }
 
 $DesktopProcess = Start-Process `
