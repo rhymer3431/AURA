@@ -144,7 +144,8 @@ Write-Host "[VLM Dual Server] vlm-timeout-sec=$VLMTimeoutSec s2-backoff-max-sec=
 Write-Host "[VLM Dual Server] vlm-sampling temp=$VLMTemperature top-k=$VLMTopK top-p=$VLMTopP min-p=$VLMMinP repeat-penalty=$VLMRepeatPenalty"
 Write-Host "[VLM Dual Server] vlm-history num-history=$VLMNumHistory max-images-per-request=$VLMMaxImagesPerRequest"
 
-Push-Location $RepoDir
+# `conda run` may sanitize PYTHONPATH, so launch from `src` to keep `apps.*` importable.
+Push-Location $SrcDir
 $PreviousPythonPath = $env:PYTHONPATH
 if ([string]::IsNullOrWhiteSpace($PreviousPythonPath)) {
     $env:PYTHONPATH = $SrcDir
