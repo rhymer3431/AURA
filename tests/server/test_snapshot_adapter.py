@@ -161,6 +161,11 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
         services={"navdp": {"status": "ok"}},
         session_state={"timestamp": 1.0, "active": True, "startedAt": 2.0, "config": {"viewerEnabled": True}, "lastEvent": {"message": "ok"}},
         transport_state={"frameSeq": 7, "frameAvailable": True},
+        architecture={
+            "gateway": {"state": "running"},
+            "mainControlServer": {"state": "running"},
+            "modules": {"nav": {"state": "running"}},
+        },
         recent_logs=[{"message": "log"}],
         last_status={"state": "running"},
         detector_capability={"component": "detector", "status": "ready"},

@@ -54,7 +54,7 @@ def _resolve_local_launcher_script(script_name: str) -> Path | None:
     return None
 
 
-def _start_local_launcher(script_path: Path) -> subprocess.Popen[Any]:
+def _start_local_launcher(script_path: Path, launcher_args: tuple[str, ...] = ()) -> subprocess.Popen[Any]:
     return subprocess.Popen(
         [
             "powershell.exe",
@@ -63,6 +63,7 @@ def _start_local_launcher(script_path: Path) -> subprocess.Popen[Any]:
             "Bypass",
             "-File",
             str(script_path),
+            *launcher_args,
         ],
         cwd=str(Path(__file__).resolve().parents[2]),
         stdin=subprocess.DEVNULL,
@@ -78,6 +79,7 @@ def _ensure_remote_service_ready(
     service_name: str,
     context: str,
     launcher_script_name: str | None = None,
+    launcher_args: tuple[str, ...] = (),
     launcher_processes: dict[str, subprocess.Popen[Any]] | None = None,
     startup_timeout_sec: float = 45.0,
 ) -> None:
@@ -95,11 +97,12 @@ def _ensure_remote_service_ready(
         launcher_proc = launcher_processes.get(url_key) if launcher_processes is not None else None
         if launcher_proc is None or launcher_proc.poll() is not None:
             try:
-                launcher_proc = _start_local_launcher(launcher_path)
+                launcher_proc = _start_local_launcher(launcher_path, launcher_args)
             except Exception as launch_exc:  # noqa: BLE001
                 raise RuntimeError(
                     f"{context}: {service_name} is unavailable at {url_key}. "
-                    f"Auto-start via .\\{launcher_path.name} failed. detail={type(launch_exc).__name__}: {launch_exc}"
+                    f"Auto-start via .\\{launcher_path.name} {' '.join(launcher_args)} failed. "
+                    f"detail={type(launch_exc).__name__}: {launch_exc}"
                 ) from launch_exc
             if launcher_processes is not None:
                 launcher_processes[url_key] = launcher_proc
@@ -113,14 +116,14 @@ def _ensure_remote_service_ready(
                 if launcher_proc is not None and launcher_proc.poll() is not None:
                     raise RuntimeError(
                         f"{context}: {service_name} is unavailable at {url_key}. "
-                        f"Auto-start via .\\{launcher_path.name} exited with code {launcher_proc.poll()}. "
+                        f"Auto-start via .\\{launcher_path.name} {' '.join(launcher_args)} exited with code {launcher_proc.poll()}. "
                         f"detail={retry_exc}"
                     ) from retry_exc
                 time.sleep(0.5)
 
         raise RuntimeError(
             f"{context}: {service_name} is unavailable at {url_key}. "
-            f"Auto-start via .\\{launcher_path.name} did not become ready within "
+            f"Auto-start via .\\{launcher_path.name} {' '.join(launcher_args)} did not become ready within "
             f"{int(max(float(timeout_sec), float(startup_timeout_sec)))}s. detail={initial_exc}"
         ) from initial_exc
 
@@ -266,11 +269,12 @@ class PlanningSession:
                 timeout_sec=float(getattr(self.args, "timeout_sec", 5.0)),
                 service_name="NavDP server",
                 context=context,
-                launcher_script_name="run_navdp_server.ps1",
+                launcher_script_name="run_system.ps1",
+                launcher_args=("-Component", "nav"),
                 launcher_processes=launcher_processes,
             )
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc} Suggested command: .\\run_navdp_server.ps1") from exc
+            raise RuntimeError(f"{exc} Suggested command: .\\run_system.ps1 -Component nav") from exc
 
     def ensure_dual_service_ready(
         self,
@@ -284,11 +288,12 @@ class PlanningSession:
                 timeout_sec=float(getattr(self.args, "timeout_sec", 5.0)),
                 service_name="dual server",
                 context=context,
-                launcher_script_name="run_vlm_dual_server.ps1",
+                launcher_script_name="run_system.ps1",
+                launcher_args=("-Component", "dual"),
                 launcher_processes=launcher_processes,
             )
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc} Suggested command: .\\run_vlm_dual_server.ps1") from exc
+            raise RuntimeError(f"{exc} Suggested command: .\\run_system.ps1 -Component dual") from exc
 
     def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
         if self.sensor is None:

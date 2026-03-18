@@ -51,7 +51,7 @@ def build_recommendations(
     if compatibility_report.likely_runtime_mismatch:
         results.append(
             Recommendation(
-                action="Current interpreter is not Isaac python.bat. Use scripts/powershell/run_live_smoke.ps1 or rerun under Isaac python.bat.",
+                action="Current interpreter is not Isaac python.bat. Use scripts/powershell/run_system.ps1 -Component runtime or rerun under Isaac python.bat.",
                 rationale="likely_runtime_mismatch",
                 severity="warning",
                 recommended_launch_mode=compatibility_report.recommended_launch_mode,

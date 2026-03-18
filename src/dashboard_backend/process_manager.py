@@ -148,8 +148,8 @@ class ProcessManager:
         specs = [
             ProcessSpec(
                 name="navdp",
-                script_path=scripts_dir / "run_navdp_server.ps1",
-                args=(),
+                script_path=scripts_dir / "run_system.ps1",
+                args=("-Component", "nav"),
                 health_url=f"{navdp_base_url}/health",
                 debug_url=f"{navdp_base_url}/debug_last_input",
                 tcp_ready_host="127.0.0.1",
@@ -162,8 +162,8 @@ class ProcessManager:
                 [
                     ProcessSpec(
                         name="system2",
-                        script_path=scripts_dir / "run_internvla_system2.ps1",
-                        args=(),
+                        script_path=scripts_dir / "run_system.ps1",
+                        args=("-Component", "s2"),
                         health_url=system2_base_url,
                         tcp_ready_host="127.0.0.1",
                         tcp_ready_port=system2_port,
@@ -171,8 +171,8 @@ class ProcessManager:
                     ),
                     ProcessSpec(
                         name="dual",
-                        script_path=scripts_dir / "run_vlm_dual_server.ps1",
-                        args=(),
+                        script_path=scripts_dir / "run_system.ps1",
+                        args=("-Component", "dual"),
                         health_url=f"{dual_base_url}/health",
                         debug_url=f"{dual_base_url}/dual_debug_state",
                         tcp_ready_host="127.0.0.1",
@@ -189,8 +189,8 @@ class ProcessManager:
         specs.append(
             ProcessSpec(
                 name="runtime",
-                script_path=scripts_dir / "run_aura_runtime.ps1",
-                args=tuple(runtime_args),
+                script_path=scripts_dir / "run_system.ps1",
+                args=("-Component", "runtime", *runtime_args),
                 health_url="",
             )
         )
