@@ -126,7 +126,7 @@ function Resolve-BackendHealthUrl {
 
 function Resolve-BackendBinding {
     param(
-        [string[]]$Values
+        [string[]]$Values = @()
     )
 
     $HostValue = "127.0.0.1"
@@ -200,8 +200,7 @@ function Stop-StaleDashboardBackend {
     param(
         [Parameter(Mandatory = $true)]
         [string]$RepoDir,
-        [Parameter(Mandatory = $true)]
-        [string[]]$BackendArgs
+        [string[]]$BackendArgs = @()
     )
 
     $Binding = Resolve-BackendBinding -Values $BackendArgs
@@ -360,7 +359,7 @@ $BackendStderrLog = Join-Path $LogDir "backend.stderr.log"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Path $BackendStdoutLog, $BackendStderrLog -Force -ErrorAction SilentlyContinue
-Stop-StaleDashboardBackend -RepoDir $RepoDir -BackendArgs $args
+Stop-StaleDashboardBackend -RepoDir $RepoDir -BackendArgs @($args)
 
 $BackendCommand = @"
 `$ErrorActionPreference = 'Stop'
