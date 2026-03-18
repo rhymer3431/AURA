@@ -60,10 +60,10 @@ def _read_depth_m() -> np.ndarray:
 
 def create_app(args: argparse.Namespace | None = None) -> Flask:
     from memory.models import memory_context_from_dict
-    from services.dual_orchestrator import DualOrchestrator, parse_json_field
+    from server.dual_planner_service import DualPlannerService, parse_json_field
 
     parsed_args = parse_args([]) if args is None else args
-    orchestrator = DualOrchestrator(parsed_args)
+    orchestrator = DualPlannerService(parsed_args)
     app = Flask(__name__)
 
     @app.route("/health", methods=["GET"])

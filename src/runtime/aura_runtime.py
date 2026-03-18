@@ -50,7 +50,8 @@ class AuraRuntimeCommandSource:
 
         self._controller = None
         self._mode = str(getattr(args, "planner_mode", "interactive")).strip().lower()
-        self._executor = SubgoalExecutor(args, planning_session=planning_session or PlanningSession(args))
+        self._planning_session = planning_session or PlanningSession(args)
+        self._executor = SubgoalExecutor(args)
         self._supervisor_config = SupervisorConfig(
             memory_db_path=str(getattr(args, "memory_db_path", "state/memory/memory.sqlite")),
             detector_model_path=str(getattr(args, "detector_model_path", "")),
@@ -88,7 +89,7 @@ class AuraRuntimeCommandSource:
 
     @property
     def planning_session(self) -> PlanningSession:
-        return self._executor.planning_session
+        return self._planning_session
 
     def initialize(self, simulation_app, stage, controller) -> None:
         self._controller = controller
@@ -134,12 +135,6 @@ class AuraRuntimeCommandSource:
         observation = self.planning_session.capture_observation(frame_idx)
         batch = None
         if observation is not None:
-            planner_overlay_state: dict[str, object] = {}
-            planner_overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
-            if callable(planner_overlay_getter):
-                raw_overlay_state = planner_overlay_getter()
-                if isinstance(raw_overlay_state, dict):
-                    planner_overlay_state = dict(raw_overlay_state)
             batch = IsaacObservationBatch(
                 frame_header=FrameHeader(
                     frame_id=int(observation.frame_id),
@@ -154,7 +149,7 @@ class AuraRuntimeCommandSource:
                     sim_time_s=float(time.time()),
                     metadata={
                         **dict(observation.sensor_meta),
-                        "planner_overlay": planner_overlay_state,
+                        "planner_overlay": dict(self._last_viewer_overlay),
                         "active_command_overlay": self._command_overlay_metadata(),
                     },
                 ),
@@ -246,38 +241,9 @@ class AuraRuntimeCommandSource:
             self._runtime_io = None
 
     def _bootstrap_mode(self) -> None:
-        if getattr(self, "_server", None) is not None:
-            for notice in self._server.bootstrap():
-                self.supervisor.bridge.publish_notice(notice)
-            return
-        if self._mode == "pointgoal":
-            goal_x = float(self.args.goal_x if self.args.goal_x is not None else 0.0)
-            goal_y = float(self.args.goal_y if self.args.goal_y is not None else 0.0)
-            self._manual_command = ActionCommand(
-                action_type="NAV_TO_POSE",
-                task_id="pointgoal",
-                target_pose_xyz=(goal_x, goal_y, 0.0),
-                stop_radius_m=float(getattr(self.args, "goal_tolerance_m", 0.4)),
-                metadata={"source": "aura_runtime_pointgoal"},
-            )
-            return
-        if self._mode == "dual":
-            instruction = str(getattr(self.args, "instruction", "")).strip()
-            if instruction != "":
-                self.planning_session.ensure_navdp_service_ready(context="dual startup")
-                self.planning_session.ensure_dual_service_ready(context="dual startup")
-                self.planning_session.start_dual_task(instruction)
-                self.supervisor.memory_service.set_planner_task(
-                    instruction=instruction,
-                    planner_mode="dual",
-                    task_state="active",
-                    task_id="dual",
-                )
-                self._manual_command = self._build_planner_managed_command(task_id="dual", source="aura_runtime_dual")
-            return
-        if self._mode == "interactive":
-            self.planning_session.ensure_navdp_service_ready(context="interactive startup")
-            self._manual_command = self._build_planner_managed_command(task_id="interactive", source="aura_runtime_interactive")
+        assert self._server is not None
+        for notice in self._server.bootstrap():
+            self.supervisor.bridge.publish_notice(notice)
 
     def _command_overlay_metadata(self) -> dict[str, object]:
         command = self._active_command or self._manual_command
@@ -438,7 +404,7 @@ class AuraRuntimeCommandSource:
         self._server = MainControlServer(
             self.args,
             supervisor=self.supervisor,
-            planning_session=self.planning_session,
+            planning_session=self._planning_session,
             executor=self._executor,
         )
 
@@ -463,58 +429,20 @@ class AuraRuntimeCommandSource:
         )
 
     def _submit_interactive_instruction(self, text: str, *, source: str, task_id: str = "") -> int:
-        if getattr(self, "_server", None) is not None:
-            command_id, notice = self._server.submit_interactive_instruction(
-                text,
-                source=source,
-                task_id=str(task_id),
-            )
-            self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
-            return int(command_id)
-        if self._mode != "interactive":
-            raise RuntimeError("interactive instruction requires planner-mode=interactive")
-        instruction = str(text).strip()
-        if instruction == "":
-            raise ValueError("interactive instruction must be non-empty")
-        self.planning_session.ensure_navdp_service_ready(context=f"interactive task ({source})")
-        self.planning_session.ensure_dual_service_ready(context=f"interactive task ({source})")
-        command_id = int(self.planning_session.submit_interactive_instruction(instruction))
-        self.supervisor.memory_service.set_planner_task(
-            instruction=instruction,
-            planner_mode="interactive",
-            task_state="pending",
-            task_id=str(task_id or "interactive"),
-            command_id=command_id,
+        assert self._server is not None
+        command_id, notice = self._server.submit_interactive_instruction(
+            text,
+            source=source,
+            task_id=str(task_id),
         )
-        self._publish_notice(
-            level="info",
-            notice="interactive task queued",
-            details={
-                "source": source,
-                "taskId": str(task_id or "interactive"),
-                "commandId": command_id,
-                "instruction": instruction,
-            },
-        )
+        self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
         return command_id
 
     def _cancel_interactive_task(self, *, source: str) -> bool:
-        if getattr(self, "_server", None) is not None:
-            cancelled, notice = self._server.cancel_interactive_task(source=source)
-            if notice is not None:
-                self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
-            return bool(cancelled)
-        cancelled = bool(self.planning_session.cancel_interactive_task())
-        if cancelled:
-            self.supervisor.memory_service.clear_planner_task(
-                task_state="cancelled",
-                reason=f"interactive task cancelled via {source}",
-            )
-            self._publish_notice(
-                level="info",
-                notice="interactive task cancelled",
-                details={"source": source},
-            )
+        assert self._server is not None
+        cancelled, notice = self._server.cancel_interactive_task(source=source)
+        if notice is not None:
+            self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
         return cancelled
 
     def _drain_external_runtime_requests(self) -> list[object]:
@@ -671,25 +599,12 @@ class AuraRuntimeCommandSource:
             },
             "activeCommandType": "" if self._active_command is None else str(self._active_command.action_type),
         }
-        planner_overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
-        if callable(planner_overlay_getter):
-            planner_overlay = planner_overlay_getter()
-            if isinstance(planner_overlay, dict):
-                planner["globalRouteEnabled"] = bool(planner_overlay.get("global_route_enabled", False))
-                planner["globalRouteActive"] = bool(planner_overlay.get("global_route_active", False))
-                planner["globalRouteWaypointIndex"] = int(planner_overlay.get("global_route_waypoint_index", 0) or 0)
-                planner["globalRouteWaypointCount"] = int(planner_overlay.get("global_route_waypoint_count", 0) or 0)
-                planner["globalRouteLastReplanReason"] = str(planner_overlay.get("global_route_last_replan_reason", ""))
-                planner["globalRouteLastError"] = str(planner_overlay.get("global_route_last_error", ""))
-                active_waypoint = planner_overlay.get("global_route_active_waypoint_xy")
-                if isinstance(active_waypoint, list):
-                    planner["globalRouteActiveWaypointXy"] = list(active_waypoint)
-                goal_xy = planner_overlay.get("global_route_goal_xy")
-                if isinstance(goal_xy, list):
-                    planner["globalRouteGoalXy"] = list(goal_xy)
-                waypoints = planner_overlay.get("global_route_waypoints_world")
-                if isinstance(waypoints, list):
-                    planner["globalRouteWaypointsWorld"] = list(waypoints)
+        snapshot = self._server.snapshot() if getattr(self, "_server", None) is not None else None
+        if snapshot is not None:
+            planner["globalRouteWaypointIndex"] = int(snapshot.active_nav_plan.get("global_route_waypoint_index", 0) or 0)
+            planner["globalRouteWaypointCount"] = int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0)
+            planner["globalRouteEnabled"] = bool(planner["globalRouteWaypointCount"])
+            planner["globalRouteActive"] = bool(planner["globalRouteWaypointIndex"] < planner["globalRouteWaypointCount"])
         sensor = {
             "rgbAvailable": frame_header is not None,
             "depthAvailable": frame_header is not None and bool(overlay.get("has_depth", False) or "depth_ref" in frame_header.metadata or "depth_inline" in frame_header.metadata),
@@ -730,8 +645,7 @@ class AuraRuntimeCommandSource:
                 self._mode == "interactive" and str(update.interactive_phase or "") == "task_active" and str(update.interactive_instruction).strip() != ""
             ),
         }
-        if getattr(self, "_server", None) is not None:
-            snapshot = self._server.snapshot()
+        if snapshot is not None:
             memory["memoryAwareTaskActive"] = bool(
                 snapshot.current_task.mode == "interactive" and snapshot.current_task.state == "active"
             )
@@ -793,18 +707,19 @@ class AuraRuntimeCommandSource:
         if command is not None and command.action_type == "LOOK_AT":
             distance_note = f" yaw_error={evaluation.yaw_error_rad:.3f}rad"
         if self._mode == "pointgoal":
-            overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
-            if callable(overlay_getter):
-                overlay = overlay_getter()
-                if isinstance(overlay, dict) and bool(overlay.get("global_route_enabled", False)):
-                    route_note = (
-                        " global_route={} wp={}/{} replan={}".format(
-                            "active" if bool(overlay.get("global_route_active", False)) else "idle",
-                            int(overlay.get("global_route_waypoint_index", 0)),
-                            int(overlay.get("global_route_waypoint_count", 0)),
-                            str(overlay.get("global_route_last_replan_reason", "")) or "-",
-                        )
+            snapshot = self._server.snapshot() if getattr(self, "_server", None) is not None else None
+            if snapshot is not None and int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0) > 0:
+                route_note = (
+                    " global_route={} wp={}/{} replan={}".format(
+                        "active"
+                        if int(snapshot.active_nav_plan.get("global_route_waypoint_index", 0) or 0)
+                        < int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0)
+                        else "idle",
+                        int(snapshot.active_nav_plan.get("global_route_waypoint_index", 0) or 0),
+                        int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0),
+                        str(snapshot.active_nav_plan.get("planner_control_reason", "")) or "-",
                     )
+                )
         print(
             f"{self._log_prefix()}"
             f"[step={frame_idx}] command={command_type}{distance_note} "

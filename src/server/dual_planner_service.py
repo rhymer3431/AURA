@@ -21,6 +21,7 @@ from inference.vlm import (
     build_vlm_endpoint,
 )
 from memory.models import MemoryContextBundle
+from server.decision_engine import DecisionEngine
 
 
 def parse_json_field(raw: str | None, fallback: Any) -> Any:
@@ -79,9 +80,10 @@ class S1Result:
     error: str = ""
 
 
-class DualOrchestrator:
+class DualPlannerService:
     def __init__(self, args) -> None:
         self._lock = threading.Lock()
+        self._decision_engine = DecisionEngine()
         self.navdp_url = str(args.navdp_url)
         self.vlm_endpoint = build_vlm_endpoint(str(args.vlm_url))
         self.vlm_model = str(args.vlm_model)
@@ -603,39 +605,30 @@ class DualOrchestrator:
             self.step_calls += 1
             goal = self.goal_cache
             traj = self.traj_cache
-            external_force = bool(events.get("force_s2", False)) or bool(events.get("stuck", False)) or bool(
-                events.get("collision_risk", False)
+            directive = self._decision_engine.evaluate_dual(
+                now=now,
+                goal_cache=goal,
+                traj_cache=traj,
+                last_s1_ts=self.last_s1_ts,
+                last_s2_ts=self.last_s2_ts,
+                s1_period_sec=self.s1_period_sec,
+                s2_period_sec=self.s2_period_sec,
+                goal_ttl_sec=self.goal_ttl_sec,
+                traj_ttl_sec=self.traj_ttl_sec,
+                traj_max_stale_sec=self.traj_max_stale_sec,
+                s2_retry_after_ts=self.s2_retry_after_ts,
+                force_s2_pending=self.force_s2_pending,
+                events=events,
             )
-            force_s2 = bool(external_force or self.force_s2_pending)
-            goal_missing = goal is None
-            goal_stale = (goal is not None) and ((now - goal.updated_at) > self.goal_ttl_sec)
-            due_s2 = (now - self.last_s2_ts) >= self.s2_period_sec
-            awaiting_first_traj = goal is not None and traj is None and goal.mode == "pixel_goal" and not goal.stop
-            backoff_active = now < self.s2_retry_after_ts
-            should_s2 = force_s2 or goal_missing or goal_stale or due_s2
-            if awaiting_first_traj and not force_s2:
-                # Keep the first S2 goal stable long enough for S1 to produce an initial trajectory.
-                should_s2 = goal_missing
-            if backoff_active and not force_s2:
-                should_s2 = False
+            force_s2 = bool(directive.force_s2)
+            should_s2 = bool(directive.launch_s2)
             if should_s2 and not self.s2_inflight:
                 self.s2_inflight = True
                 launch_s2 = True
 
             goal = self.goal_cache
             traj = self.traj_cache
-            goal_is_pixel = (
-                goal is not None
-                and goal.mode == "pixel_goal"
-                and goal.pixel_x is not None
-                and goal.pixel_y is not None
-                and not goal.stop
-            )
-            goal_changed = bool(goal_is_pixel and (traj is None or traj.goal_version != goal.version))
-            traj_missing = traj is None
-            traj_stale = (traj is not None) and ((now - traj.updated_at) > self.traj_ttl_sec)
-            due_s1 = (now - self.last_s1_ts) >= self.s1_period_sec
-            should_s1 = bool(goal_is_pixel and (goal_changed or traj_missing or traj_stale or due_s1))
+            should_s1 = bool(directive.launch_s1)
             if should_s1 and not self.s1_inflight and goal is not None:
                 self.s1_inflight = True
                 launch_s1 = True

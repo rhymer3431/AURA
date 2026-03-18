@@ -12,9 +12,10 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ipc.messages import ActionCommand
+from locomotion.types import CommandEvaluation
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
-from runtime.subgoal_executor import CommandEvaluation, SubgoalExecutionResult
 from schemas.events import FrameEvent, WorkerMetadata
+from schemas.commands import LocomotionProposal
 from schemas.world_state import TaskSnapshot
 from server.planner_coordinator import PlannerCoordinator
 
@@ -42,22 +43,28 @@ class _LocomotionClient:
 
     def execute(self, **kwargs):  # noqa: ANN003
         action_command = kwargs["action_command"]
-        return SubgoalExecutionResult(
+        return LocomotionProposal(
             command_vector=np.asarray([0.1, 0.0, 0.0], dtype=np.float32),
-            trajectory_update=TrajectoryUpdate(
-                trajectory_world=np.asarray([[0.2, 0.0, 0.0]], dtype=np.float32),
-                plan_version=2,
-                stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=1.0, last_plan_step=kwargs["frame_event"].frame_id),
-                source_frame_id=kwargs["frame_event"].frame_id,
-                action_command=action_command,
-            ),
+            trajectory_update=kwargs["trajectory_update"],
             evaluation=CommandEvaluation(force_stop=False, goal_distance_m=1.0, yaw_error_rad=0.0, reached_goal=False),
-            status=None,
         )
 
 
 def test_planner_coordinator_builds_context_and_attaches_memory_before_execution() -> None:
+    planning_transport = type(
+        "PlanningTransport",
+        (),
+        {
+            "mode": "interactive",
+            "navdp_client": None,
+            "pointgoal_planner": None,
+            "nogoal_planner": None,
+            "_intrinsic": np.eye(3, dtype=np.float32),
+        },
+    )()
     coordinator = PlannerCoordinator(
+        type("Args", (), {"planner_mode": "interactive"})(),
+        planning_session=planning_transport,
         perception_client=_PerceptionClient(),
         memory_client=_MemoryClient(),
         locomotion_client=_LocomotionClient(),

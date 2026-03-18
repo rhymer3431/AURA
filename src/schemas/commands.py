@@ -6,8 +6,16 @@ from typing import Any
 import numpy as np
 
 from ipc.messages import ActionCommand, ActionStatus
+from locomotion.types import CommandEvaluation
 from runtime.planning_session import TrajectoryUpdate
-from runtime.subgoal_executor import CommandEvaluation
+
+
+@dataclass(frozen=True)
+class LocomotionProposal:
+    command_vector: np.ndarray
+    trajectory_update: TrajectoryUpdate
+    evaluation: CommandEvaluation
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

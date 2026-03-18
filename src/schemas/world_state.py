@@ -26,3 +26,5 @@ class WorldStateSnapshot:
     recovery_state: dict[str, Any] = field(default_factory=dict)
     stale_timers: dict[str, Any] = field(default_factory=dict)
     last_command_decision: dict[str, Any] = field(default_factory=dict)
+    sensor_health: dict[str, Any] = field(default_factory=dict)
+    active_overrides: dict[str, Any] = field(default_factory=dict)

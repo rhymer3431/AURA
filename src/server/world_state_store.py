@@ -5,6 +5,7 @@ from typing import Any
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from runtime.planning_session import TrajectoryUpdate
+from server.planner_runtime_state import PlannerRuntimeState
 
 from schemas.commands import ResolvedCommand
 from schemas.events import FrameEvent
@@ -29,6 +30,12 @@ class WorldStateStore:
             self._snapshot,
             robot_pose_xyz=tuple(float(v) for v in frame_event.robot_pose_xyz[:3]),
             robot_yaw_rad=float(frame_event.robot_yaw_rad),
+            sensor_health={
+                "observation_available": bool(frame_event.observation is not None),
+                "batch_available": bool(frame_event.batch is not None),
+                "source": str(frame_event.source),
+                "frame_id": int(frame_event.frame_id),
+            },
             stale_timers=stale,
         )
 
@@ -65,30 +72,38 @@ class WorldStateStore:
             },
         )
 
-    def record_planning_result(self, update: TrajectoryUpdate) -> None:
+    def record_planning_result(self, update: TrajectoryUpdate, planner_state: PlannerRuntimeState | None = None) -> None:
         stale = dict(self._snapshot.stale_timers)
         stale["planner_stale_sec"] = float(update.stale_sec)
+        last_s2_result = {
+            "goal_version": int(update.goal_version),
+            "traj_version": int(update.traj_version),
+            "planner_control_mode": "" if update.planner_control_mode is None else str(update.planner_control_mode),
+            "planner_yaw_delta_rad": None
+            if update.planner_yaw_delta_rad is None
+            else float(update.planner_yaw_delta_rad),
+            "interactive_phase": "" if update.interactive_phase is None else str(update.interactive_phase),
+            "interactive_command_id": int(update.interactive_command_id),
+            "interactive_instruction": str(update.interactive_instruction),
+        }
+        active_nav_plan = {
+            "plan_version": int(update.plan_version),
+            "goal_version": int(update.goal_version),
+            "traj_version": int(update.traj_version),
+            "trajectory_point_count": int(update.trajectory_world.shape[0]),
+            "stop": bool(update.stop),
+            "used_cached_traj": bool(update.used_cached_traj),
+        }
+        if planner_state is not None:
+            overlay = planner_state.viewer_overlay_state()
+            last_s2_result["system2_pixel_goal"] = overlay.get("system2_pixel_goal")
+            active_nav_plan["planner_control_reason"] = overlay.get("planner_control_reason", "")
+            active_nav_plan["global_route_waypoint_index"] = overlay.get("global_route_waypoint_index", 0)
+            active_nav_plan["global_route_waypoint_count"] = overlay.get("global_route_waypoint_count", 0)
         self._snapshot = replace(
             self._snapshot,
-            last_s2_result={
-                "goal_version": int(update.goal_version),
-                "traj_version": int(update.traj_version),
-                "planner_control_mode": "" if update.planner_control_mode is None else str(update.planner_control_mode),
-                "planner_yaw_delta_rad": None
-                if update.planner_yaw_delta_rad is None
-                else float(update.planner_yaw_delta_rad),
-                "interactive_phase": "" if update.interactive_phase is None else str(update.interactive_phase),
-                "interactive_command_id": int(update.interactive_command_id),
-                "interactive_instruction": str(update.interactive_instruction),
-            },
-            active_nav_plan={
-                "plan_version": int(update.plan_version),
-                "goal_version": int(update.goal_version),
-                "traj_version": int(update.traj_version),
-                "trajectory_point_count": int(update.trajectory_world.shape[0]),
-                "stop": bool(update.stop),
-                "used_cached_traj": bool(update.used_cached_traj),
-            },
+            last_s2_result=last_s2_result,
+            active_nav_plan=active_nav_plan,
             stale_timers=stale,
         )
 
@@ -102,6 +117,9 @@ class WorldStateStore:
                 "safety_override": bool(resolved.safety_override),
                 "status": None if resolved.status is None else str(resolved.status.state),
                 "command_vector": [float(v) for v in resolved.command_vector.tolist()],
+            },
+            active_overrides={
+                "safety_override": bool(resolved.safety_override),
             },
         )
 
@@ -119,4 +137,6 @@ class WorldStateStore:
             recovery_state=dict(self._snapshot.recovery_state),
             stale_timers=dict(self._snapshot.stale_timers),
             last_command_decision=dict(self._snapshot.last_command_decision),
+            sensor_health=dict(self._snapshot.sensor_health),
+            active_overrides=dict(self._snapshot.active_overrides),
         )

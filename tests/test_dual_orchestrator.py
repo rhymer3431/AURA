@@ -14,7 +14,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from memory.models import MemoryContextBundle, RetrievedMemoryLine, ScratchpadState
-from services.dual_orchestrator import DualOrchestrator, GoalCache, S2Result, TrajectoryCache
+from server.dual_planner_service import DualPlannerService, GoalCache, S2Result, TrajectoryCache
 
 
 def _args() -> Namespace:
@@ -46,7 +46,7 @@ def _args() -> Namespace:
 
 
 def test_initial_stop_is_suppressed_until_first_trajectory() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
 
     orchestrator._finish_s2(
         S2Result(
@@ -74,7 +74,7 @@ def test_initial_stop_is_suppressed_until_first_trajectory() -> None:
 
 
 def test_stop_after_confirmed_trajectory_is_preserved() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
     orchestrator.traj_version = 0
     orchestrator.traj_cache = TrajectoryCache(
         trajectory_world=np.zeros((2, 3), dtype=np.float32),
@@ -107,7 +107,7 @@ def test_stop_after_confirmed_trajectory_is_preserved() -> None:
 
 
 def test_identical_goal_refresh_keeps_goal_version() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
 
     orchestrator._finish_s2(
         S2Result(
@@ -149,7 +149,7 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
 
 
 def test_step_skips_periodic_s2_until_first_trajectory() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
     orchestrator.initialized = True
     orchestrator.goal_version = 0
     orchestrator.traj_version = -1
@@ -186,7 +186,7 @@ def test_step_skips_periodic_s2_until_first_trajectory() -> None:
 
 
 def test_finish_s2_ignores_stale_generation_results() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
     orchestrator._generation = 1
 
     orchestrator._finish_s2(
@@ -209,7 +209,7 @@ def test_finish_s2_ignores_stale_generation_results() -> None:
 
 
 def test_step_returns_yaw_delta_without_launching_s1() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
     orchestrator.initialized = True
     orchestrator.goal_version = 0
     orchestrator.goal_cache = GoalCache(
@@ -244,7 +244,7 @@ def test_step_returns_yaw_delta_without_launching_s1() -> None:
 
 
 def test_step_routes_memory_context_only_to_s2() -> None:
-    orchestrator = DualOrchestrator(_args())
+    orchestrator = DualPlannerService(_args())
     orchestrator.initialized = True
     orchestrator.goal_version = 0
     orchestrator.last_s1_ts = 0.0

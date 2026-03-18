@@ -14,7 +14,7 @@ class TaskManager:
         self._last_interactive_phase = ""
         self._last_interactive_command_id = -1
 
-    def bootstrap(self, *, nav_client, s2_client, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
+    def bootstrap(self, *, planner_coordinator, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
         notices: list[RuntimeNotice] = []
         if self.mode == "pointgoal":
             goal_x = float(self._args.goal_x if self._args.goal_x is not None else 0.0)
@@ -32,9 +32,9 @@ class TaskManager:
         if self.mode == "dual":
             instruction = str(getattr(self._args, "instruction", "")).strip()
             if instruction != "":
-                nav_client.ensure_navdp_service_ready(context="dual startup")
-                s2_client.ensure_dual_service_ready(context="dual startup")
-                s2_client.start_dual_task(instruction)
+                planner_coordinator.ensure_navdp_service_ready(context="dual startup")
+                planner_coordinator.ensure_dual_service_ready(context="dual startup")
+                planner_coordinator.start_dual_task(instruction)
                 memory_client.set_planner_task(
                     instruction=instruction,
                     planner_mode="dual",
@@ -46,7 +46,8 @@ class TaskManager:
             return notices
 
         if self.mode == "interactive":
-            nav_client.ensure_navdp_service_ready(context="interactive startup")
+            planner_coordinator.ensure_navdp_service_ready(context="interactive startup")
+            planner_coordinator.activate_interactive_roaming("startup")
             self._manual_command = self._planner_managed_command(task_id="interactive", source="aura_runtime_interactive")
             self._task = TaskSnapshot(task_id="interactive", mode="interactive", state="idle")
         return notices
@@ -57,15 +58,15 @@ class TaskManager:
     def snapshot(self) -> TaskSnapshot:
         return self._task
 
-    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str, nav_client, s2_client, memory_client) -> tuple[int, RuntimeNotice]:  # noqa: ANN001,E501
+    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str, planner_coordinator, memory_client) -> tuple[int, RuntimeNotice]:  # noqa: ANN001,E501
         if self.mode != "interactive":
             raise RuntimeError("interactive instruction requires planner-mode=interactive")
         text = str(instruction).strip()
         if text == "":
             raise ValueError("interactive instruction must be non-empty")
-        nav_client.ensure_navdp_service_ready(context=f"interactive task ({source})")
-        s2_client.ensure_dual_service_ready(context=f"interactive task ({source})")
-        command_id = int(s2_client.submit_interactive_instruction(text))
+        planner_coordinator.ensure_navdp_service_ready(context=f"interactive task ({source})")
+        planner_coordinator.ensure_dual_service_ready(context=f"interactive task ({source})")
+        command_id = int(planner_coordinator.submit_interactive_instruction(text))
         resolved_task_id = str(task_id or "interactive")
         memory_client.set_planner_task(
             instruction=text,
@@ -93,8 +94,8 @@ class TaskManager:
             },
         )
 
-    def cancel_interactive_task(self, *, source: str, s2_client, memory_client) -> tuple[bool, RuntimeNotice | None]:  # noqa: ANN001
-        cancelled = bool(s2_client.cancel_interactive_task())
+    def cancel_interactive_task(self, *, source: str, planner_coordinator, memory_client) -> tuple[bool, RuntimeNotice | None]:  # noqa: ANN001
+        cancelled = bool(planner_coordinator.cancel_interactive_task())
         if not cancelled:
             return False, None
         memory_client.clear_planner_task(
@@ -109,7 +110,7 @@ class TaskManager:
             details={"source": source},
         )
 
-    def handle_event(self, event, *, nav_client, s2_client, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
+    def handle_event(self, event, *, planner_coordinator, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
         notices: list[RuntimeNotice] = []
         if isinstance(event, TaskRequest):
             instruction = str(event.command_text).strip()
@@ -143,8 +144,7 @@ class TaskManager:
                     instruction,
                     source="dashboard",
                     task_id=str(event.task_id),
-                    nav_client=nav_client,
-                    s2_client=s2_client,
+                    planner_coordinator=planner_coordinator,
                     memory_client=memory_client,
                 )
             except Exception as exc:  # noqa: BLE001
@@ -178,7 +178,7 @@ class TaskManager:
                 return notices
             cancelled, notice = self.cancel_interactive_task(
                 source="dashboard",
-                s2_client=s2_client,
+                planner_coordinator=planner_coordinator,
                 memory_client=memory_client,
             )
             if not cancelled:

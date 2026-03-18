@@ -11,8 +11,9 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ipc.messages import ActionCommand, ActionStatus
+from locomotion.types import CommandEvaluation
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
-from runtime.subgoal_executor import CommandEvaluation, SubgoalExecutionResult
+from schemas.commands import LocomotionProposal
 from server.command_resolver import CommandResolver
 
 
@@ -21,7 +22,7 @@ def test_command_resolver_prefers_manual_command_and_preserves_execution_result(
     manual = ActionCommand(action_type="LOCAL_SEARCH", task_id="manual", metadata={"planner_managed": True})
     task = ActionCommand(action_type="STOP", task_id="task")
     proposal = resolver.resolve_action_command(manual_command=manual, task_command=task)
-    execution = SubgoalExecutionResult(
+    execution = LocomotionProposal(
         command_vector=np.asarray([0.2, 0.0, 0.1], dtype=np.float32),
         trajectory_update=TrajectoryUpdate(
             trajectory_world=np.asarray([[0.1, 0.0, 0.0]], dtype=np.float32),
@@ -30,7 +31,7 @@ def test_command_resolver_prefers_manual_command_and_preserves_execution_result(
             source_frame_id=1,
         ),
         evaluation=CommandEvaluation(force_stop=False, goal_distance_m=0.7, yaw_error_rad=0.0, reached_goal=False),
-        status=ActionStatus(command_id=manual.command_id, state="running"),
+        metadata={"reason": "unit"},
     )
 
     resolved = resolver.resolve_execution(proposal=proposal, execution=execution)

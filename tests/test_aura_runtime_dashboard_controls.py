@@ -16,25 +16,52 @@ from ipc.messages import ActionCommand, FrameHeader, RuntimeControlRequest, Task
 from runtime.aura_runtime import AuraRuntimeCommandSource
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from runtime.subgoal_executor import CommandEvaluation
+from schemas.world_state import TaskSnapshot, WorldStateSnapshot
 
 
 class _FakePlanningSession:
     def __init__(self) -> None:
         self.events: list[str] = []
 
-    def ensure_navdp_service_ready(self, *, context: str) -> None:
-        self.events.append(f"navdp:{context}")
 
-    def ensure_dual_service_ready(self, *, context: str) -> None:
-        self.events.append(f"dual:{context}")
+class _FakeServer:
+    def __init__(self, planning_session: _FakePlanningSession, memory_service: _FakeMemoryService) -> None:
+        self._planning_session = planning_session
+        self._memory_service = memory_service
 
-    def submit_interactive_instruction(self, instruction: str) -> int:
-        self.events.append(f"submit:{instruction}")
-        return 7
+    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str = ""):
+        self._planning_session.events.extend(
+            [
+                f"navdp:interactive task ({source})",
+                f"dual:interactive task ({source})",
+                f"submit:{instruction}",
+            ]
+        )
+        self._memory_service.set_planner_task(
+            instruction=instruction,
+            planner_mode="interactive",
+            task_state="pending",
+            task_id=str(task_id or "interactive"),
+            command_id=7,
+        )
+        notice = SimpleNamespace(
+            level="info",
+            notice="interactive task queued",
+            details={"source": source, "taskId": str(task_id or "interactive"), "commandId": 7, "instruction": instruction},
+        )
+        return 7, notice
 
-    def cancel_interactive_task(self) -> bool:
-        self.events.append("cancel")
-        return True
+    def cancel_interactive_task(self, *, source: str):
+        self._planning_session.events.append("cancel")
+        self._memory_service.clear_planner_task(
+            task_state="cancelled",
+            reason=f"interactive task cancelled via {source}",
+        )
+        notice = SimpleNamespace(level="info", notice="interactive task cancelled", details={"source": source})
+        return True, notice
+
+    def snapshot(self) -> WorldStateSnapshot:
+        return WorldStateSnapshot(current_task=TaskSnapshot(task_id="interactive", mode="interactive", state="active"))
 
 
 class _FakeMemoryService:
@@ -91,7 +118,9 @@ def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _Fa
     source._viewer_publish = False
     source._native_viewer = "off"
     source._runtime_io = object()
-    source._executor = SimpleNamespace(planning_session=planning_session)
+    source._planning_session = planning_session
+    source._executor = SimpleNamespace()
+    source._server = _FakeServer(planning_session, memory_service)
     source._supervisor = SimpleNamespace(
         memory_service=memory_service,
         perception_pipeline=SimpleNamespace(

@@ -6,8 +6,10 @@ import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from ipc.messages import ActionCommand, ActionStatus
+from schemas.commands import LocomotionProposal
 from runtime.planning_session import ExecutionObservation, PlanningSession
-from runtime.subgoal_executor import SubgoalExecutionResult, SubgoalExecutor
+from runtime.planning_session import TrajectoryUpdate
+from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor
 
 
@@ -50,26 +52,6 @@ class NavClient(Protocol):
     def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
         ...
 
-    def active_memory_instruction(self) -> str:
-        ...
-
-    def viewer_overlay_state(self) -> dict[str, object]:
-        ...
-
-
-class S2Client(Protocol):
-    def ensure_dual_service_ready(self, *, context: str) -> None:
-        ...
-
-    def start_dual_task(self, instruction: str) -> None:
-        ...
-
-    def submit_interactive_instruction(self, instruction: str) -> int:
-        ...
-
-    def cancel_interactive_task(self) -> bool:
-        ...
-
 
 class LocomotionClient(Protocol):
     def initialize(self, simulation_app, stage) -> None:  # noqa: ANN001
@@ -84,12 +66,13 @@ class LocomotionClient(Protocol):
         frame_idx: int,
         observation: ExecutionObservation | None,
         action_command: ActionCommand | None,
+        trajectory_update: TrajectoryUpdate,
         robot_pos_world: np.ndarray,
         robot_lin_vel_world: np.ndarray,
         robot_ang_vel_world: np.ndarray,
         robot_yaw: float,
         robot_quat_wxyz: np.ndarray,
-    ) -> SubgoalExecutionResult:
+    ) -> LocomotionProposal:
         ...
 
 
@@ -159,7 +142,7 @@ class SupervisorTaskCommandClient:
         )
 
 
-class PlanningSessionPlannerClient:
+class PlanningSessionTransportClient:
     def __init__(self, planning_session: PlanningSession) -> None:
         self._planning_session = planning_session
 
@@ -169,28 +152,8 @@ class PlanningSessionPlannerClient:
     def ensure_dual_service_ready(self, *, context: str) -> None:
         self._planning_session.ensure_dual_service_ready(context=context)
 
-    def start_dual_task(self, instruction: str) -> None:
-        self._planning_session.start_dual_task(instruction)
-
-    def submit_interactive_instruction(self, instruction: str) -> int:
-        return int(self._planning_session.submit_interactive_instruction(instruction))
-
-    def cancel_interactive_task(self) -> bool:
-        return bool(self._planning_session.cancel_interactive_task())
-
     def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
         return self._planning_session.capture_observation(frame_id, env=env)
-
-    def active_memory_instruction(self) -> str:
-        return self._planning_session.active_memory_instruction()
-
-    def viewer_overlay_state(self) -> dict[str, object]:
-        getter = getattr(self._planning_session, "viewer_overlay_state", None)
-        if callable(getter):
-            state = getter()
-            if isinstance(state, dict):
-                return dict(state)
-        return {}
 
 
 class ExecutorLocomotionClient:
@@ -209,16 +172,18 @@ class ExecutorLocomotionClient:
         frame_idx: int,
         observation: ExecutionObservation | None,
         action_command: ActionCommand | None,
+        trajectory_update: TrajectoryUpdate,
         robot_pos_world: np.ndarray,
         robot_lin_vel_world: np.ndarray,
         robot_ang_vel_world: np.ndarray,
         robot_yaw: float,
         robot_quat_wxyz: np.ndarray,
-    ) -> SubgoalExecutionResult:
+    ) -> LocomotionProposal:
         return self._executor.step(
             frame_idx=frame_idx,
             observation=observation,
             action_command=action_command,
+            trajectory_update=trajectory_update,
             robot_pos_world=robot_pos_world,
             robot_lin_vel_world=robot_lin_vel_world,
             robot_ang_vel_world=robot_ang_vel_world,

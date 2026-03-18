@@ -48,3 +48,30 @@ def test_decision_engine_requests_memory_only_for_active_memory_instruction() ->
     )
     assert no_memory.retrieve_memory is False
     assert no_memory.route_task_command is True
+
+
+def test_decision_engine_dual_policy_prefers_s1_before_refreshing_s2() -> None:
+    engine = DecisionEngine()
+    goal = type(
+        "GoalCache",
+        (),
+        {"mode": "pixel_goal", "pixel_x": 11, "pixel_y": 22, "stop": False, "version": 3, "updated_at": 100.0},
+    )()
+    directive = engine.evaluate_dual(
+        now=100.2,
+        goal_cache=goal,
+        traj_cache=None,
+        last_s1_ts=0.0,
+        last_s2_ts=100.0,
+        s1_period_sec=0.2,
+        s2_period_sec=1.0,
+        goal_ttl_sec=3.0,
+        traj_ttl_sec=1.5,
+        traj_max_stale_sec=4.0,
+        s2_retry_after_ts=0.0,
+        force_s2_pending=False,
+        events={},
+    )
+    assert directive.launch_s1 is True
+    assert directive.launch_s2 is False
+    assert directive.traj_missing is True

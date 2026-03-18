@@ -8,12 +8,12 @@ import numpy as np
 
 from clients.worker_clients import (
     ExecutorLocomotionClient,
-    PlanningSessionPlannerClient,
     SupervisorMemoryClient,
     SupervisorPerceptionClient,
     SupervisorTaskCommandClient,
 )
-from runtime.subgoal_executor import CommandEvaluation, SubgoalExecutor
+from locomotion.types import CommandEvaluation
+from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor
 from schemas.events import FrameEvent
 from schemas.planning_context import PlanningContext
@@ -56,8 +56,9 @@ class MainControlServer:
         self._perception_client = SupervisorPerceptionClient(supervisor)
         self._memory_client = SupervisorMemoryClient(supervisor)
         self._task_command_client = SupervisorTaskCommandClient(supervisor)
-        self._planner_client = PlanningSessionPlannerClient(planning_session)
         self._planner_coordinator = PlannerCoordinator(
+            args,
+            planning_session=planning_session,
             perception_client=self._perception_client,
             memory_client=self._memory_client,
             locomotion_client=ExecutorLocomotionClient(executor),
@@ -81,8 +82,7 @@ class MainControlServer:
     def bootstrap(self) -> tuple[object, ...]:
         notices = tuple(
             self._task_manager.bootstrap(
-                nav_client=self._planner_client,
-                s2_client=self._planner_client,
+                planner_coordinator=self._planner_coordinator,
                 memory_client=self._memory_client,
             )
         )
@@ -95,8 +95,7 @@ class MainControlServer:
             instruction,
             source=source,
             task_id=task_id,
-            nav_client=self._planner_client,
-            s2_client=self._planner_client,
+            planner_coordinator=self._planner_coordinator,
             memory_client=self._memory_client,
         )
         self._world_state.update_task(self._task_manager.snapshot())
@@ -105,7 +104,7 @@ class MainControlServer:
     def cancel_interactive_task(self, *, source: str) -> tuple[bool, object | None]:
         cancelled, notice = self._task_manager.cancel_interactive_task(
             source=source,
-            s2_client=self._planner_client,
+            planner_coordinator=self._planner_coordinator,
             memory_client=self._memory_client,
         )
         self._world_state.update_task(self._task_manager.snapshot())
@@ -131,8 +130,7 @@ class MainControlServer:
             notices.extend(
                 self._task_manager.handle_event(
                     event,
-                    nav_client=self._planner_client,
-                    s2_client=self._planner_client,
+                    planner_coordinator=self._planner_coordinator,
                     memory_client=self._memory_client,
                 )
             )
@@ -141,7 +139,7 @@ class MainControlServer:
         self._world_state.update_task(self._task_manager.snapshot())
         self._world_state.ingest_frame(frame_event)
 
-        active_memory_instruction = self._planner_client.active_memory_instruction()
+        active_memory_instruction = self._planner_coordinator.active_memory_instruction()
         directive = self._decision_engine.evaluate(
             world_state=self._world_state.snapshot(),
             task=self._task_manager.snapshot(),
@@ -201,7 +199,10 @@ class MainControlServer:
         )
         self._task_manager.sync_after_update(resolved.trajectory_update, memory_client=self._memory_client)
         self._world_state.update_task(self._task_manager.snapshot())
-        self._world_state.record_planning_result(resolved.trajectory_update)
+        self._world_state.record_planning_result(
+            resolved.trajectory_update,
+            planner_state=self._planner_coordinator.runtime_state,
+        )
         self._world_state.record_command_decision(resolved)
 
         frame_header = None if enriched_batch is None else enriched_batch.frame_header
@@ -211,6 +212,7 @@ class MainControlServer:
             raw_overlay = frame_header.metadata.get("viewer_overlay", {})
             if isinstance(raw_overlay, dict):
                 viewer_overlay = dict(raw_overlay)
+        viewer_overlay.update(self._planner_coordinator.viewer_overlay_state())
 
         return ServerTickResult(
             planning_context=planning_context,
