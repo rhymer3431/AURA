@@ -14,13 +14,22 @@ import requests
 from common.cv2_compat import cv2
 from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world
 from inference.vlm import (
-    System2Request,
     System2Session,
     System2SessionConfig,
     System2SessionResult,
     build_vlm_endpoint,
 )
 from memory.models import MemoryContextBundle
+from schemas.workers import (
+    NavRequest,
+    NavResult,
+    S2Request,
+    S2Result,
+    build_error_result,
+    finalize_worker_result,
+    inherit_worker_metadata,
+    stamp_worker_metadata,
+)
 from server.decision_engine import DecisionEngine
 
 
@@ -53,31 +62,6 @@ class TrajectoryCache:
     goal_version: int
     updated_at: float
     latency_ms: float
-
-
-@dataclass
-class S2Result:
-    ok: bool
-    mode: str = "wait"
-    pixel_x: int | None = None
-    pixel_y: int | None = None
-    stop: bool = False
-    yaw_delta_rad: float | None = None
-    reason: str = ""
-    latency_ms: float = 0.0
-    source: str = "none"
-    error: str = ""
-    raw_text: str = ""
-    history_frame_ids: tuple[int, ...] = ()
-    needs_requery: bool = False
-
-
-@dataclass
-class S1Result:
-    ok: bool
-    trajectory_world: np.ndarray | None = None
-    latency_ms: float = 0.0
-    error: str = ""
 
 
 class DualPlannerService:
@@ -151,6 +135,7 @@ class DualPlannerService:
         self.last_s2_needs_requery = False
         self.s2_stop_suppressed_count = 0
         self._generation = 0
+        self._active_task_id = ""
 
     def _url(self, base_url: str, path: str) -> str:
         return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
@@ -200,6 +185,7 @@ class DualPlannerService:
 
         with self._lock:
             self._generation += 1
+            self._active_task_id = f"dual:{self._generation}"
             self.navdp_url = navdp_url
             self.s1_period_sec = max(s1_period_sec, 1.0e-3)
             self.s2_period_sec = max(s2_period_sec, 1.0e-3)
@@ -246,13 +232,32 @@ class DualPlannerService:
         )
         return True, {"algo": "dual", "state": self.debug_state()}
 
-    def _prepare_s2_request(self, events: dict[str, Any], memory_context: MemoryContextBundle | None) -> System2Request:
-        return self.system2_session.prepare_request(events=events, memory_context=memory_context)
+    def _prepare_s2_request(
+        self,
+        *,
+        step_id: int,
+        events: dict[str, Any],
+        memory_context: MemoryContextBundle | None,
+    ) -> S2Request:
+        prepared = self.system2_session.prepare_request(events=events, memory_context=memory_context)
+        return S2Request(
+            metadata=stamp_worker_metadata(
+                source="dual_planner_service.s2",
+                task_id=str(self._active_task_id),
+                frame_id=int(prepared.frame_id if prepared is not None else step_id),
+                timeout_ms=int(max(float(self.vlm_timeout_sec) * 1000.0, 0.0)),
+            ),
+            request=prepared,
+            events=dict(events),
+            memory_context=memory_context,
+        )
 
-    def _normalize_system2_result(self, result: System2SessionResult) -> S2Result:
+    def _normalize_system2_result(self, result: System2SessionResult, *, request: S2Request) -> S2Result:
+        metadata = inherit_worker_metadata(request.metadata, source=f"dual_planner_service.s2.{result.source}")
         if not result.ok or result.decision is None:
-            return S2Result(
-                ok=False,
+            return build_error_result(
+                S2Result,
+                metadata=metadata,
                 error=str(result.error),
                 source=str(result.source),
                 latency_ms=float(result.latency_ms),
@@ -279,7 +284,7 @@ class DualPlannerService:
             normalized_mode = "wait"
 
         return S2Result(
-            ok=True,
+            metadata=metadata,
             mode=normalized_mode,
             pixel_x=pixel_x,
             pixel_y=pixel_y,
@@ -293,32 +298,31 @@ class DualPlannerService:
             needs_requery=bool(decision.needs_requery),
         )
 
-    def _call_s1(
-        self,
-        image_bgr: np.ndarray,
-        depth_m: np.ndarray,
-        pixel_goal: tuple[int, int],
-        sensor_meta: dict[str, Any],
-        cam_pos: np.ndarray,
-        cam_quat_wxyz: np.ndarray,
-    ) -> S1Result:
+    def _call_s1(self, request: NavRequest) -> NavResult:
         start = time.perf_counter()
-        depth = np.asarray(depth_m, dtype=np.float32)
-        image = np.asarray(image_bgr, dtype=np.uint8)
+        metadata = inherit_worker_metadata(request.metadata, source="dual_planner_service.s1")
+        if request.image_bgr is None or request.depth_m is None or request.pixel_goal is None:
+            return build_error_result(
+                NavResult,
+                metadata=metadata,
+                error="incomplete nav request",
+            )
+        depth = np.asarray(request.depth_m, dtype=np.float32)
+        image = np.asarray(request.image_bgr, dtype=np.uint8)
         depth = np.nan_to_num(depth, nan=0.0, posinf=0.0, neginf=0.0)
 
         ok_img, img_buf = cv2.imencode(".jpg", image)
         if not ok_img:
-            return S1Result(ok=False, error="failed to encode rgb for NavDP")
+            return build_error_result(NavResult, metadata=metadata, error="failed to encode rgb for NavDP")
         depth_mm_u16 = np.clip(depth * 10000.0, 0.0, 65535.0).astype(np.uint16)
         ok_depth, depth_buf = cv2.imencode(".png", depth_mm_u16)
         if not ok_depth:
-            return S1Result(ok=False, error="failed to encode depth for NavDP")
+            return build_error_result(NavResult, metadata=metadata, error="failed to encode depth for NavDP")
 
         goal_data = {
-            "goal_x": [int(pixel_goal[0])],
-            "goal_y": [int(pixel_goal[1])],
-            "sensor_meta": sensor_meta if isinstance(sensor_meta, dict) else {},
+            "goal_x": [int(request.pixel_goal[0])],
+            "goal_y": [int(request.pixel_goal[1])],
+            "sensor_meta": request.sensor_meta if isinstance(request.sensor_meta, dict) else {},
             "client_meta": {
                 "dual_server": True,
                 "rgb_shape": list(image.shape),
@@ -342,22 +346,36 @@ class DualPlannerService:
             trajectory_local = normalize_navdp_trajectory(np.asarray(body.get("trajectory"), dtype=np.float32))
             trajectory_world = trajectory_camera_to_world(
                 trajectory_local=trajectory_local,
-                camera_pos_world=np.asarray(cam_pos, dtype=np.float32),
-                camera_quat_wxyz=np.asarray(cam_quat_wxyz, dtype=np.float32),
+                camera_pos_world=np.asarray(request.cam_pos, dtype=np.float32),
+                camera_quat_wxyz=np.asarray(request.cam_quat_wxyz, dtype=np.float32),
                 use_trajectory_z=self.use_trajectory_z,
             )
             if trajectory_world.shape[0] == 0:
                 raise ValueError("empty trajectory from NavDP")
             latency_ms = (time.perf_counter() - start) * 1000.0
-            return S1Result(ok=True, trajectory_world=trajectory_world, latency_ms=float(latency_ms))
+            return NavResult(
+                metadata=metadata,
+                trajectory_world=trajectory_world,
+                latency_ms=float(latency_ms),
+            )
         except Exception as exc:  # noqa: BLE001
             latency_ms = (time.perf_counter() - start) * 1000.0
-            return S1Result(ok=False, error=f"{type(exc).__name__}: {exc}", latency_ms=float(latency_ms))
+            return build_error_result(
+                NavResult,
+                metadata=metadata,
+                error=f"{type(exc).__name__}: {exc}",
+                latency_ms=float(latency_ms),
+            )
 
     def _finish_s2(self, result: S2Result, finished_at: float, generation: int) -> None:
         with self._lock:
             if int(generation) != int(self._generation):
                 return
+            result = finalize_worker_result(
+                result,
+                task_id=str(self._active_task_id),
+                now_ns=time.time_ns(),
+            )
             self.s2_inflight = False
             self.s2_calls += 1
             self.last_s2_ts = float(finished_at)
@@ -437,17 +455,28 @@ class DualPlannerService:
                 self.s2_retry_after_ts = float(finished_at) + delay
                 self.force_s2_pending = True
 
-    def _s2_worker(self, request: System2Request, generation: int) -> None:
+    def _s2_worker(self, request: S2Request, generation: int) -> None:
         try:
-            session_result = self.system2_session.execute_request(request)
+            if request.request is None:
+                raise RuntimeError("missing System2 request")
+            session_result = self.system2_session.execute_request(request.request)
             if session_result.ok:
                 self.system2_session.record_result(session_result)
-            result = self._normalize_system2_result(session_result)
+            result = finalize_worker_result(
+                self._normalize_system2_result(session_result, request=request),
+                expected=request.metadata,
+                now_ns=time.time_ns(),
+            )
         except Exception as exc:  # noqa: BLE001
-            result = S2Result(ok=False, error=f"{type(exc).__name__}: {exc}", source="worker")
+            result = build_error_result(
+                S2Result,
+                metadata=inherit_worker_metadata(request.metadata, source="dual_planner_service.s2.worker"),
+                error=f"{type(exc).__name__}: {exc}",
+                source="worker",
+            )
         self._finish_s2(result=result, finished_at=time.time(), generation=int(generation))
 
-    def _finish_s1(self, result: S1Result, goal_version: int, finished_at: float, generation: int) -> None:
+    def _finish_s1(self, result: NavResult, goal_version: int, finished_at: float, generation: int) -> None:
         with self._lock:
             if int(generation) != int(self._generation):
                 return
@@ -455,12 +484,17 @@ class DualPlannerService:
             self.s1_calls += 1
             self.last_s1_ts = float(finished_at)
             current_goal_version = self.goal_version
-            if goal_version != current_goal_version:
-                self.last_s1_error = (
-                    f"dropped_stale_plan goal_version={goal_version} current_goal_version={current_goal_version}"
-                )
+            result = finalize_worker_result(
+                result,
+                task_id=str(self._active_task_id),
+                goal_version=int(current_goal_version),
+                now_ns=time.time_ns(),
+            )
+            if not result.ok:
+                self.s1_fail += 1
+                self.last_s1_error = str(result.error or result.discard_reason or "unknown_s1_error")
                 return
-            if result.ok and result.trajectory_world is not None:
+            if result.trajectory_world is not None:
                 self.traj_version += 1
                 self.traj_cache = TrajectoryCache(
                     trajectory_world=np.asarray(result.trajectory_world, dtype=np.float32).copy(),
@@ -473,33 +507,24 @@ class DualPlannerService:
                 self.last_s1_error = ""
             else:
                 self.s1_fail += 1
-                self.last_s1_error = result.error if result is not None else "unknown_s1_error"
+                self.last_s1_error = str(result.error or result.discard_reason or "unknown_s1_error")
 
-    def _s1_worker(
-        self,
-        image_bgr: np.ndarray,
-        depth_m: np.ndarray,
-        pixel_goal: tuple[int, int],
-        sensor_meta: dict[str, Any],
-        cam_pos: np.ndarray,
-        cam_quat_wxyz: np.ndarray,
-        goal_version: int,
-        generation: int,
-    ) -> None:
+    def _s1_worker(self, request: NavRequest, generation: int) -> None:
         try:
-            result = self._call_s1(
-                image_bgr=image_bgr,
-                depth_m=depth_m,
-                pixel_goal=pixel_goal,
-                sensor_meta=sensor_meta,
-                cam_pos=cam_pos,
-                cam_quat_wxyz=cam_quat_wxyz,
+            result = finalize_worker_result(
+                self._call_s1(request),
+                expected=request.metadata,
+                now_ns=time.time_ns(),
             )
         except Exception as exc:  # noqa: BLE001
-            result = S1Result(ok=False, error=f"{type(exc).__name__}: {exc}")
+            result = build_error_result(
+                NavResult,
+                metadata=inherit_worker_metadata(request.metadata, source="dual_planner_service.s1.worker"),
+                error=f"{type(exc).__name__}: {exc}",
+            )
         self._finish_s1(
             result=result,
-            goal_version=int(goal_version),
+            goal_version=int(request.metadata.goal_version or -1),
             finished_at=time.time(),
             generation=int(generation),
         )
@@ -593,7 +618,8 @@ class DualPlannerService:
         now = time.time()
         launch_s2 = False
         launch_s1 = False
-        s2_request: System2Request | None = None
+        s2_request: S2Request | None = None
+        s1_request: NavRequest | None = None
         s1_goal_version = -1
         s1_pixel_goal = (0, 0)
         generation = -1
@@ -637,16 +663,47 @@ class DualPlannerService:
 
         if launch_s2:
             try:
-                s2_request = self._prepare_s2_request(dict(events), memory_context)
+                s2_request = self._prepare_s2_request(
+                    step_id=int(step_id),
+                    events=dict(events),
+                    memory_context=memory_context,
+                )
             except Exception as exc:  # noqa: BLE001
                 self._finish_s2(
-                    S2Result(ok=False, error=f"{type(exc).__name__}: {exc}", source="prepare_request"),
+                    build_error_result(
+                        S2Result,
+                        metadata=stamp_worker_metadata(
+                            source="dual_planner_service.s2.prepare",
+                            task_id=str(self._active_task_id),
+                            frame_id=int(step_id),
+                            timeout_ms=int(max(float(self.vlm_timeout_sec) * 1000.0, 0.0)),
+                        ),
+                        error=f"{type(exc).__name__}: {exc}",
+                        source="prepare_request",
+                    ),
                     finished_at=time.time(),
                     generation=int(generation),
                 )
                 launch_s2 = False
 
-        if launch_s2:
+        if launch_s1:
+            s1_request = NavRequest(
+                metadata=stamp_worker_metadata(
+                    source="dual_planner_service.s1",
+                    task_id=str(self._active_task_id),
+                    frame_id=int(step_id),
+                    timeout_ms=int(max(float(self.navdp_timeout_sec) * 1000.0, 0.0)),
+                    goal_version=int(s1_goal_version),
+                ),
+                image_bgr=image.copy(),
+                depth_m=depth.copy(),
+                pixel_goal=(int(s1_pixel_goal[0]), int(s1_pixel_goal[1])),
+                sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
+                cam_pos=np.asarray(cam_pos, dtype=np.float32).copy(),
+                cam_quat_wxyz=np.asarray(cam_quat_wxyz, dtype=np.float32).copy(),
+            )
+
+        if launch_s2 and s2_request is not None:
             threading.Thread(
                 target=self._s2_worker,
                 args=(s2_request, int(generation)),
@@ -654,19 +711,10 @@ class DualPlannerService:
                 daemon=True,
             ).start()
 
-        if launch_s1:
+        if launch_s1 and s1_request is not None:
             threading.Thread(
                 target=self._s1_worker,
-                args=(
-                    image.copy(),
-                    depth.copy(),
-                    s1_pixel_goal,
-                    dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
-                    np.asarray(cam_pos, dtype=np.float32).copy(),
-                    np.asarray(cam_quat_wxyz, dtype=np.float32).copy(),
-                    int(s1_goal_version),
-                    int(generation),
-                ),
+                args=(s1_request, int(generation)),
                 name="dual-s1-worker",
                 daemon=True,
             ).start()

@@ -50,7 +50,6 @@ def test_initial_stop_is_suppressed_until_first_trajectory() -> None:
 
     orchestrator._finish_s2(
         S2Result(
-            ok=True,
             mode="stop",
             stop=True,
             reason="arrived",
@@ -86,7 +85,6 @@ def test_stop_after_confirmed_trajectory_is_preserved() -> None:
 
     orchestrator._finish_s2(
         S2Result(
-            ok=True,
             mode="stop",
             stop=True,
             reason="arrived",
@@ -111,7 +109,6 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
 
     orchestrator._finish_s2(
         S2Result(
-            ok=True,
             mode="pixel_goal",
             pixel_x=11,
             pixel_y=22,
@@ -129,7 +126,6 @@ def test_identical_goal_refresh_keeps_goal_version() -> None:
 
     orchestrator._finish_s2(
         S2Result(
-            ok=True,
             mode="pixel_goal",
             pixel_x=11,
             pixel_y=22,
@@ -191,7 +187,6 @@ def test_finish_s2_ignores_stale_generation_results() -> None:
 
     orchestrator._finish_s2(
         S2Result(
-            ok=True,
             mode="pixel_goal",
             pixel_x=9,
             pixel_y=19,
@@ -278,23 +273,15 @@ def test_step_routes_memory_context_only_to_s2() -> None:
         ],
     )
 
-    def _fake_prepare(events, memory_bundle):  # noqa: ANN001
+    def _fake_prepare(*, step_id, events, memory_context):  # noqa: ANN001
+        captured["step_id"] = int(step_id)
         captured["events"] = dict(events)
-        captured["memory_context"] = memory_bundle
+        captured["memory_context"] = memory_context
         return SimpleNamespace(body={})
 
-    def _fake_s1_worker(  # noqa: ANN001
-        image_bgr,
-        depth_m,
-        pixel_goal,
-        sensor_meta,
-        cam_pos,
-        cam_quat_wxyz,
-        goal_version,
-        generation,
-    ):
-        _ = image_bgr, depth_m, pixel_goal, cam_pos, cam_quat_wxyz, goal_version, generation
-        captured["sensor_meta"] = dict(sensor_meta)
+    def _fake_s1_worker(request, generation):  # noqa: ANN001
+        _ = generation
+        captured["sensor_meta"] = dict(request.sensor_meta)
 
     orchestrator._prepare_s2_request = _fake_prepare  # type: ignore[method-assign]
     orchestrator._s2_worker = lambda request, generation: None  # type: ignore[method-assign]

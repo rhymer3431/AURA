@@ -163,18 +163,19 @@ class MainControlServer:
             active_memory_instruction=active_memory_instruction,
         )
 
-        observation, enriched_batch = self._planner_coordinator.enrich_observation(
+        observation, perception_result, memory_result = self._planner_coordinator.enrich_observation(
             frame_event=frame_event,
             retrieve_memory=directive.retrieve_memory,
             instruction=active_memory_instruction,
         )
+        enriched_batch = None if perception_result is None else perception_result.batch
         self._world_state.record_perception(
             enriched_batch,
-            summary=self._perception_client.summary(),
+            summary=None if perception_result is None else perception_result.summary,
         )
         self._world_state.record_memory_context(
             None if observation is None else observation.memory_context,
-            summary=self._memory_client.summary(),
+            summary=None if memory_result is None else memory_result.summary,
             task=current_task,
         )
 

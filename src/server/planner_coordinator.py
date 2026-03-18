@@ -1,14 +1,31 @@
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 
 import numpy as np
 
-from clients.worker_clients import LocomotionClient, MemoryClient, PerceptionClient
+from clients.worker_clients import (
+    LocomotionClient,
+    MemoryClient,
+    NavClient,
+    PerceptionClient,
+    PlanningSessionNavClient,
+)
 from ipc.messages import ActionCommand
+from locomotion.types import CommandEvaluation
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
+from schemas.commands import LocomotionProposal
 from schemas.events import FrameEvent
 from schemas.planning_context import PlanningContext
+from schemas.workers import (
+    LocomotionRequest,
+    MemoryRequest,
+    NavRequest,
+    PerceptionRequest,
+    finalize_worker_result,
+    stamp_worker_metadata,
+)
 from schemas.world_state import TaskSnapshot
 
 from .planner_runtime_engine import PlannerRuntimeEngine
@@ -24,6 +41,7 @@ class PlannerCoordinator:
         perception_client: PerceptionClient,
         memory_client: MemoryClient,
         locomotion_client: LocomotionClient,
+        nav_client: NavClient | None = None,
     ) -> None:
         self._args = args
         self._transport = planning_session
@@ -34,6 +52,10 @@ class PlannerCoordinator:
         self._engine = None
         if all(hasattr(planning_session, attr) for attr in ("navdp_client", "pointgoal_planner", "nogoal_planner", "_intrinsic")):
             self._engine = PlannerRuntimeEngine(args, transport=planning_session, state=self._runtime_state)
+        self._nav_client = nav_client or PlanningSessionNavClient(
+            planning_session,
+            planner=self._engine if self._engine is not None else planning_session,
+        )
 
     @property
     def runtime_state(self) -> PlannerRuntimeState:
@@ -121,19 +143,41 @@ class PlannerCoordinator:
         instruction: str,
     ):
         observation = frame_event.observation
-        enriched_batch = frame_event.batch
-        if enriched_batch is not None:
-            enriched_batch = self._perception_client.process_frame(
-                enriched_batch,
+        perception_result = None
+        memory_result = None
+        if frame_event.batch is not None:
+            perception_request = PerceptionRequest(
+                metadata=stamp_worker_metadata(
+                    frame_event=frame_event,
+                    source="planner_coordinator.perception",
+                    task_id=str(frame_event.metadata.task_id),
+                ),
+                batch=frame_event.batch,
                 publish=bool(frame_event.publish_observation),
             )
+            perception_result = finalize_worker_result(
+                self._perception_client.process(perception_request),
+                expected=perception_request.metadata,
+                now_ns=time.time_ns(),
+            )
         if retrieve_memory and observation is not None:
-            memory_context = self._memory_client.build_memory_context(
+            memory_request = MemoryRequest(
+                metadata=stamp_worker_metadata(
+                    frame_event=frame_event,
+                    source="planner_coordinator.memory",
+                    task_id=str(frame_event.metadata.task_id),
+                ),
                 instruction=str(instruction),
                 current_pose=tuple(float(v) for v in frame_event.robot_pose_xyz[:3]),
             )
-            observation = replace(observation, memory_context=memory_context)
-        return observation, enriched_batch
+            memory_result = finalize_worker_result(
+                self._memory_client.retrieve(memory_request),
+                expected=memory_request.metadata,
+                now_ns=time.time_ns(),
+            )
+            if memory_result.ok and memory_result.memory_context is not None:
+                observation = replace(observation, memory_context=memory_result.memory_context)
+        return observation, perception_result, memory_result
 
     def build_planning_context(
         self,
@@ -182,16 +226,39 @@ class PlannerCoordinator:
             robot_yaw=robot_yaw,
             robot_quat_wxyz=robot_quat_wxyz,
         )
-        return self._locomotion_client.execute(
+        locomotion_request = LocomotionRequest(
+            metadata=stamp_worker_metadata(
+                frame_event=frame_event,
+                source="planner_coordinator.locomotion",
+                task_id=self._task_id(action_command, frame_event),
+                plan_version=int(trajectory_update.plan_version),
+                goal_version=int(trajectory_update.goal_version),
+                traj_version=int(trajectory_update.traj_version),
+            ),
             frame_idx=int(frame_event.frame_id),
             observation=observation,
             action_command=action_command,
             trajectory_update=trajectory_update,
-            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
-            robot_lin_vel_world=np.asarray(robot_lin_vel_world, dtype=np.float32),
-            robot_ang_vel_world=np.asarray(robot_ang_vel_world, dtype=np.float32),
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32).copy(),
+            robot_lin_vel_world=np.asarray(robot_lin_vel_world, dtype=np.float32).copy(),
+            robot_ang_vel_world=np.asarray(robot_ang_vel_world, dtype=np.float32).copy(),
             robot_yaw=float(robot_yaw),
-            robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
+            robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32).copy(),
+        )
+        locomotion_result = finalize_worker_result(
+            self._locomotion_client.execute(locomotion_request),
+            expected=locomotion_request.metadata,
+            now_ns=time.time_ns(),
+            plan_version=int(trajectory_update.plan_version),
+            goal_version=int(trajectory_update.goal_version),
+            traj_version=int(trajectory_update.traj_version),
+        )
+        if locomotion_result.ok and locomotion_result.proposal is not None:
+            return locomotion_result.proposal
+        return self._fallback_proposal(
+            trajectory_update=trajectory_update,
+            action_command=action_command,
+            error=str(locomotion_result.error or locomotion_result.discard_reason),
         )
 
     def _plan_trajectory(
@@ -222,20 +289,62 @@ class PlannerCoordinator:
                 action_command=action_command,
                 stop=False,
             )
-        if self._engine is None:
-            planner = getattr(self._transport, "plan_with_observation", None)
-            if callable(planner):
-                return planner(
-                    observation,
-                    action_command=action_command,
-                    robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
-                    robot_yaw=float(robot_yaw),
-                    robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
-                )
-        return self._engine.plan_with_observation(
-            observation,
+        nav_request = NavRequest(
+            metadata=stamp_worker_metadata(
+                frame_event=frame_event,
+                source="planner_coordinator.nav",
+                task_id=self._task_id(action_command, frame_event),
+            ),
+            observation=observation,
             action_command=action_command,
-            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32).copy(),
             robot_yaw=float(robot_yaw),
-            robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
+            robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32).copy(),
+        )
+        nav_result = finalize_worker_result(
+            self._nav_client.plan(nav_request),
+            expected=nav_request.metadata,
+            now_ns=time.time_ns(),
+        )
+        if nav_result.ok and nav_result.trajectory_update is not None:
+            return nav_result.trajectory_update
+        return TrajectoryUpdate(
+            trajectory_world=np.asarray(self._runtime_state.trajectory.trajectory_world, dtype=np.float32).copy(),
+            plan_version=int(self._runtime_state.trajectory.plan_version),
+            stats=PlannerStats(
+                failed_calls=1,
+                last_error=str(nav_result.error or nav_result.discard_reason or "planner result unavailable"),
+                last_plan_step=int(frame_event.frame_id),
+            ),
+            source_frame_id=int(frame_event.frame_id),
+            action_command=action_command,
+            stop=True,
+        )
+
+    @staticmethod
+    def _task_id(action_command: ActionCommand | None, frame_event: FrameEvent) -> str:
+        if action_command is not None and str(action_command.task_id).strip() != "":
+            return str(action_command.task_id)
+        return str(frame_event.metadata.task_id)
+
+    @staticmethod
+    def _fallback_proposal(
+        *,
+        trajectory_update: TrajectoryUpdate,
+        action_command: ActionCommand | None,
+        error: str = "",
+    ) -> LocomotionProposal:
+        metadata: dict[str, object] = {}
+        if str(error).strip() != "":
+            metadata["worker_error"] = str(error)
+        return LocomotionProposal(
+            command_vector=np.zeros(3, dtype=np.float32),
+            trajectory_update=trajectory_update,
+            evaluation=CommandEvaluation(
+                force_stop=True,
+                goal_distance_m=-1.0,
+                yaw_error_rad=0.0,
+                reached_goal=False,
+            ),
+            metadata=metadata,
         )

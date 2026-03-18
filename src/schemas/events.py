@@ -21,6 +21,9 @@ class WorkerMetadata:
     timestamp_ns: int = field(default_factory=time.time_ns)
     source: str = ""
     timeout_ms: int = 0
+    plan_version: int | None = None
+    goal_version: int | None = None
+    traj_version: int | None = None
 
 
 @dataclass(frozen=True)

@@ -4,34 +4,37 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from ipc.messages import ActionCommand, ActionStatus
-from schemas.commands import LocomotionProposal
 from runtime.planning_session import ExecutionObservation, PlanningSession
-from runtime.planning_session import TrajectoryUpdate
 from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor
+from schemas.workers import (
+    LocomotionRequest,
+    LocomotionResult,
+    MemoryRequest,
+    MemoryResult,
+    NavRequest,
+    NavResult,
+    PerceptionRequest,
+    PerceptionResult,
+    build_error_result,
+    inherit_worker_metadata,
+)
 
 
 class PerceptionClient(Protocol):
-    def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
-        ...
-
-    def summary(self) -> dict[str, object]:
+    def process(self, request: PerceptionRequest) -> PerceptionResult:
         ...
 
 
 class MemoryClient(Protocol):
-    def build_memory_context(self, *, instruction: str, current_pose: tuple[float, float, float]):
+    def retrieve(self, request: MemoryRequest) -> MemoryResult:
         ...
 
     def set_planner_task(self, **kwargs) -> None:  # noqa: ANN003
         ...
 
     def clear_planner_task(self, **kwargs) -> None:  # noqa: ANN003
-        ...
-
-    def summary(self) -> dict[str, object]:
         ...
 
 
@@ -49,10 +52,7 @@ class TaskCommandClient(Protocol):
 
 
 class NavClient(Protocol):
-    def ensure_navdp_service_ready(self, *, context: str) -> None:
-        ...
-
-    def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
+    def plan(self, request: NavRequest) -> NavResult:
         ...
 
 
@@ -63,19 +63,7 @@ class LocomotionClient(Protocol):
     def shutdown(self) -> None:
         ...
 
-    def execute(
-        self,
-        *,
-        frame_idx: int,
-        observation: ExecutionObservation | None,
-        action_command: ActionCommand | None,
-        trajectory_update: TrajectoryUpdate,
-        robot_pos_world: np.ndarray,
-        robot_lin_vel_world: np.ndarray,
-        robot_ang_vel_world: np.ndarray,
-        robot_yaw: float,
-        robot_quat_wxyz: np.ndarray,
-    ) -> LocomotionProposal:
+    def execute(self, request: LocomotionRequest) -> LocomotionResult:
         ...
 
 
@@ -83,10 +71,31 @@ class SupervisorPerceptionClient:
     def __init__(self, supervisor: Supervisor) -> None:
         self._supervisor = supervisor
 
-    def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
-        return self._supervisor.process_frame(batch, publish=publish)
+    def process(self, request: PerceptionRequest) -> PerceptionResult:
+        metadata = inherit_worker_metadata(request.metadata, source="supervisor.perception")
+        if request.batch is None:
+            return build_error_result(
+                PerceptionResult,
+                metadata=metadata,
+                error="missing batch",
+                summary=self._summary(),
+            )
+        try:
+            batch = self._supervisor.process_frame(request.batch, publish=bool(request.publish))
+        except Exception as exc:  # noqa: BLE001
+            return build_error_result(
+                PerceptionResult,
+                metadata=metadata,
+                error=f"{type(exc).__name__}: {exc}",
+                summary=self._summary(),
+            )
+        return PerceptionResult(
+            metadata=metadata,
+            batch=batch,
+            summary=self._summary(),
+        )
 
-    def summary(self) -> dict[str, object]:
+    def _summary(self) -> dict[str, object]:
         detector = self._supervisor.perception_pipeline.detector
         detector_report = detector.runtime_report
         return {
@@ -101,10 +110,24 @@ class SupervisorMemoryClient:
     def __init__(self, supervisor: Supervisor) -> None:
         self._supervisor = supervisor
 
-    def build_memory_context(self, *, instruction: str, current_pose: tuple[float, float, float]):
-        return self._supervisor.memory_service.build_memory_context(
-            instruction=instruction,
-            current_pose=current_pose,
+    def retrieve(self, request: MemoryRequest) -> MemoryResult:
+        metadata = inherit_worker_metadata(request.metadata, source="supervisor.memory")
+        try:
+            memory_context = self._supervisor.memory_service.build_memory_context(
+                instruction=request.instruction,
+                current_pose=request.current_pose,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return build_error_result(
+                MemoryResult,
+                metadata=metadata,
+                error=f"{type(exc).__name__}: {exc}",
+                summary=self._summary(),
+            )
+        return MemoryResult(
+            metadata=metadata,
+            memory_context=memory_context,
+            summary=self._summary(),
         )
 
     def set_planner_task(self, **kwargs) -> None:  # noqa: ANN003
@@ -113,7 +136,7 @@ class SupervisorMemoryClient:
     def clear_planner_task(self, **kwargs) -> None:  # noqa: ANN003
         self._supervisor.memory_service.clear_planner_task(**kwargs)
 
-    def summary(self) -> dict[str, object]:
+    def _summary(self) -> dict[str, object]:
         scratchpad = self._supervisor.memory_service.scratchpad
         return {
             "object_count": len(self._supervisor.memory_service.spatial_store.objects),
@@ -169,6 +192,53 @@ class PlanningSessionTransportClient:
         return self._planning_session.capture_observation(frame_id, env=env)
 
 
+class PlanningSessionNavClient:
+    def __init__(self, planning_session: PlanningSession, *, planner: Any | None = None) -> None:
+        self._planning_session = planning_session
+        self._planner = planner
+
+    def bind_planner(self, planner: Any) -> None:
+        self._planner = planner
+
+    def plan(self, request: NavRequest) -> NavResult:
+        metadata = inherit_worker_metadata(request.metadata, source="planning_session.nav")
+        if request.observation is None:
+            return build_error_result(NavResult, metadata=metadata, error="missing observation")
+        if request.robot_pos_world is None or request.robot_quat_wxyz is None:
+            return build_error_result(NavResult, metadata=metadata, error="missing robot pose context")
+        planner = self._planner or self._planning_session
+        planner_fn = getattr(planner, "plan_with_observation", None)
+        if not callable(planner_fn):
+            return build_error_result(NavResult, metadata=metadata, error="planner transport does not support plan_with_observation")
+        try:
+            update = planner_fn(
+                request.observation,
+                action_command=request.action_command,
+                robot_pos_world=np.asarray(request.robot_pos_world, dtype=np.float32),
+                robot_yaw=float(request.robot_yaw),
+                robot_quat_wxyz=np.asarray(request.robot_quat_wxyz, dtype=np.float32),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return build_error_result(
+                NavResult,
+                metadata=metadata,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        result_metadata = inherit_worker_metadata(
+            metadata,
+            source="planning_session.nav",
+            plan_version=int(update.plan_version),
+            goal_version=int(update.goal_version),
+            traj_version=int(update.traj_version),
+        )
+        return NavResult(
+            metadata=result_metadata,
+            trajectory_update=update,
+            trajectory_world=np.asarray(update.trajectory_world, dtype=np.float32).copy(),
+            latency_ms=float(update.stats.latency_ms),
+        )
+
+
 class ExecutorLocomotionClient:
     def __init__(self, executor: SubgoalExecutor) -> None:
         self._executor = executor
@@ -179,27 +249,42 @@ class ExecutorLocomotionClient:
     def shutdown(self) -> None:
         self._executor.shutdown()
 
-    def execute(
-        self,
-        *,
-        frame_idx: int,
-        observation: ExecutionObservation | None,
-        action_command: ActionCommand | None,
-        trajectory_update: TrajectoryUpdate,
-        robot_pos_world: np.ndarray,
-        robot_lin_vel_world: np.ndarray,
-        robot_ang_vel_world: np.ndarray,
-        robot_yaw: float,
-        robot_quat_wxyz: np.ndarray,
-    ) -> LocomotionProposal:
-        return self._executor.step(
-            frame_idx=frame_idx,
-            observation=observation,
-            action_command=action_command,
-            trajectory_update=trajectory_update,
-            robot_pos_world=robot_pos_world,
-            robot_lin_vel_world=robot_lin_vel_world,
-            robot_ang_vel_world=robot_ang_vel_world,
-            robot_yaw=robot_yaw,
-            robot_quat_wxyz=robot_quat_wxyz,
+    def execute(self, request: LocomotionRequest) -> LocomotionResult:
+        metadata = inherit_worker_metadata(
+            request.metadata,
+            source="executor.locomotion",
+            plan_version=None if request.trajectory_update is None else int(request.trajectory_update.plan_version),
+            goal_version=None if request.trajectory_update is None else int(request.trajectory_update.goal_version),
+            traj_version=None if request.trajectory_update is None else int(request.trajectory_update.traj_version),
         )
+        if request.trajectory_update is None:
+            return build_error_result(LocomotionResult, metadata=metadata, error="missing trajectory update")
+        if any(
+            value is None
+            for value in (
+                request.robot_pos_world,
+                request.robot_lin_vel_world,
+                request.robot_ang_vel_world,
+                request.robot_quat_wxyz,
+            )
+        ):
+            return build_error_result(LocomotionResult, metadata=metadata, error="missing locomotion state context")
+        try:
+            proposal = self._executor.step(
+                frame_idx=int(request.frame_idx),
+                observation=request.observation,
+                action_command=request.action_command,
+                trajectory_update=request.trajectory_update,
+                robot_pos_world=np.asarray(request.robot_pos_world, dtype=np.float32),
+                robot_lin_vel_world=np.asarray(request.robot_lin_vel_world, dtype=np.float32),
+                robot_ang_vel_world=np.asarray(request.robot_ang_vel_world, dtype=np.float32),
+                robot_yaw=float(request.robot_yaw),
+                robot_quat_wxyz=np.asarray(request.robot_quat_wxyz, dtype=np.float32),
+            )
+        except Exception as exc:  # noqa: BLE001
+            return build_error_result(
+                LocomotionResult,
+                metadata=metadata,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+        return LocomotionResult(metadata=metadata, proposal=proposal)
