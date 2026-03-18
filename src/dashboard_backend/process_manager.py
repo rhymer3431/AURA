@@ -137,7 +137,7 @@ class ProcessManager:
         return records
 
     def _build_specs(self, request: DashboardSessionRequest) -> list[ProcessSpec]:
-        scripts_dir = resolve_repo_path(self.config.repo_root, "scripts", "powershell")
+        scripts_dir = resolve_repo_path(self.config.repo_root, "scripts")
         navdp_port = self._reserve_port("127.0.0.1", 8888)
         system2_port = self._reserve_port("127.0.0.1", 8080, reserved={navdp_port})
         dual_port = self._reserve_port("127.0.0.1", 8890, reserved={navdp_port, system2_port})

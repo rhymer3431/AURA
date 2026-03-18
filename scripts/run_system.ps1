@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SelfScriptPath = $MyInvocation.MyCommand.Path
-$RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir "..\.."))
+$RepoDir = [System.IO.Path]::GetFullPath((Join-Path $ScriptDir ".."))
 $SrcDir = Join-Path $RepoDir "src"
 $PathSep = [System.IO.Path]::PathSeparator
 $ProcessLogDir = Join-Path $RepoDir "tmp\process_logs\system"
@@ -505,7 +505,7 @@ function Invoke-S2Component {
 
     $ModelPath = if ($env:INTERNVLA_MODEL_PATH) { $env:INTERNVLA_MODEL_PATH } else { "artifacts/models/InternVLA-N1-System2.Q4_K_M.gguf" }
     $MmprojPath = if ($env:INTERNVLA_MMPROJ_PATH) { $env:INTERNVLA_MMPROJ_PATH } else { "artifacts/models/InternVLA-N1-System2.mmproj-Q8_0.gguf" }
-    $ChatTemplateFile = if ($env:INTERNVLA_CHAT_TEMPLATE_FILE) { $env:INTERNVLA_CHAT_TEMPLATE_FILE } else { "scripts/powershell/internvla_system2_chat_template.jinja" }
+    $ChatTemplateFile = if ($env:INTERNVLA_CHAT_TEMPLATE_FILE) { $env:INTERNVLA_CHAT_TEMPLATE_FILE } else { "scripts/internvla_system2_chat_template.jinja" }
     $LlamaServer = if ($env:LLAMA_SERVER_EXE) { $env:LLAMA_SERVER_EXE } else { "llama-server" }
     $ContextSize = if ($env:INTERNVLA_CTX_SIZE) { [int]$env:INTERNVLA_CTX_SIZE } else { 8192 }
     $GpuLayers = if ($env:INTERNVLA_GPU_LAYERS) { $env:INTERNVLA_GPU_LAYERS } else { "auto" }

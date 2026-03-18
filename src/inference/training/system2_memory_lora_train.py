@@ -57,8 +57,7 @@ def _lazy_import_training_stack() -> dict[str, Any]:
         from transformers import AutoConfig, AutoProcessor, Trainer, TrainingArguments
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
-            "Training dependencies are unavailable. Create the dedicated environment with "
-            "scripts/powershell/setup_system2_memory_lora_env.ps1 before running training."
+            "Training dependencies are unavailable. Create the dedicated System2 training environment before running training."
         ) from exc
 
     return {

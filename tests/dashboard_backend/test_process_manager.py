@@ -359,7 +359,7 @@ def test_default_runner_prefixes_src_pythonpath(monkeypatch: pytest.MonkeyPatch,
     stderr_log = tmp_path / "navdp.stderr.log"
     spec = ProcessSpec(
         name="navdp",
-        script_path=ROOT / "scripts" / "powershell" / "run_system.ps1",
+        script_path=ROOT / "scripts" / "run_system.ps1",
         args=("-Component", "nav"),
         health_url="http://127.0.0.1:8888/health",
     )

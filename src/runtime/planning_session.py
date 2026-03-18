@@ -45,8 +45,8 @@ def _is_local_service_url(base_url: str) -> bool:
 def _resolve_local_launcher_script(script_name: str) -> Path | None:
     repo_root = Path(__file__).resolve().parents[2]
     candidates = [
+        repo_root / "scripts" / str(script_name),
         repo_root / str(script_name),
-        repo_root / "scripts" / "powershell" / str(script_name),
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -274,7 +274,7 @@ class PlanningSession:
                 launcher_processes=launcher_processes,
             )
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc} Suggested command: .\\run_system.ps1 -Component nav") from exc
+            raise RuntimeError(f"{exc} Suggested command: .\\scripts\\run_system.ps1 -Component nav") from exc
 
     def ensure_dual_service_ready(
         self,
@@ -293,7 +293,7 @@ class PlanningSession:
                 launcher_processes=launcher_processes,
             )
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc} Suggested command: .\\run_system.ps1 -Component dual") from exc
+            raise RuntimeError(f"{exc} Suggested command: .\\scripts\\run_system.ps1 -Component dual") from exc
 
     def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
         if self.sensor is None:

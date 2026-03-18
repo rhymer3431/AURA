@@ -167,11 +167,11 @@ def main(argv: list[str] | None = None) -> int:
         return run_live_frame_bridge_app(args)
     if str(args.frame_source).lower() == "live":
         print(f"[FRAME_BRIDGE] live bridge unavailable: {live_reason}")
-        print("[FRAME_BRIDGE] inspect the Isaac bootstrap path and retry the consolidated runtime launcher: scripts/powershell/run_system.ps1 -Component runtime")
+        print("[FRAME_BRIDGE] inspect the Isaac bootstrap path and retry the consolidated runtime launcher: scripts/run_system.ps1 -Component runtime")
         return 1
     if live_reason != "":
         print(f"[FRAME_BRIDGE] live bootstrap unavailable, falling back to synthetic path: {live_reason}")
-        print("[FRAME_BRIDGE] diagnose the Isaac bootstrap path before rerunning scripts/powershell/run_system.ps1 -Component runtime.")
+        print("[FRAME_BRIDGE] diagnose the Isaac bootstrap path before rerunning scripts/run_system.ps1 -Component runtime.")
     return run_lightweight_frame_bridge(args, force_synthetic=True, initial_notice=live_reason)
 
 
