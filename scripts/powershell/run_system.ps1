@@ -38,7 +38,14 @@ $IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $Defa
 
 $ForwardArgs = @()
 foreach ($Arg in @($ComponentArgs)) {
-    $ForwardArgs += [string]$Arg
+    if ($null -eq $Arg) {
+        continue
+    }
+    $StringArg = [string]$Arg
+    if ([string]::IsNullOrWhiteSpace($StringArg)) {
+        continue
+    }
+    $ForwardArgs += $StringArg
 }
 
 function Test-LaunchArgPresent {
@@ -487,7 +494,8 @@ function Invoke-NavComponent {
     }
 
     Write-Host "[AURA_SYSTEM] starting Nav module on port $NavPort"
-    return Invoke-CondaModule -EntryModule $NavEntryModule -Arguments @("--port", [string]$NavPort, "--checkpoint", $Checkpoint) + $Arguments
+    $NavArgs = @("--port", [string]$NavPort, "--checkpoint", $Checkpoint) + $Arguments
+    return Invoke-CondaModule -EntryModule $NavEntryModule -Arguments $NavArgs
 }
 
 function Invoke-S2Component {
@@ -592,7 +600,7 @@ function Invoke-DualComponent {
     $S2BackoffMaxSec = if ($env:DUAL_S2_BACKOFF_MAX_SEC) { $env:DUAL_S2_BACKOFF_MAX_SEC } else { "30" }
 
     Write-Host "[AURA_SYSTEM] starting Main Control S2/Nav bridge on $DualHost`:$DualPort"
-    return Invoke-CondaModule -EntryModule $DualEntryModule -Arguments @(
+    $DualArgs = @(
         "--host", $DualHost,
         "--port", [string]$DualPort,
         "--navdp-url", $NavBaseUrl,
@@ -609,6 +617,7 @@ function Invoke-DualComponent {
         "--vlm-timeout-sec", $VLMTimeoutSec,
         "--s2-failure-backoff-max-sec", $S2BackoffMaxSec
     ) + $Arguments
+    return Invoke-CondaModule -EntryModule $DualEntryModule -Arguments $DualArgs
 }
 
 function Invoke-RuntimeComponent {
