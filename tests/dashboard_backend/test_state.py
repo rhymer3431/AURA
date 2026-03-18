@@ -13,6 +13,12 @@ if str(SRC) not in sys.path:
 
 from dashboard_backend.config import DashboardBackendConfig
 from dashboard_backend.state import StateAggregator
+from schemas.world_state import (
+    PlanningStateSnapshot,
+    RuntimeStateSnapshot,
+    TaskSnapshot,
+    WorldStateSnapshot,
+)
 
 
 class _FakeSubscriber:
@@ -77,3 +83,39 @@ def test_state_aggregator_start_cleans_up_client_session_on_refresh_failure(monk
 
     assert aggregator._client is None
     assert aggregator._tasks == []
+
+
+def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
+    aggregator = StateAggregator(
+        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
+        process_manager=_FakeProcessManager(),
+        subscriber=_FakeSubscriber(),
+        control_client=_FakeControlClient(),
+        session_manager=_FakeSessionManager(),
+        log_tailer=_FakeLogTailer(),
+    )
+
+    aggregator._consume_gateway_event(
+        "health",
+        {
+            "component": "aura_runtime",
+            "details": {
+                "worldState": WorldStateSnapshot(
+                    task=TaskSnapshot(task_id="interactive", instruction="dock", mode="interactive", state="active", command_id=7),
+                    mode="interactive",
+                    planning=PlanningStateSnapshot(
+                        plan_version=4,
+                        planner_mode="interactive",
+                        interactive_instruction="dock",
+                    ),
+                    runtime=RuntimeStateSnapshot(viewer_publish=True),
+                ).to_dict()
+            },
+        },
+    )
+    state = aggregator._build_state()
+
+    assert "_runtime_snapshot" not in aggregator.__dict__
+    assert state["runtime"]["modes"]["plannerMode"] == "interactive"
+    assert state["runtime"]["interactiveInstruction"] == "dock"
+    assert state["transport"]["viewerPublish"] is True

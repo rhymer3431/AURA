@@ -16,7 +16,7 @@ from ipc.messages import FrameHeader
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from schemas.commands import ResolvedCommand
 from schemas.events import FrameEvent, WorkerMetadata
-from schemas.world_state import TaskSnapshot
+from schemas.world_state import TaskSnapshot, WorldStateSnapshot
 from runtime.subgoal_executor import CommandEvaluation
 from server.world_state_store import WorldStateStore
 
@@ -68,10 +68,13 @@ def test_world_state_store_tracks_frame_memory_and_plan_versions() -> None:
     store.record_command_decision(resolved)
 
     snapshot = store.snapshot()
-    assert snapshot.current_task.task_id == "interactive"
-    assert snapshot.robot_pose_xyz == (1.0, 2.0, 0.0)
-    assert snapshot.last_perception_summary["detection_count"] == 2
-    assert snapshot.last_memory_context["text_line_count"] == 2
-    assert snapshot.active_nav_plan["plan_version"] == 7
-    assert snapshot.last_s2_result["goal_version"] == 4
-    assert snapshot.last_command_decision["source"] == "manual"
+    assert snapshot.task.task_id == "interactive"
+    assert snapshot.robot.pose_xyz == (1.0, 2.0, 0.0)
+    assert snapshot.perception.summary["detection_count"] == 2
+    assert snapshot.memory.summary["text_line_count"] == 2
+    assert snapshot.planning.active_nav_plan["plan_version"] == 7
+    assert snapshot.planning.last_s2_result["goal_version"] == 4
+    assert snapshot.execution.last_command_decision["source"] == "manual"
+
+    round_trip = WorldStateSnapshot.from_dict(snapshot.to_dict())
+    assert round_trip == snapshot

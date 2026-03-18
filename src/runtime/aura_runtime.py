@@ -24,6 +24,7 @@ from ipc.messages import (
 from ipc.zmq_bus import ZmqBus
 from schemas.events import FrameEvent, WorkerMetadata
 from server.main_control_server import MainControlServer
+from server.snapshot_adapter import SnapshotAdapter
 
 from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
 from .planning_session import PlanningSession, TrajectoryUpdate
@@ -74,10 +75,7 @@ class AuraRuntimeCommandSource:
         self._interactive_input_thread: threading.Thread | None = None
         self._last_interactive_phase = ""
         self._last_interactive_command_id = -1
-        self._last_frame_header: FrameHeader | None = None
-        self._last_capture_report: dict[str, object] = {}
         self._last_viewer_overlay: dict[str, object] = {}
-        self._last_sensor_meta: dict[str, object] = {}
         self._last_runtime_snapshot_frame = -1
         self._server: MainControlServer | None = None
 
@@ -201,13 +199,10 @@ class AuraRuntimeCommandSource:
         self._command = tick_result.command_vector.copy()
         self._pending_status = tick_result.status
         self._active_command = tick_result.action_command
-        self._last_frame_header = tick_result.frame_header
-        self._last_capture_report = dict(tick_result.capture_report)
-        self._last_sensor_meta = dict(tick_result.sensor_meta)
         self._last_viewer_overlay = dict(tick_result.viewer_overlay)
         if self._pending_status is not None and self._runtime_io is not None:
             self.supervisor.bridge.publish_status(self._pending_status)
-        self._publish_runtime_snapshot(frame_idx, update=update, evaluation=evaluation)
+        self._publish_runtime_snapshot(frame_idx)
         self._handle_pointgoal_terminal_state(frame_idx=frame_idx, evaluation=evaluation)
 
         if self._pending_exit_code is not None:
@@ -527,136 +522,23 @@ class AuraRuntimeCommandSource:
             RuntimeNotice(component="aura_runtime", level=level, notice=notice, details=dict(details or {}))
         )
 
-    def _publish_runtime_snapshot(
-        self,
-        frame_idx: int,
-        *,
-        update: TrajectoryUpdate,
-        evaluation: CommandEvaluation,
-    ) -> None:
+    def _publish_runtime_snapshot(self, frame_idx: int) -> None:
         if self._runtime_io is None:
             return
         interval = max(int(getattr(self.args, "log_interval", 30)), 1)
         if self._last_runtime_snapshot_frame >= 0 and (frame_idx - self._last_runtime_snapshot_frame) < interval:
             return
         self._last_runtime_snapshot_frame = int(frame_idx)
+        snapshot = None if self._server is None else self._server.snapshot()
         self.supervisor.bridge.publish_health(
             HealthPing(
                 component="aura_runtime",
-                details={"snapshot": self._build_runtime_snapshot(update=update, evaluation=evaluation)},
+                details={
+                    "worldState": {} if snapshot is None else snapshot.to_dict(),
+                    "snapshot": SnapshotAdapter.to_legacy_runtime_payload(snapshot),
+                },
             )
         )
-
-    def _build_runtime_snapshot(
-        self,
-        *,
-        update: TrajectoryUpdate,
-        evaluation: CommandEvaluation,
-    ) -> dict[str, object]:
-        detector = self.supervisor.perception_pipeline.detector
-        detector_report = detector.runtime_report
-        scratchpad = self.supervisor.memory_service.scratchpad
-        frame_header = self._last_frame_header
-        overlay = self._last_viewer_overlay if isinstance(self._last_viewer_overlay, dict) else {}
-        detections = overlay.get("detections", [])
-        transport = {
-            "viewerPublish": bool(self._viewer_publish),
-            "nativeViewer": self._native_viewer,
-            "controlEndpoint": str(getattr(self.args, "viewer_control_endpoint", "")),
-            "telemetryEndpoint": str(getattr(self.args, "viewer_telemetry_endpoint", "")),
-            "shmName": str(getattr(self.args, "viewer_shm_name", "")),
-            "frameAvailable": frame_header is not None,
-        }
-        modes = {
-            "plannerMode": self._mode,
-            "launchMode": self._launch_mode,
-            "viewerPublish": bool(self._viewer_publish),
-            "nativeViewer": self._native_viewer,
-            "scenePreset": str(getattr(self.args, "scene_preset", "")),
-            "showDepth": bool(getattr(self.args, "show_depth", False)),
-            "memoryStore": bool(getattr(self.args, "memory_store", True)),
-            "detectionEnabled": not bool(getattr(self.args, "skip_detection", False)),
-        }
-        planner = {
-            "planVersion": int(update.plan_version),
-            "goalVersion": int(update.goal_version),
-            "trajVersion": int(update.traj_version),
-            "staleSec": float(update.stale_sec),
-            "plannerControlMode": str(update.planner_control_mode),
-            "plannerYawDeltaRad": float(update.planner_yaw_delta_rad) if update.planner_yaw_delta_rad is not None else None,
-            "goalDistanceM": float(evaluation.goal_distance_m),
-            "yawErrorRad": float(evaluation.yaw_error_rad),
-            "interactivePhase": str(update.interactive_phase or ""),
-            "interactiveCommandId": int(update.interactive_command_id),
-            "interactiveInstruction": str(update.interactive_instruction),
-            "actionStatus": None
-            if self._pending_status is None
-            else {
-                "state": str(self._pending_status.state),
-                "success": bool(self._pending_status.success),
-                "reason": str(self._pending_status.reason),
-                "distanceRemainingM": self._pending_status.distance_remaining_m,
-            },
-            "activeCommandType": "" if self._active_command is None else str(self._active_command.action_type),
-        }
-        snapshot = self._server.snapshot() if getattr(self, "_server", None) is not None else None
-        if snapshot is not None:
-            planner["globalRouteWaypointIndex"] = int(snapshot.active_nav_plan.get("global_route_waypoint_index", 0) or 0)
-            planner["globalRouteWaypointCount"] = int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0)
-            planner["globalRouteEnabled"] = bool(planner["globalRouteWaypointCount"])
-            planner["globalRouteActive"] = bool(planner["globalRouteWaypointIndex"] < planner["globalRouteWaypointCount"])
-        sensor = {
-            "rgbAvailable": frame_header is not None,
-            "depthAvailable": frame_header is not None and bool(overlay.get("has_depth", False) or "depth_ref" in frame_header.metadata or "depth_inline" in frame_header.metadata),
-            "poseAvailable": frame_header is not None,
-            "frameId": None if frame_header is None else int(frame_header.frame_id),
-            "source": "" if frame_header is None else str(frame_header.source),
-            "cameraPoseXyz": [] if frame_header is None else [float(v) for v in frame_header.camera_pose_xyz[:3]],
-            "robotPoseXyz": [] if frame_header is None else [float(v) for v in frame_header.robot_pose_xyz[:3]],
-            "robotYawRad": None if frame_header is None else float(frame_header.robot_yaw_rad),
-            "sensorMeta": dict(self._last_sensor_meta),
-            "captureReport": dict(self._last_capture_report),
-        }
-        perception = {
-            "detectorBackend": str(detector.info.backend_name),
-            "detectorSelectedReason": str(detector.info.selected_reason),
-            "detectorReady": bool(detector_report.ready_for_inference) if detector_report is not None else False,
-            "detectorRuntimeReport": None if detector_report is None else detector_report.as_dict(),
-            "detectionCount": len(detections) if isinstance(detections, list) else 0,
-            "trackedDetectionCount": len(detections) if isinstance(detections, list) else 0,
-            "trajectoryPointCount": len(overlay.get("trajectory_pixels", [])) if isinstance(overlay.get("trajectory_pixels", []), list) else 0,
-        }
-        memory = {
-            "objectCount": len(self.supervisor.memory_service.spatial_store.objects),
-            "placeCount": len(self.supervisor.memory_service.spatial_store.places),
-            "semanticRuleCount": len(self.supervisor.memory_service.semantic_store.list()),
-            "keyframeCount": len(self.supervisor.memory_service.keyframes),
-            "scratchpad": {
-                "instruction": str(scratchpad.instruction),
-                "plannerMode": str(scratchpad.planner_mode),
-                "taskState": str(scratchpad.task_state),
-                "taskId": str(scratchpad.task_id),
-                "commandId": int(scratchpad.command_id),
-                "goalSummary": str(scratchpad.goal_summary),
-                "recentHint": str(scratchpad.recent_hint),
-                "nextPriority": str(scratchpad.next_priority),
-            },
-            "memoryAwareTaskActive": bool(
-                self._mode == "interactive" and str(update.interactive_phase or "") == "task_active" and str(update.interactive_instruction).strip() != ""
-            ),
-        }
-        if snapshot is not None:
-            memory["memoryAwareTaskActive"] = bool(
-                snapshot.current_task.mode == "interactive" and snapshot.current_task.state == "active"
-            )
-        return {
-            "modes": modes,
-            "planner": planner,
-            "sensor": sensor,
-            "perception": perception,
-            "memory": memory,
-            "transport": transport,
-        }
 
     def _sync_planner_scratchpad(self, update: TrajectoryUpdate) -> None:
         if self._mode == "interactive":
@@ -708,16 +590,15 @@ class AuraRuntimeCommandSource:
             distance_note = f" yaw_error={evaluation.yaw_error_rad:.3f}rad"
         if self._mode == "pointgoal":
             snapshot = self._server.snapshot() if getattr(self, "_server", None) is not None else None
-            if snapshot is not None and int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0) > 0:
+            if snapshot is not None and int(snapshot.planning.global_route.get("waypoint_count", 0) or 0) > 0:
                 route_note = (
                     " global_route={} wp={}/{} replan={}".format(
                         "active"
-                        if int(snapshot.active_nav_plan.get("global_route_waypoint_index", 0) or 0)
-                        < int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0)
+                        if bool(snapshot.planning.global_route.get("active", False))
                         else "idle",
-                        int(snapshot.active_nav_plan.get("global_route_waypoint_index", 0) or 0),
-                        int(snapshot.active_nav_plan.get("global_route_waypoint_count", 0) or 0),
-                        str(snapshot.active_nav_plan.get("planner_control_reason", "")) or "-",
+                        int(snapshot.planning.global_route.get("waypoint_index", 0) or 0),
+                        int(snapshot.planning.global_route.get("waypoint_count", 0) or 0),
+                        str(snapshot.planning.planner_control_reason) or "-",
                     )
                 )
         print(

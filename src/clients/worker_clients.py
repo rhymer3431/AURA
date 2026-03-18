@@ -17,6 +17,9 @@ class PerceptionClient(Protocol):
     def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
         ...
 
+    def summary(self) -> dict[str, object]:
+        ...
+
 
 class MemoryClient(Protocol):
     def build_memory_context(self, *, instruction: str, current_pose: tuple[float, float, float]):
@@ -82,6 +85,16 @@ class SupervisorPerceptionClient:
 
     def process_frame(self, batch: IsaacObservationBatch, *, publish: bool = True) -> IsaacObservationBatch:
         return self._supervisor.process_frame(batch, publish=publish)
+
+    def summary(self) -> dict[str, object]:
+        detector = self._supervisor.perception_pipeline.detector
+        detector_report = detector.runtime_report
+        return {
+            "detector_backend": str(detector.info.backend_name),
+            "detector_selected_reason": str(detector.info.selected_reason),
+            "detector_ready": bool(detector_report.ready_for_inference) if detector_report is not None else False,
+            "detector_runtime_report": {} if detector_report is None else detector_report.as_dict(),
+        }
 
 
 class SupervisorMemoryClient:

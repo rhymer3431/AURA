@@ -14,6 +14,15 @@ if str(SRC) not in sys.path:
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacObservationBatch
 from ipc.inproc_bus import InprocBus
 from ipc.messages import ActionStatus, CapabilityReport, FrameHeader, HealthPing, RuntimeNotice
+from schemas.world_state import (
+    ExecutionStateSnapshot,
+    PerceptionStateSnapshot,
+    PlanningStateSnapshot,
+    RobotStateSnapshot,
+    RuntimeStateSnapshot,
+    TaskSnapshot,
+    WorldStateSnapshot,
+)
 from webrtc.config import WebRTCGatewayConfig
 from webrtc.subscriber import ObservationSubscriber
 
@@ -41,6 +50,7 @@ def test_observation_subscriber_caches_frames_and_events() -> None:
                         robot_yaw_rad=0.5,
                         sim_time_s=1.0,
                         metadata={
+                            "planner_overlay": {"plan_version": 999, "interactive_instruction": "stale overlay"},
                             "viewer_overlay": {
                                 "detector_backend": "stub",
                                 "detections": [{"class_name": "apple", "bbox_xyxy": [1, 2, 10, 12], "track_id": "t1"}],
@@ -59,7 +69,48 @@ def test_observation_subscriber_caches_frames_and_events() -> None:
             bridge.publish_status(ActionStatus(command_id="cmd-1", state="running"))
             bridge.publish_notice(RuntimeNotice(component="bridge", notice="ready"))
             bridge.publish_capability(CapabilityReport(component="sensor", status="ready"))
-            bridge.publish_health(HealthPing(component="bridge"))
+            bridge.publish_health(
+                HealthPing(
+                    component="aura_runtime",
+                    details={
+                        "worldState": WorldStateSnapshot(
+                            task=TaskSnapshot(task_id="task-1", instruction="inspect apple", mode="interactive", state="active", command_id=8),
+                            mode="interactive",
+                            robot=RobotStateSnapshot(
+                                pose_xyz=(1.0, 0.0, 0.0),
+                                yaw_rad=0.5,
+                                frame_id=3,
+                                timestamp_ns=99,
+                                source="unit_test",
+                                sensor_health={"observation_available": True, "batch_available": True},
+                            ),
+                            perception=PerceptionStateSnapshot(
+                                detector_backend="server-detector",
+                                detection_count=5,
+                                tracked_detection_count=5,
+                                trajectory_point_count=2,
+                            ),
+                            planning=PlanningStateSnapshot(
+                                plan_version=4,
+                                goal_version=2,
+                                traj_version=3,
+                                planner_mode="interactive",
+                                planner_control_mode="trajectory",
+                                interactive_phase="task_active",
+                                interactive_command_id=8,
+                                interactive_instruction="inspect apple",
+                                system2_pixel_goal=[24, 18],
+                                stale_info={"planner_stale_sec": 0.4},
+                            ),
+                            execution=ExecutionStateSnapshot(
+                                active_command_type="NAV_TO_POSE",
+                                active_target={"action_type": "NAV_TO_POSE", "target_track_id": "server-track"},
+                            ),
+                            runtime=RuntimeStateSnapshot(frame_available=True),
+                        ).to_dict()
+                    },
+                )
+            )
 
             await asyncio.sleep(0.05)
 
@@ -71,11 +122,17 @@ def test_observation_subscriber_caches_frames_and_events() -> None:
             snapshot = subscriber.build_state_snapshot()
             assert snapshot["type"] == "snapshot"
             assert snapshot["frame_id"] == 3
+            assert snapshot["planVersion"] == 4
+            assert snapshot["active_command_type"] == "NAV_TO_POSE"
+            assert snapshot["interactiveInstruction"] == "inspect apple"
+            assert snapshot["activeTarget"]["target_track_id"] == "server-track"
 
             telemetry = subscriber.build_frame_meta()
             assert telemetry is not None
             assert telemetry["detections"][0]["class_name"] == "apple"
             assert telemetry["trajectory_pixels"] == [[5, 6], [7, 8]]
+            assert telemetry["planVersion"] == 4
+            assert telemetry["activeTarget"]["target_track_id"] == "server-track"
 
             event_kinds = {
                 (await asyncio.wait_for(listener.get(), timeout=1.0)).kind,

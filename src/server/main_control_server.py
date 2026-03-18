@@ -17,7 +17,7 @@ from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor
 from schemas.events import FrameEvent
 from schemas.planning_context import PlanningContext
-from schemas.world_state import WorldStateSnapshot
+from schemas.world_state import RuntimeStateSnapshot, WorldStateSnapshot
 
 from .command_resolver import CommandResolver
 from .decision_engine import DecisionEngine
@@ -67,7 +67,21 @@ class MainControlServer:
         self._decision_engine = DecisionEngine()
         self._command_resolver = CommandResolver()
         self._safety_supervisor = SafetySupervisor(args)
-        self._world_state = WorldStateStore(initial_mode=str(getattr(args, "planner_mode", "")))
+        self._world_state = WorldStateStore(
+            initial_mode=str(getattr(args, "planner_mode", "")),
+            runtime=RuntimeStateSnapshot(
+                launch_mode=str(getattr(args, "resolved_launch_mode", "")),
+                viewer_publish=bool(getattr(args, "viewer_publish", False)),
+                native_viewer=str(getattr(args, "native_viewer", "off")),
+                scene_preset=str(getattr(args, "scene_preset", "")),
+                show_depth=bool(getattr(args, "show_depth", False)),
+                memory_store=bool(getattr(args, "memory_store", True)),
+                detection_enabled=not bool(getattr(args, "skip_detection", False)),
+                control_endpoint=str(getattr(args, "viewer_control_endpoint", "")),
+                telemetry_endpoint=str(getattr(args, "viewer_telemetry_endpoint", "")),
+                shm_name=str(getattr(args, "viewer_shm_name", "")),
+            ),
+        )
 
     @property
     def task_manager(self) -> TaskManager:
@@ -138,11 +152,12 @@ class MainControlServer:
         self._world_state.set_mode(self._task_manager.mode)
         self._world_state.update_task(self._task_manager.snapshot())
         self._world_state.ingest_frame(frame_event)
+        current_task = self._task_manager.snapshot()
 
         active_memory_instruction = self._planner_coordinator.active_memory_instruction()
         directive = self._decision_engine.evaluate(
             world_state=self._world_state.snapshot(),
-            task=self._task_manager.snapshot(),
+            task=current_task,
             frame_event=frame_event,
             manual_command_present=self._task_manager.manual_command() is not None,
             active_memory_instruction=active_memory_instruction,
@@ -153,8 +168,15 @@ class MainControlServer:
             retrieve_memory=directive.retrieve_memory,
             instruction=active_memory_instruction,
         )
-        self._world_state.record_perception(enriched_batch)
-        self._world_state.record_memory_context(None if observation is None else observation.memory_context)
+        self._world_state.record_perception(
+            enriched_batch,
+            summary=self._perception_client.summary(),
+        )
+        self._world_state.record_memory_context(
+            None if observation is None else observation.memory_context,
+            summary=self._memory_client.summary(),
+            task=current_task,
+        )
 
         task_command = None
         if directive.route_task_command:
@@ -171,11 +193,11 @@ class MainControlServer:
         )
         planning_context = self._planner_coordinator.build_planning_context(
             frame_event=frame_event,
-            task=self._task_manager.snapshot(),
+            task=current_task,
             instruction=active_memory_instruction,
             planner_mode=self._task_manager.mode,
-            perception_summary=self._world_state.snapshot().last_perception_summary,
-            memory_summary=self._world_state.snapshot().last_memory_context,
+            perception_summary=self._world_state.snapshot().perception.summary,
+            memory_summary=self._world_state.snapshot().memory.summary,
             manual_command=proposal.action_command,
         )
 

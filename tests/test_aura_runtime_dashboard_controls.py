@@ -5,18 +5,15 @@ from types import SimpleNamespace
 import sys
 from pathlib import Path
 
-import numpy as np
-
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import ActionCommand, FrameHeader, RuntimeControlRequest, TaskRequest
+from ipc.messages import ActionCommand, HealthPing, RuntimeControlRequest, TaskRequest
 from runtime.aura_runtime import AuraRuntimeCommandSource
-from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from runtime.subgoal_executor import CommandEvaluation
-from schemas.world_state import TaskSnapshot, WorldStateSnapshot
+from schemas.world_state import PlanningStateSnapshot, RuntimeStateSnapshot, TaskSnapshot, WorldStateSnapshot
 
 
 class _FakePlanningSession:
@@ -61,7 +58,34 @@ class _FakeServer:
         return True, notice
 
     def snapshot(self) -> WorldStateSnapshot:
-        return WorldStateSnapshot(current_task=TaskSnapshot(task_id="interactive", mode="interactive", state="active"))
+        return WorldStateSnapshot(
+            task=TaskSnapshot(task_id="interactive", mode="interactive", state="active"),
+            mode="interactive",
+            planning=PlanningStateSnapshot(
+                plan_version=4,
+                goal_version=2,
+                traj_version=3,
+                planner_mode="interactive",
+                planner_control_mode="trajectory",
+                interactive_phase="task_active",
+                interactive_command_id=7,
+                interactive_instruction="inspect loading dock",
+                global_route={"enabled": True, "active": True, "waypoint_index": 0, "waypoint_count": 2},
+            ),
+            runtime=RuntimeStateSnapshot(
+                launch_mode="headless",
+                viewer_publish=False,
+                native_viewer="off",
+                scene_preset="warehouse",
+                show_depth=True,
+                memory_store=True,
+                detection_enabled=True,
+                control_endpoint="tcp://127.0.0.1:5580",
+                telemetry_endpoint="tcp://127.0.0.1:5581",
+                shm_name="g1_view_frames",
+                frame_available=True,
+            ),
+        )
 
 
 class _FakeMemoryService:
@@ -99,10 +123,11 @@ class _FakeRuntimeReport:
         return {"ready": True}
 
 
-def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _FakeMemoryService, list[dict[str, object]]]:
+def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _FakeMemoryService, list[dict[str, object]], list[HealthPing]]:
     planning_session = _FakePlanningSession()
     memory_service = _FakeMemoryService()
     notices: list[dict[str, object]] = []
+    health_events: list[HealthPing] = []
     source = object.__new__(AuraRuntimeCommandSource)
     source.args = Namespace(
         viewer_control_endpoint="tcp://127.0.0.1:5580",
@@ -122,6 +147,7 @@ def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _Fa
     source._executor = SimpleNamespace()
     source._server = _FakeServer(planning_session, memory_service)
     source._supervisor = SimpleNamespace(
+        bridge=SimpleNamespace(publish_health=lambda ping: health_events.append(ping)),
         memory_service=memory_service,
         perception_pipeline=SimpleNamespace(
             detector=SimpleNamespace(
@@ -130,31 +156,18 @@ def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _Fa
             )
         ),
     )
-    source._last_frame_header = FrameHeader(
-        frame_id=5,
-        timestamp_ns=123,
-        source="aura_runtime",
-        width=96,
-        height=96,
-        camera_pose_xyz=(0.0, 0.0, 1.2),
-        robot_pose_xyz=(1.0, 2.0, 0.0),
-        robot_yaw_rad=0.25,
-        sim_time_s=4.0,
-        metadata={},
-    )
-    source._last_capture_report = {"sensor": "ok"}
-    source._last_sensor_meta = {"room_id": "warehouse"}
     source._last_viewer_overlay = {"detections": [{"class_name": "apple"}], "trajectory_pixels": [[1, 2], [3, 4]]}
     source._pending_status = None
     source._active_command = ActionCommand(action_type="LOCAL_SEARCH")
+    source._last_runtime_snapshot_frame = -1
     source._publish_notice = lambda *, level, notice, details=None: notices.append(  # type: ignore[method-assign]
         {"level": level, "notice": notice, "details": dict(details or {})}
     )
-    return source, planning_session, memory_service, notices
+    return source, planning_session, memory_service, notices, health_events
 
 
 def test_handle_task_request_routes_dashboard_instruction_into_interactive_planner() -> None:
-    source, planning_session, memory_service, notices = _build_source()
+    source, planning_session, memory_service, notices, _ = _build_source()
 
     source._handle_task_request(TaskRequest(command_text="go to the loading dock", task_id="task-1"))
 
@@ -177,7 +190,7 @@ def test_handle_task_request_routes_dashboard_instruction_into_interactive_plann
 
 
 def test_handle_runtime_control_cancels_active_interactive_task() -> None:
-    source, planning_session, memory_service, notices = _build_source()
+    source, planning_session, memory_service, notices, _ = _build_source()
 
     source._handle_runtime_control(RuntimeControlRequest(action="cancel_interactive_task"))
 
@@ -191,40 +204,22 @@ def test_handle_runtime_control_cancels_active_interactive_task() -> None:
     assert [item["notice"] for item in notices] == ["interactive task cancelled"]
 
 
-def test_build_runtime_snapshot_contains_dashboard_contract_groups() -> None:
-    source, _, _, _ = _build_source()
+def test_publish_runtime_snapshot_contains_world_state_and_legacy_contract() -> None:
+    source, _, _, _, health_events = _build_source()
 
-    snapshot = source._build_runtime_snapshot(
-        update=TrajectoryUpdate(
-            trajectory_world=np.asarray([[0.1, 0.0, 0.0], [0.2, 0.0, 0.0]], dtype=np.float32),
-            plan_version=4,
-            stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=12.0, last_plan_step=5),
-            source_frame_id=5,
-            stale_sec=0.3,
-            goal_version=2,
-            traj_version=3,
-            planner_control_mode="trajectory",
-            planner_yaw_delta_rad=0.05,
-            interactive_phase="task_active",
-            interactive_command_id=7,
-            interactive_instruction="inspect loading dock",
-        ),
-        evaluation=CommandEvaluation(
-            force_stop=False,
-            goal_distance_m=1.5,
-            yaw_error_rad=0.04,
-            reached_goal=False,
-        ),
-    )
+    source._publish_runtime_snapshot(frame_idx=5)
 
-    assert set(snapshot) == {"modes", "planner", "sensor", "perception", "memory", "transport"}
-    assert snapshot["modes"]["plannerMode"] == "interactive"
-    assert snapshot["planner"]["planVersion"] == 4
-    assert snapshot["planner"]["interactiveInstruction"] == "inspect loading dock"
-    assert snapshot["sensor"]["frameId"] == 5
-    assert snapshot["perception"]["detectionCount"] == 1
-    assert snapshot["memory"]["objectCount"] == 2
-    assert snapshot["transport"]["viewerPublish"] is False
+    assert len(health_events) == 1
+    payload = health_events[0].details
+    assert set(payload) == {"worldState", "snapshot"}
+    assert payload["worldState"]["task"]["task_id"] == "interactive"
+    assert payload["snapshot"]["modes"]["plannerMode"] == "interactive"
+    assert payload["snapshot"]["planner"]["planVersion"] == 4
+    assert payload["snapshot"]["transport"]["viewerPublish"] is False
+
+
+def test_runtime_snapshot_builder_is_removed_in_favor_of_server_snapshot() -> None:
+    assert not hasattr(AuraRuntimeCommandSource, "_build_runtime_snapshot")
 
 
 def test_pointgoal_failure_exit_can_be_suppressed_for_dashboard_sessions() -> None:

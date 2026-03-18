@@ -16,13 +16,16 @@ class SafetySupervisor:
 
     def apply(self, *, frame_event: FrameEvent, resolved: ResolvedCommand) -> ResolvedCommand:
         should_override = frame_event.observation is None
+        safety_reason = "sensor_unavailable" if should_override else ""
         stale_sec = float(resolved.trajectory_update.stale_sec)
         if stale_sec > self._traj_max_stale_sec > 0.0:
             should_override = True
+            safety_reason = "trajectory_stale"
 
         frame_age_sec = max((float(frame_event.metadata.timestamp_ns) - float(frame_event.timestamp_ns)) / 1.0e9, 0.0)
         if frame_age_sec > self._safety_timeout_sec > 0.0:
             should_override = True
+            safety_reason = "timeout"
 
         if not should_override:
             return resolved
@@ -42,5 +45,5 @@ class SafetySupervisor:
             command_vector=np.zeros(3, dtype=np.float32),
             status=status,
             safety_override=True,
-            metadata={**dict(resolved.metadata), "safety_override": True},
+            metadata={**dict(resolved.metadata), "safety_override": True, "safety_reason": safety_reason},
         )

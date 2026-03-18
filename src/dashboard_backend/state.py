@@ -8,6 +8,8 @@ from typing import Any
 
 from aiohttp import ClientSession
 
+from schemas.world_state import WorldStateSnapshot
+from server.snapshot_adapter import SnapshotAdapter
 from webrtc.subscriber import ObservationSubscriber
 
 from .config import DashboardBackendConfig
@@ -36,7 +38,7 @@ class StateAggregator:
         self._listener = subscriber.add_listener()
         self._tasks: list[asyncio.Task[None]] = []
         self._client: ClientSession | None = None
-        self._runtime_snapshot: dict[str, object] = {}
+        self._world_state: WorldStateSnapshot | None = None
         self._detector_capability: dict[str, object] = {}
         self._last_status: dict[str, object] = {}
         self._service_state: dict[str, dict[str, object]] = {}
@@ -107,8 +109,8 @@ class StateAggregator:
     def _consume_gateway_event(self, kind: str, payload: dict[str, object]) -> None:
         if kind == "health" and str(payload.get("component", "")) == "aura_runtime":
             details = payload.get("details")
-            if isinstance(details, dict) and isinstance(details.get("snapshot"), dict):
-                self._runtime_snapshot = dict(details["snapshot"])
+            if isinstance(details, dict) and isinstance(details.get("worldState"), dict):
+                self._world_state = WorldStateSnapshot.from_dict(details["worldState"])
         elif kind == "capability" and str(payload.get("component", "")) == "detector":
             self._detector_capability = dict(payload)
         elif kind == "status":
@@ -188,20 +190,24 @@ class StateAggregator:
         request = self.process_manager.current_request
         session_payload = None if request is None else request.to_public_dict()
         processes = self.process_manager.snapshot()
-        runtime = dict(self._runtime_snapshot.get("planner", {})) if isinstance(self._runtime_snapshot.get("planner"), dict) else {}
-        if isinstance(self._runtime_snapshot.get("modes"), dict):
-            runtime["modes"] = dict(self._runtime_snapshot["modes"])
-        if self._last_status:
-            runtime["lastStatusEvent"] = dict(self._last_status)
-        sensors = dict(self._runtime_snapshot.get("sensor", {})) if isinstance(self._runtime_snapshot.get("sensor"), dict) else {}
-        perception = dict(self._runtime_snapshot.get("perception", {})) if isinstance(self._runtime_snapshot.get("perception"), dict) else {}
-        if self._detector_capability:
-            perception["detectorCapability"] = dict(self._detector_capability)
-        memory = dict(self._runtime_snapshot.get("memory", {})) if isinstance(self._runtime_snapshot.get("memory"), dict) else {}
-        transport = dict(self._runtime_snapshot.get("transport", {})) if isinstance(self._runtime_snapshot.get("transport"), dict) else {}
         frame = self.subscriber.current_frame
-        transport.update(
-            {
+        services = {
+            "navdp": dict(self._service_state.get("navdp", {})),
+            "dual": dict(self._service_state.get("dual", {})),
+            "system2": next((item for item in processes if item["name"] == "system2"), {"name": "system2", "state": "inactive"}),
+        }
+        return SnapshotAdapter.to_dashboard_state(
+            self._world_state,
+            processes=processes,
+            services=services,
+            session_state={
+                "timestamp": time.time(),
+                "active": request is not None,
+                "startedAt": self.process_manager.session_started_at,
+                "config": session_payload,
+                "lastEvent": None if not self._event_logs else dict(self._event_logs[-1]),
+            },
+            transport_state={
                 "viewerEnabled": bool(request.viewer_enabled) if request is not None else False,
                 "frameAgeMs": self.subscriber.last_frame_age_ms(),
                 "frameSeq": None if frame is None else int(frame.seq),
@@ -212,32 +218,11 @@ class StateAggregator:
                 if self.session_manager.active_session is None
                 else list(self.session_manager.active_session.track_roles),
                 "busHealth": self.control_client.transport_health_snapshot(),
-            }
-        )
-        services = {
-            "navdp": dict(self._service_state.get("navdp", {})),
-            "dual": dict(self._service_state.get("dual", {})),
-            "system2": next((item for item in processes if item["name"] == "system2"), {"name": "system2", "state": "inactive"}),
-        }
-        return {
-            "timestamp": time.time(),
-            "session": {
-                "active": request is not None,
-                "startedAt": self.process_manager.session_started_at,
-                "config": session_payload,
-                "lastEvent": None if not self._event_logs else dict(self._event_logs[-1]),
             },
-            "processes": processes,
-            "runtime": runtime,
-            "sensors": sensors,
-            "perception": perception,
-            "memory": memory,
-            "services": services,
-            "transport": transport,
-            # File-backed logs are fetched on demand from /api/logs to avoid
-            # rescanning every log file for every telemetry/status event.
-            "logs": list(self._event_logs)[-20:],
-        }
+            recent_logs=list(self._event_logs)[-20:],
+            last_status=self._last_status,
+            detector_capability=self._detector_capability,
+        )
 
     def _broadcast_state(self) -> None:
         alive: list[asyncio.Queue[dict[str, object]]] = []

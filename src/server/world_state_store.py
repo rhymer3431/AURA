@@ -4,139 +4,352 @@ from dataclasses import replace
 from typing import Any
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
+from ipc.messages import ActionCommand, ActionStatus
 from runtime.planning_session import TrajectoryUpdate
 from server.planner_runtime_state import PlannerRuntimeState
 
 from schemas.commands import ResolvedCommand
 from schemas.events import FrameEvent
-from schemas.world_state import TaskSnapshot, WorldStateSnapshot
+from schemas.world_state import (
+    ExecutionStateSnapshot,
+    MemoryStateSnapshot,
+    PerceptionStateSnapshot,
+    PlanningStateSnapshot,
+    RobotStateSnapshot,
+    RuntimeStateSnapshot,
+    SafetyStateSnapshot,
+    TaskSnapshot,
+    WorldStateSnapshot,
+)
 
 
 class WorldStateStore:
-    def __init__(self, *, initial_mode: str = "") -> None:
-        self._snapshot = WorldStateSnapshot(mode=str(initial_mode))
+    def __init__(self, *, initial_mode: str = "", runtime: RuntimeStateSnapshot | None = None) -> None:
+        self._snapshot = WorldStateSnapshot(
+            mode=str(initial_mode),
+            planning=PlanningStateSnapshot(planner_mode=str(initial_mode)),
+            runtime=RuntimeStateSnapshot() if runtime is None else runtime,
+        )
+
+    def configure_runtime(self, *, runtime: RuntimeStateSnapshot) -> None:
+        self._snapshot = replace(self._snapshot, runtime=runtime)
 
     def set_mode(self, mode: str) -> None:
-        self._snapshot = replace(self._snapshot, mode=str(mode))
-
-    def update_task(self, task: TaskSnapshot) -> None:
-        self._snapshot = replace(self._snapshot, current_task=task)
-
-    def ingest_frame(self, frame_event: FrameEvent) -> None:
-        stale = dict(self._snapshot.stale_timers)
-        stale["last_frame_id"] = int(frame_event.frame_id)
-        stale["last_frame_timestamp_ns"] = int(frame_event.timestamp_ns)
         self._snapshot = replace(
             self._snapshot,
-            robot_pose_xyz=tuple(float(v) for v in frame_event.robot_pose_xyz[:3]),
-            robot_yaw_rad=float(frame_event.robot_yaw_rad),
-            sensor_health={
+            mode=str(mode),
+            planning=replace(self._snapshot.planning, planner_mode=str(mode)),
+        )
+
+    def update_task(self, task: TaskSnapshot) -> None:
+        memory = replace(
+            self._snapshot.memory,
+            memory_aware_task_active=bool(task.mode == "interactive" and task.state == "active"),
+        )
+        self._snapshot = replace(self._snapshot, task=task, memory=memory)
+
+    def ingest_frame(self, frame_event: FrameEvent) -> None:
+        sensor_health = dict(self._snapshot.robot.sensor_health)
+        sensor_health.update(
+            {
                 "observation_available": bool(frame_event.observation is not None),
                 "batch_available": bool(frame_event.batch is not None),
                 "source": str(frame_event.source),
                 "frame_id": int(frame_event.frame_id),
-            },
-            stale_timers=stale,
+                "timestamp_ns": int(frame_event.timestamp_ns),
+            }
+        )
+        stale_info = dict(self._snapshot.planning.stale_info)
+        stale_info["last_frame_id"] = int(frame_event.frame_id)
+        stale_info["last_frame_timestamp_ns"] = int(frame_event.timestamp_ns)
+        safety = replace(
+            self._snapshot.safety,
+            sensor_unavailable=bool(frame_event.observation is None),
+        )
+        self._snapshot = replace(
+            self._snapshot,
+            robot=replace(
+                self._snapshot.robot,
+                pose_xyz=tuple(float(v) for v in frame_event.robot_pose_xyz[:3]),
+                yaw_rad=float(frame_event.robot_yaw_rad),
+                frame_id=int(frame_event.frame_id),
+                timestamp_ns=int(frame_event.timestamp_ns),
+                source=str(frame_event.source),
+                sensor_health=sensor_health,
+                sensor_meta=dict(frame_event.sensor_meta),
+            ),
+            planning=replace(self._snapshot.planning, stale_info=stale_info),
+            safety=safety,
+            runtime=replace(self._snapshot.runtime, frame_available=bool(frame_event.observation is not None)),
         )
 
-    def record_perception(self, batch: IsaacObservationBatch | None) -> None:
+    def record_perception(
+        self,
+        batch: IsaacObservationBatch | None,
+        *,
+        summary: dict[str, object] | None = None,
+    ) -> None:
+        detector_summary = dict(summary or {})
         if batch is None:
-            self._snapshot = replace(self._snapshot, last_perception_summary={})
+            self._snapshot = replace(
+                self._snapshot,
+                perception=PerceptionStateSnapshot(
+                    detector_backend=str(detector_summary.get("detector_backend", "")),
+                    detector_selected_reason=str(detector_summary.get("detector_selected_reason", "")),
+                    detector_ready=bool(detector_summary.get("detector_ready", False)),
+                    detector_runtime_report=dict(detector_summary.get("detector_runtime_report", {}))
+                    if isinstance(detector_summary.get("detector_runtime_report"), dict)
+                    else {},
+                ),
+            )
             return
         overlay = batch.frame_header.metadata.get("viewer_overlay", {})
         detections = overlay.get("detections", []) if isinstance(overlay, dict) else []
         self._snapshot = replace(
             self._snapshot,
-            last_perception_summary={
-                "frame_id": int(batch.frame_header.frame_id),
-                "source": str(batch.frame_header.source),
-                "detection_count": len(batch.observations),
-                "speaker_event_count": len(batch.speaker_events),
-                "tracked_detection_count": len(detections) if isinstance(detections, list) else 0,
-                "capture_report": dict(batch.capture_report),
-            },
+            perception=PerceptionStateSnapshot(
+                summary={
+                    "frame_id": int(batch.frame_header.frame_id),
+                    "source": str(batch.frame_header.source),
+                    "detection_count": len(batch.observations),
+                    "speaker_event_count": len(batch.speaker_events),
+                    "tracked_detection_count": len(detections) if isinstance(detections, list) else 0,
+                    "capture_report": dict(batch.capture_report),
+                },
+                detector_backend=str(detector_summary.get("detector_backend", "")),
+                detector_selected_reason=str(detector_summary.get("detector_selected_reason", "")),
+                detector_ready=bool(detector_summary.get("detector_ready", False)),
+                detector_runtime_report=dict(detector_summary.get("detector_runtime_report", {}))
+                if isinstance(detector_summary.get("detector_runtime_report"), dict)
+                else {},
+                detection_count=len(batch.observations),
+                tracked_detection_count=len(detections) if isinstance(detections, list) else 0,
+                trajectory_point_count=len(overlay.get("trajectory_pixels", []))
+                if isinstance(overlay.get("trajectory_pixels", []), list)
+                else 0,
+            ),
+            robot=replace(self._snapshot.robot, capture_report=dict(batch.capture_report)),
         )
 
-    def record_memory_context(self, memory_context) -> None:  # noqa: ANN001
-        if memory_context is None:
-            self._snapshot = replace(self._snapshot, last_memory_context={})
+    def record_memory_context(
+        self,
+        memory_context,
+        *,
+        summary: dict[str, object] | None = None,
+        task: TaskSnapshot | None = None,
+    ) -> None:  # noqa: ANN001
+        if memory_context is None and not summary:
+            self._snapshot = replace(self._snapshot, memory=MemoryStateSnapshot())
             return
-        self._snapshot = replace(
-            self._snapshot,
-            last_memory_context={
+        memory_summary = dict(summary or {})
+        scratchpad = memory_summary.get("scratchpad")
+        memory_context_summary = {}
+        if memory_context is not None:
+            memory_context_summary = {
                 "instruction": str(memory_context.instruction),
                 "text_line_count": len(memory_context.text_lines),
                 "keyframe_count": len(memory_context.keyframes),
                 "crop_path": str(memory_context.crop_path),
                 "latent_backend_hint": str(memory_context.latent_backend_hint),
-            },
+            }
+        memory_aware_task_active = False
+        active_task = self._snapshot.task if task is None else task
+        if active_task.mode == "interactive" and active_task.state == "active":
+            memory_aware_task_active = True
+        self._snapshot = replace(
+            self._snapshot,
+            memory=MemoryStateSnapshot(
+                summary=memory_context_summary,
+                object_count=int(memory_summary.get("object_count", 0) or 0),
+                place_count=int(memory_summary.get("place_count", 0) or 0),
+                semantic_rule_count=int(memory_summary.get("semantic_rule_count", 0) or 0),
+                keyframe_count=int(memory_summary.get("keyframe_count", 0) or 0),
+                scratchpad=dict(scratchpad) if isinstance(scratchpad, dict) else {},
+                memory_aware_task_active=memory_aware_task_active,
+            ),
         )
 
     def record_planning_result(self, update: TrajectoryUpdate, planner_state: PlannerRuntimeState | None = None) -> None:
-        stale = dict(self._snapshot.stale_timers)
-        stale["planner_stale_sec"] = float(update.stale_sec)
-        last_s2_result = {
-            "goal_version": int(update.goal_version),
-            "traj_version": int(update.traj_version),
-            "planner_control_mode": "" if update.planner_control_mode is None else str(update.planner_control_mode),
-            "planner_yaw_delta_rad": None
-            if update.planner_yaw_delta_rad is None
-            else float(update.planner_yaw_delta_rad),
-            "interactive_phase": "" if update.interactive_phase is None else str(update.interactive_phase),
-            "interactive_command_id": int(update.interactive_command_id),
-            "interactive_instruction": str(update.interactive_instruction),
-        }
-        active_nav_plan = {
-            "plan_version": int(update.plan_version),
-            "goal_version": int(update.goal_version),
-            "traj_version": int(update.traj_version),
-            "trajectory_point_count": int(update.trajectory_world.shape[0]),
-            "stop": bool(update.stop),
-            "used_cached_traj": bool(update.used_cached_traj),
-        }
+        stale_info = dict(self._snapshot.planning.stale_info)
+        stale_info["planner_stale_sec"] = float(update.stale_sec)
+        stale_info["goal_version"] = int(update.goal_version)
+        stale_info["traj_version"] = int(update.traj_version)
+        global_route: dict[str, object] = {}
+        planner_control_reason = ""
+        system2_pixel_goal = None
         if planner_state is not None:
             overlay = planner_state.viewer_overlay_state()
-            last_s2_result["system2_pixel_goal"] = overlay.get("system2_pixel_goal")
-            active_nav_plan["planner_control_reason"] = overlay.get("planner_control_reason", "")
-            active_nav_plan["global_route_waypoint_index"] = overlay.get("global_route_waypoint_index", 0)
-            active_nav_plan["global_route_waypoint_count"] = overlay.get("global_route_waypoint_count", 0)
+            planner_control_reason = str(overlay.get("planner_control_reason", ""))
+            raw_pixel_goal = overlay.get("system2_pixel_goal")
+            if isinstance(raw_pixel_goal, list) and len(raw_pixel_goal) >= 2:
+                system2_pixel_goal = [int(raw_pixel_goal[0]), int(raw_pixel_goal[1])]
+            global_route = {
+                "enabled": bool(overlay.get("global_route_enabled", False)),
+                "active": bool(overlay.get("global_route_active", False)),
+                "waypoint_index": int(overlay.get("global_route_waypoint_index", 0) or 0),
+                "waypoint_count": int(overlay.get("global_route_waypoint_count", 0) or 0),
+                "last_replan_reason": str(overlay.get("global_route_last_replan_reason", "")),
+                "last_error": str(overlay.get("global_route_last_error", "")),
+                "goal_xy": list(overlay.get("global_route_goal_xy", []))
+                if isinstance(overlay.get("global_route_goal_xy"), list)
+                else [],
+                "active_waypoint_xy": list(overlay.get("global_route_active_waypoint_xy", []))
+                if isinstance(overlay.get("global_route_active_waypoint_xy"), list)
+                else [],
+                "waypoints_world": list(overlay.get("global_route_waypoints_world", []))
+                if isinstance(overlay.get("global_route_waypoints_world"), list)
+                else [],
+            }
+        planning = PlanningStateSnapshot(
+            last_s2_result={
+                "goal_version": int(update.goal_version),
+                "traj_version": int(update.traj_version),
+                "planner_control_mode": "" if update.planner_control_mode is None else str(update.planner_control_mode),
+                "planner_yaw_delta_rad": None
+                if update.planner_yaw_delta_rad is None
+                else float(update.planner_yaw_delta_rad),
+                "interactive_phase": "" if update.interactive_phase is None else str(update.interactive_phase),
+                "interactive_command_id": int(update.interactive_command_id),
+                "interactive_instruction": str(update.interactive_instruction),
+                "system2_pixel_goal": system2_pixel_goal,
+            },
+            active_nav_plan={
+                "plan_version": int(update.plan_version),
+                "goal_version": int(update.goal_version),
+                "traj_version": int(update.traj_version),
+                "trajectory_point_count": int(update.trajectory_world.shape[0]),
+                "stop": bool(update.stop),
+                "used_cached_traj": bool(update.used_cached_traj),
+                "planner_control_reason": planner_control_reason,
+                "global_route_waypoint_index": int(global_route.get("waypoint_index", 0) or 0),
+                "global_route_waypoint_count": int(global_route.get("waypoint_count", 0) or 0),
+            },
+            plan_version=int(update.plan_version),
+            goal_version=int(update.goal_version),
+            traj_version=int(update.traj_version),
+            planner_mode=str(self._snapshot.mode),
+            planner_control_mode="" if update.planner_control_mode is None else str(update.planner_control_mode),
+            planner_control_reason=planner_control_reason,
+            planner_yaw_delta_rad=None
+            if update.planner_yaw_delta_rad is None
+            else float(update.planner_yaw_delta_rad),
+            system2_pixel_goal=system2_pixel_goal,
+            interactive_phase="" if update.interactive_phase is None else str(update.interactive_phase),
+            interactive_command_id=int(update.interactive_command_id),
+            interactive_instruction=str(update.interactive_instruction),
+            stale_info=stale_info,
+            global_route=global_route,
+        )
+        safety = replace(
+            self._snapshot.safety,
+            stale=bool(float(update.stale_sec) > 0.0),
+        )
         self._snapshot = replace(
             self._snapshot,
-            last_s2_result=last_s2_result,
-            active_nav_plan=active_nav_plan,
-            stale_timers=stale,
+            planning=planning,
+            safety=safety,
         )
 
     def record_command_decision(self, resolved: ResolvedCommand) -> None:
-        self._snapshot = replace(
-            self._snapshot,
+        action_command = resolved.action_command
+        execution = ExecutionStateSnapshot(
             last_command_decision={
-                "action_type": "" if resolved.action_command is None else str(resolved.action_command.action_type),
-                "command_id": "" if resolved.action_command is None else str(resolved.action_command.command_id),
+                "action_type": "" if action_command is None else str(action_command.action_type),
+                "command_id": "" if action_command is None else str(action_command.command_id),
                 "source": str(resolved.source),
                 "safety_override": bool(resolved.safety_override),
                 "status": None if resolved.status is None else str(resolved.status.state),
                 "command_vector": [float(v) for v in resolved.command_vector.tolist()],
             },
+            last_action_status=_status_summary(resolved.status),
             active_overrides={
                 "safety_override": bool(resolved.safety_override),
             },
+            locomotion_proposal_summary={
+                "goal_distance_m": float(resolved.evaluation.goal_distance_m),
+                "yaw_error_rad": float(resolved.evaluation.yaw_error_rad),
+                "reached_goal": bool(resolved.evaluation.reached_goal),
+                "force_stop": bool(resolved.evaluation.force_stop),
+                "command_vector": [float(v) for v in resolved.command_vector.tolist()],
+                "metadata": dict(resolved.metadata),
+            },
+            active_command_type="" if action_command is None else str(action_command.action_type),
+            active_target=_active_target_summary(action_command),
+        )
+        safety_reason = str(resolved.metadata.get("safety_reason", "") or "")
+        safety = replace(
+            self._snapshot.safety,
+            safe_stop=bool(
+                resolved.safety_override
+                or execution.active_command_type == "STOP"
+                or bool(resolved.evaluation.force_stop)
+            ),
+            stale=bool(self._snapshot.safety.stale or safety_reason == "trajectory_stale"),
+            timeout=bool(safety_reason == "timeout"),
+            sensor_unavailable=bool(self._snapshot.safety.sensor_unavailable or safety_reason == "sensor_unavailable"),
+        )
+        self._snapshot = replace(
+            self._snapshot,
+            execution=execution,
+            safety=safety,
         )
 
     def update_recovery_state(self, payload: dict[str, Any]) -> None:
-        self._snapshot = replace(self._snapshot, recovery_state=dict(payload))
+        self._snapshot = replace(
+            self._snapshot,
+            safety=replace(self._snapshot.safety, recovery_state=dict(payload)),
+        )
 
     def snapshot(self) -> WorldStateSnapshot:
-        return replace(
-            self._snapshot,
-            current_task=self._snapshot.current_task,
-            last_perception_summary=dict(self._snapshot.last_perception_summary),
-            last_memory_context=dict(self._snapshot.last_memory_context),
-            last_s2_result=dict(self._snapshot.last_s2_result),
-            active_nav_plan=dict(self._snapshot.active_nav_plan),
-            recovery_state=dict(self._snapshot.recovery_state),
-            stale_timers=dict(self._snapshot.stale_timers),
-            last_command_decision=dict(self._snapshot.last_command_decision),
-            sensor_health=dict(self._snapshot.sensor_health),
-            active_overrides=dict(self._snapshot.active_overrides),
-        )
+        return WorldStateSnapshot.from_dict(self._snapshot.to_dict())
+
+
+def _status_summary(status: ActionStatus | None) -> dict[str, object]:
+    if status is None:
+        return {}
+    summary: dict[str, object] = {
+        "command_id": str(status.command_id),
+        "state": str(status.state),
+        "timestamp_ns": int(status.timestamp_ns),
+        "success": bool(status.success),
+        "reason": str(status.reason),
+        "distance_remaining_m": status.distance_remaining_m,
+        "metadata": dict(status.metadata),
+    }
+    if status.robot_pose_xyz is not None:
+        summary["robot_pose_xyz"] = [float(value) for value in status.robot_pose_xyz[:3]]
+    return summary
+
+
+def _active_target_summary(command: ActionCommand | None) -> dict[str, object]:
+    if command is None:
+        return {}
+    summary: dict[str, object] = {
+        "action_type": str(command.action_type),
+    }
+    if command.target_track_id != "":
+        summary["target_track_id"] = str(command.target_track_id)
+    if command.target_place_id != "":
+        summary["target_place_id"] = str(command.target_place_id)
+    if command.target_object_id != "":
+        summary["target_object_id"] = str(command.target_object_id)
+    if command.target_person_id != "":
+        summary["target_person_id"] = str(command.target_person_id)
+    if command.target_pose_xyz is not None:
+        summary["target_pose_xyz"] = [float(value) for value in command.target_pose_xyz[:3]]
+    if command.look_at_yaw_rad is not None:
+        summary["look_at_yaw_rad"] = float(command.look_at_yaw_rad)
+    for key in (
+        "target_mode",
+        "target_class",
+        "pose_source",
+        "raw_target_pose_xyz",
+        "filtered_target_pose_xyz",
+        "nav_goal_pose_xyz",
+        "approach_yaw_rad",
+        "track_age_sec",
+        "depth_m",
+    ):
+        if key in command.metadata:
+            summary[key] = command.metadata[key]
+    return summary

@@ -66,7 +66,6 @@ def build_snapshot_message(frame: FrameCache, *, active_command_type: str = "") 
     detections = frame.viewer_overlay.get("detections", [])
     snapshot_action = str(active_command_type).strip()
     active_target = frame.viewer_overlay.get("active_target", {})
-    planner_overlay = frame.frame_header.metadata.get("planner_overlay", {})
     if isinstance(active_target, dict):
         maybe_action = str(active_target.get("action_type", "")).strip()
         if maybe_action != "":
@@ -92,33 +91,11 @@ def build_snapshot_message(frame: FrameCache, *, active_command_type: str = "") 
     if isinstance(active_target, dict) and active_target:
         payload["active_target"] = dict(active_target)
         payload["activeTarget"] = dict(active_target)
-    if isinstance(planner_overlay, dict):
-        for source_key, target_key in (
-            ("plan_version", "planVersion"),
-            ("goal_version", "goalVersion"),
-            ("traj_version", "trajVersion"),
-            ("stale_sec", "staleSec"),
-            ("planner_control_mode", "plannerControlMode"),
-            ("planner_yaw_delta_rad", "plannerYawDeltaRad"),
-            ("interactive_phase", "interactivePhase"),
-            ("interactive_command_id", "interactiveCommandId"),
-            ("interactive_instruction", "interactiveInstruction"),
-        ):
-            value = planner_overlay.get(source_key)
-            if value is None:
-                continue
-            payload[target_key] = value
-    system2_pixel_goal = frame.viewer_overlay.get("system2_pixel_goal")
-    if isinstance(system2_pixel_goal, list) and len(system2_pixel_goal) >= 2:
-        compact_goal = [int(system2_pixel_goal[0]), int(system2_pixel_goal[1])]
-        payload["system2_pixel_goal"] = compact_goal
-        payload["system2PixelGoal"] = compact_goal
     return payload
 
 
 def build_frame_meta_message(frame: FrameCache) -> dict[str, object]:
     overlay = frame.viewer_overlay if isinstance(frame.viewer_overlay, dict) else {}
-    planner_overlay = frame.frame_header.metadata.get("planner_overlay", {})
     detections = overlay.get("detections", [])
     compact_detections: list[dict[str, object]] = []
     if isinstance(detections, list):
@@ -166,27 +143,6 @@ def build_frame_meta_message(frame: FrameCache) -> dict[str, object]:
     if isinstance(active_target, dict):
         payload["active_target"] = dict(active_target)
         payload["activeTarget"] = dict(active_target)
-    if isinstance(planner_overlay, dict):
-        for source_key, target_key in (
-            ("plan_version", "planVersion"),
-            ("goal_version", "goalVersion"),
-            ("traj_version", "trajVersion"),
-            ("stale_sec", "staleSec"),
-            ("planner_control_mode", "plannerControlMode"),
-            ("planner_yaw_delta_rad", "plannerYawDeltaRad"),
-            ("interactive_phase", "interactivePhase"),
-            ("interactive_command_id", "interactiveCommandId"),
-            ("interactive_instruction", "interactiveInstruction"),
-        ):
-            value = planner_overlay.get(source_key)
-            if value is None:
-                continue
-            payload[target_key] = value
-    system2_pixel_goal = overlay.get("system2_pixel_goal")
-    if isinstance(system2_pixel_goal, list) and len(system2_pixel_goal) >= 2:
-        compact_goal = [int(system2_pixel_goal[0]), int(system2_pixel_goal[1])]
-        payload["system2_pixel_goal"] = compact_goal
-        payload["system2PixelGoal"] = compact_goal
     return payload
 
 

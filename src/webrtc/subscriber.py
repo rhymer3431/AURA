@@ -11,14 +11,13 @@ from ipc.base import MessageBus
 from ipc.messages import ActionCommand
 from ipc.shm_ring import SharedMemoryRing
 from ipc.zmq_bus import ZmqBus
+from schemas.world_state import WorldStateSnapshot
+from server.snapshot_adapter import SnapshotAdapter
 
 from .config import WebRTCGatewayConfig
 from .models import (
     FrameCache,
     GatewayEvent,
-    build_frame_meta_message,
-    build_snapshot_message,
-    build_waiting_for_frame_message,
     frame_age_ms,
     ipc_message_event,
     is_frame_stale,
@@ -49,6 +48,7 @@ class ObservationSubscriber:
         self._seq = 0
         self._listeners: list[asyncio.Queue[GatewayEvent]] = []
         self._latest_command: ActionCommand | None = None
+        self._world_state: WorldStateSnapshot | None = None
 
     @property
     def current_frame(self) -> FrameCache | None:
@@ -89,17 +89,20 @@ class ObservationSubscriber:
         return frame_age_ms(self._frame)
 
     def build_state_snapshot(self) -> dict[str, object]:
-        if self._frame is None or is_frame_stale(self._frame, stale_after_sec=self.config.stale_frame_timeout_sec):
-            return build_waiting_for_frame_message(
-                age_ms=frame_age_ms(self._frame),
-                has_seen_frame=self._frame is not None,
-            )
-        return build_snapshot_message(self._frame, active_command_type=self.latest_command_type)
+        frame = self._frame
+        if frame is None or is_frame_stale(frame, stale_after_sec=self.config.stale_frame_timeout_sec):
+            frame = None
+        return SnapshotAdapter.to_webrtc_state_payload(
+            self._world_state,
+            frame=frame,
+            has_seen_frame=self._frame is not None,
+            age_ms=frame_age_ms(self._frame),
+        )
 
     def build_frame_meta(self) -> dict[str, object] | None:
         if self._frame is None or is_frame_stale(self._frame, stale_after_sec=self.config.stale_frame_timeout_sec):
             return None
-        return build_frame_meta_message(self._frame)
+        return SnapshotAdapter.to_webrtc_frame_meta(self._world_state, frame=self._frame)
 
     async def _poll_loop(self) -> None:
         sleep_interval = max(float(self.config.poll_interval_ms), 1.0) / 1000.0
@@ -124,6 +127,9 @@ class ObservationSubscriber:
                 processed += 1
 
             for ping in self._adapter.drain_health():
+                details = ping.details if isinstance(ping.details, dict) else {}
+                if str(ping.component) == "aura_runtime" and isinstance(details.get("worldState"), dict):
+                    self._world_state = WorldStateSnapshot.from_dict(details["worldState"])
                 self._publish_event(GatewayEvent(kind="health", payload=ipc_message_event("health", ping)))
                 processed += 1
 
