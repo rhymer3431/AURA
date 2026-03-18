@@ -124,6 +124,42 @@ function Resolve-BackendHealthUrl {
     return "http://${HostValue}:${PortValue}/api/bootstrap"
 }
 
+function Resolve-BackendBinding {
+    param(
+        [string[]]$Values
+    )
+
+    $HostValue = "127.0.0.1"
+    $PortValue = 8095
+    for ($Index = 0; $Index -lt $Values.Count; $Index += 1) {
+        $Value = [string]$Values[$Index]
+        if ($Value -eq "--host" -and $Index + 1 -lt $Values.Count) {
+            $HostValue = [string]$Values[$Index + 1]
+            $Index += 1
+            continue
+        }
+        if ($Value.StartsWith("--host=")) {
+            $HostValue = $Value.Substring("--host=".Length)
+            continue
+        }
+        if ($Value -eq "--port" -and $Index + 1 -lt $Values.Count) {
+            $PortValue = [int]$Values[$Index + 1]
+            $Index += 1
+            continue
+        }
+        if ($Value.StartsWith("--port=")) {
+            $PortValue = [int]$Value.Substring("--port=".Length)
+        }
+    }
+
+    $IsLocal = $HostValue -in @("127.0.0.1", "localhost", "0.0.0.0", "::1")
+    return @{
+        Host    = $HostValue
+        Port    = [int]$PortValue
+        IsLocal = [bool]$IsLocal
+    }
+}
+
 function Get-LogTail {
     param(
         [Parameter(Mandatory = $true)]
@@ -140,6 +176,76 @@ function Get-LogTail {
     catch {
         return ""
     }
+}
+
+function Get-ProcessCommandLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$ProcessId
+    )
+
+    try {
+        $ProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+        if ($null -eq $ProcessInfo -or $null -eq $ProcessInfo.CommandLine) {
+            return ""
+        }
+        return [string]$ProcessInfo.CommandLine
+    }
+    catch {
+        return ""
+    }
+}
+
+function Stop-StaleDashboardBackend {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoDir,
+        [Parameter(Mandatory = $true)]
+        [string[]]$BackendArgs
+    )
+
+    $Binding = Resolve-BackendBinding -Values $BackendArgs
+    if (-not $Binding.IsLocal) {
+        return
+    }
+
+    $Port = [int]$Binding.Port
+    $ExistingPids = @()
+    if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+        $ExistingPids = @(
+            Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique
+        )
+    }
+    if ($null -eq $ExistingPids -or $ExistingPids.Count -eq 0) {
+        return
+    }
+
+    foreach ($Pid in @($ExistingPids | Where-Object { $_ -gt 0 })) {
+        $CommandLine = Get-ProcessCommandLine -ProcessId ([int]$Pid)
+        $IsDashboardBackend = $CommandLine -like "*apps.dashboard_backend_app*" -or $CommandLine -like "*dashboard_backend_app*" -or $CommandLine -like "*$RepoDir*isaac-aura*"
+        if (-not $IsDashboardBackend) {
+            throw "Port $Port is already in use by pid=$Pid. Refusing to stop a non-dashboard process."
+        }
+        Write-Host "[AURA_DASHBOARD] stopping stale dashboard backend pid=$Pid on port $Port"
+        Stop-Process -Id ([int]$Pid) -Force -ErrorAction Stop
+    }
+
+    $Deadline = (Get-Date).AddSeconds(10)
+    do {
+        $StillListening = $false
+        if (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue) {
+            $StillListening = @(
+                Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+            ).Count -gt 0
+        }
+        if (-not $StillListening) {
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $Deadline)
+
+    throw "A stale dashboard backend listener on port $Port did not exit in time."
 }
 
 function Invoke-NativeCommand {
@@ -254,6 +360,7 @@ $BackendStderrLog = Join-Path $LogDir "backend.stderr.log"
 
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Remove-Item -Path $BackendStdoutLog, $BackendStderrLog -Force -ErrorAction SilentlyContinue
+Stop-StaleDashboardBackend -RepoDir $RepoDir -BackendArgs $args
 
 $BackendCommand = @"
 `$ErrorActionPreference = 'Stop'
