@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import replace
 import threading
 import time
 import traceback
@@ -23,6 +22,8 @@ from ipc.messages import (
     TaskRequest,
 )
 from ipc.zmq_bus import ZmqBus
+from schemas.events import FrameEvent, WorkerMetadata
+from server.main_control_server import MainControlServer
 
 from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
 from .planning_session import PlanningSession, TrajectoryUpdate
@@ -77,6 +78,7 @@ class AuraRuntimeCommandSource:
         self._last_viewer_overlay: dict[str, object] = {}
         self._last_sensor_meta: dict[str, object] = {}
         self._last_runtime_snapshot_frame = -1
+        self._server: MainControlServer | None = None
 
     @property
     def supervisor(self) -> Supervisor:
@@ -92,8 +94,10 @@ class AuraRuntimeCommandSource:
         self._controller = controller
         for _ in range(max(int(self.args.startup_updates), 0)):
             simulation_app.update()
-        self._executor.initialize(simulation_app, stage)
         self._ensure_runtime_bridge()
+        self._ensure_control_server()
+        assert self._server is not None
+        self._server.initialize(simulation_app, stage)
         self._bootstrap_mode()
         self._publish_detector_capability()
         self._publish_notice(
@@ -125,9 +129,10 @@ class AuraRuntimeCommandSource:
         robot_quat = np.asarray(base_state.quat_wxyz, dtype=np.float32)
         robot_yaw = float(quat_wxyz_to_yaw(robot_quat))
         self._last_robot_pose_xyz = robot_pose
-        self._drain_external_runtime_requests()
+        runtime_events = self._drain_external_runtime_requests()
 
         observation = self.planning_session.capture_observation(frame_idx)
+        batch = None
         if observation is not None:
             planner_overlay_state: dict[str, object] = {}
             planner_overlay_getter = getattr(self.planning_session, "viewer_overlay_state", None)
@@ -161,36 +166,50 @@ class AuraRuntimeCommandSource:
                 camera_intrinsic=observation.intrinsic,
                 capture_report=dict(observation.sensor_meta),
             )
-            enriched = self.supervisor.process_frame(batch, publish=self._viewer_publish)
-            self._last_frame_header = enriched.frame_header
-            self._last_capture_report = dict(enriched.capture_report)
-            self._last_sensor_meta = dict(observation.sensor_meta)
-            overlay = enriched.frame_header.metadata.get("viewer_overlay", {})
-            self._last_viewer_overlay = dict(overlay) if isinstance(overlay, dict) else {}
-            active_memory_instruction = self.planning_session.active_memory_instruction()
-            if active_memory_instruction != "":
-                memory_context = self.supervisor.memory_service.build_memory_context(
-                    instruction=active_memory_instruction,
-                    current_pose=tuple(float(v) for v in robot_pose[:3]),
-                )
-                observation = replace(observation, memory_context=memory_context)
-
-        command = self._resolve_action_command(robot_pose=robot_pose)
-        execution = self._executor.step(
-            frame_idx=frame_idx,
+        frame_event = FrameEvent(
+            metadata=WorkerMetadata(
+                task_id=self.supervisor.memory_service.scratchpad.task_id,
+                frame_id=int(frame_idx),
+                timestamp_ns=time.time_ns(),
+                source="aura_runtime",
+                timeout_ms=int(max(float(getattr(self.args, "timeout_sec", 5.0)) * 1000.0, 0.0)),
+            ),
+            frame_id=int(frame_idx),
+            timestamp_ns=time.time_ns(),
+            source="aura_runtime",
+            robot_pose_xyz=robot_pose,
+            robot_yaw_rad=float(robot_yaw),
+            sim_time_s=float(time.time()),
             observation=observation,
-            action_command=command,
+            batch=batch,
+            sensor_meta={} if observation is None else dict(observation.sensor_meta),
+            planner_overlay={} if observation is None else dict(batch.frame_header.metadata.get("planner_overlay", {})),
+            publish_observation=bool(self._viewer_publish),
+        )
+        self._ensure_control_server()
+        assert self._server is not None
+        incoming_status = self._pending_status
+        tick_result = self._server.tick(
+            frame_event=frame_event,
+            task_events=runtime_events,
+            runtime_status=incoming_status,
             robot_pos_world=np.asarray(base_state.position_w, dtype=np.float32),
             robot_lin_vel_world=np.asarray(base_state.lin_vel_w, dtype=np.float32),
             robot_ang_vel_world=np.asarray(base_state.ang_vel_w, dtype=np.float32),
             robot_yaw=robot_yaw,
             robot_quat_wxyz=robot_quat,
         )
-        update = execution.trajectory_update
-        evaluation = execution.evaluation
-        self._command = execution.command_vector
-        self._pending_status = execution.status
-        self._sync_planner_scratchpad(update)
+        for notice in tick_result.notices:
+            self.supervisor.bridge.publish_notice(notice)
+        update = tick_result.trajectory_update
+        evaluation = tick_result.evaluation
+        self._command = tick_result.command_vector.copy()
+        self._pending_status = tick_result.status
+        self._active_command = tick_result.action_command
+        self._last_frame_header = tick_result.frame_header
+        self._last_capture_report = dict(tick_result.capture_report)
+        self._last_sensor_meta = dict(tick_result.sensor_meta)
+        self._last_viewer_overlay = dict(tick_result.viewer_overlay)
         if self._pending_status is not None and self._runtime_io is not None:
             self.supervisor.bridge.publish_status(self._pending_status)
         self._publish_runtime_snapshot(frame_idx, update=update, evaluation=evaluation)
@@ -210,7 +229,7 @@ class AuraRuntimeCommandSource:
         if self._mode == "interactive" and update.interactive_phase == "roaming":
             log_interval = max(int(self.args.interactive_idle_log_interval), 1)
         if frame_idx % log_interval == 0:
-            self._log_step(frame_idx, update, command, evaluation)
+            self._log_step(frame_idx, update, tick_result.action_command, evaluation)
 
     def command(self) -> np.ndarray:
         return self._command.copy()
@@ -218,12 +237,19 @@ class AuraRuntimeCommandSource:
     def shutdown(self) -> None:
         self._interactive_running = False
         self._publish_notice(level="info", notice="aura runtime shutdown", details={"reason": self.shutdown_reason})
-        self._executor.shutdown()
+        if getattr(self, "_server", None) is not None:
+            self._server.shutdown()
+        else:
+            self._executor.shutdown()
         if self._runtime_io is not None:
             self._runtime_io.close(unlink_shm=True)
             self._runtime_io = None
 
     def _bootstrap_mode(self) -> None:
+        if getattr(self, "_server", None) is not None:
+            for notice in self._server.bootstrap():
+                self.supervisor.bridge.publish_notice(notice)
+            return
         if self._mode == "pointgoal":
             goal_x = float(self.args.goal_x if self.args.goal_x is not None else 0.0)
             goal_y = float(self.args.goal_y if self.args.goal_y is not None else 0.0)
@@ -406,6 +432,16 @@ class AuraRuntimeCommandSource:
             f"viewer_publish={self._viewer_publish}"
         )
 
+    def _ensure_control_server(self) -> None:
+        if self._server is not None:
+            return
+        self._server = MainControlServer(
+            self.args,
+            supervisor=self.supervisor,
+            planning_session=self.planning_session,
+            executor=self._executor,
+        )
+
     def _log_prefix(self) -> str:
         if self._mode == "pointgoal":
             return "[G1_POINTGOAL]"
@@ -427,6 +463,14 @@ class AuraRuntimeCommandSource:
         )
 
     def _submit_interactive_instruction(self, text: str, *, source: str, task_id: str = "") -> int:
+        if getattr(self, "_server", None) is not None:
+            command_id, notice = self._server.submit_interactive_instruction(
+                text,
+                source=source,
+                task_id=str(task_id),
+            )
+            self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
+            return int(command_id)
         if self._mode != "interactive":
             raise RuntimeError("interactive instruction requires planner-mode=interactive")
         instruction = str(text).strip()
@@ -455,6 +499,11 @@ class AuraRuntimeCommandSource:
         return command_id
 
     def _cancel_interactive_task(self, *, source: str) -> bool:
+        if getattr(self, "_server", None) is not None:
+            cancelled, notice = self._server.cancel_interactive_task(source=source)
+            if notice is not None:
+                self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
+            return bool(cancelled)
         cancelled = bool(self.planning_session.cancel_interactive_task())
         if cancelled:
             self.supervisor.memory_service.clear_planner_task(
@@ -468,13 +517,13 @@ class AuraRuntimeCommandSource:
             )
         return cancelled
 
-    def _drain_external_runtime_requests(self) -> None:
+    def _drain_external_runtime_requests(self) -> list[object]:
         if self._runtime_io is None:
-            return
-        for request in self.supervisor.bridge.drain_task_requests():
-            self._handle_task_request(request)
-        for request in self.supervisor.bridge.drain_runtime_controls():
-            self._handle_runtime_control(request)
+            return []
+        requests: list[object] = []
+        requests.extend(self.supervisor.bridge.drain_task_requests())
+        requests.extend(self.supervisor.bridge.drain_runtime_controls())
+        return requests
 
     def _handle_task_request(self, request: TaskRequest) -> None:
         instruction = str(request.command_text).strip()
@@ -681,6 +730,11 @@ class AuraRuntimeCommandSource:
                 self._mode == "interactive" and str(update.interactive_phase or "") == "task_active" and str(update.interactive_instruction).strip() != ""
             ),
         }
+        if getattr(self, "_server", None) is not None:
+            snapshot = self._server.snapshot()
+            memory["memoryAwareTaskActive"] = bool(
+                snapshot.current_task.mode == "interactive" and snapshot.current_task.state == "active"
+            )
         return {
             "modes": modes,
             "planner": planner,

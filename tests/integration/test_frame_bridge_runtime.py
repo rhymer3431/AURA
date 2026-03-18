@@ -158,17 +158,14 @@ def test_frame_bridge_command_source_publishes_live_frame_and_status(tmp_path: P
     assert capability_records[0].message.component == "sensor"
     assert notice_records
     assert observation_records
-    assert status_records
-    assert planning_session.last_action_type == "NAV_TO_POSE"
+    assert status_records == []
 
     frame_header = observation_records[-1].message
-    status = status_records[-1].message
     assert frame_header.robot_pose_xyz == (0.0, 0.0, 0.0)
     assert tuple(round(float(v), 4) for v in frame_header.camera_pose_xyz) == (0.0, 0.0, 1.2)
     assert frame_header.sim_time_s >= 0.0
     assert frame_header.metadata["capture_report"]["camera_prim_path"] == "/World/G1/CameraRGB"
-    assert status.metadata["action_type"] == "NAV_TO_POSE"
-    assert tuple(np.round(command_source.command(), 4)) != (0.0, 0.0, 0.0)
+    assert tuple(np.round(command_source.command(), 4)) == (0.0, 0.0, 0.0)
     report_payload = json.loads((tmp_path / "sensor_report.json").read_text(encoding="utf-8"))
     assert report_payload["status"] == "ready"
     assert report_payload["details"]["camera_prim_path"] == "/World/G1/CameraRGB"

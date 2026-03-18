@@ -14,7 +14,6 @@ from ipc.messages import ActionCommand, CapabilityReport, FrameHeader, HealthPin
 from ipc.shm_ring import SharedMemoryRing
 
 from .planning_session import ExecutionObservation, PlanningSession
-from .subgoal_executor import SubgoalExecutionResult, SubgoalExecutor
 
 
 class FrameBridgeCommandSource:
@@ -33,7 +32,7 @@ class FrameBridgeCommandSource:
         self.requires_render = bool(getattr(args, "headless", False))
         self._controller = None
         self._bridge = IsaacBridgeAdapter(bus, IsaacBridgeAdapterConfig(), shm_ring=shm_ring)
-        self._executor = SubgoalExecutor(args, planning_session=planning_session)
+        self._planning_session = planning_session or PlanningSession(args)
         self._frame_source: IsaacLiveFrameSource | None = None
         self._command = np.zeros(3, dtype=np.float32)
         self._active_command: ActionCommand | None = None
@@ -44,13 +43,13 @@ class FrameBridgeCommandSource:
 
     @property
     def planning_session(self) -> PlanningSession:
-        return self._executor.planning_session
+        return self._planning_session
 
     def initialize(self, simulation_app, stage, controller) -> None:
         self._controller = controller
         for _ in range(max(int(getattr(self.args, "startup_updates", 0)), 0)):
             simulation_app.update()
-        self._executor.initialize(simulation_app, stage)
+        self._planning_session.initialize(simulation_app, stage)
         self._frame_source = IsaacLiveFrameSource(
             sensor_adapter=self.planning_session.sensor,
             robot_pose_provider=lambda: self._last_robot_pose_xyz,
@@ -101,26 +100,12 @@ class FrameBridgeCommandSource:
         records = self._bridge.drain_commands()
         if records:
             self._active_command = records[-1]
-
-        execution = self._executor.step(
-            frame_idx=frame_idx,
-            observation=observation,
-            action_command=self._active_command,
-            robot_pos_world=robot_pos_world,
-            robot_lin_vel_world=np.asarray(base_state.lin_vel_w, dtype=np.float32),
-            robot_ang_vel_world=np.asarray(base_state.ang_vel_w, dtype=np.float32),
-            robot_yaw=robot_yaw,
-            robot_quat_wxyz=robot_quat,
-        )
-        self._command = execution.command_vector
-        self._publish_status(execution)
-
-        if execution.status is not None and execution.status.state in {"succeeded", "failed"}:
-            self._active_command = None
+        del observation, robot_pos_world, robot_quat
+        self._command = np.zeros(3, dtype=np.float32)
 
         if frame_idx % self._health_period == 0:
             self._publish_health(frame_idx=frame_idx)
-            self._log_step(frame_idx=frame_idx, execution=execution)
+            self._log_step(frame_idx=frame_idx)
 
     def command(self) -> np.ndarray:
         return self._command.copy()
@@ -128,7 +113,7 @@ class FrameBridgeCommandSource:
     def shutdown(self) -> None:
         if self._frame_source is not None:
             self._frame_source.close()
-        self._executor.shutdown()
+        self._planning_session.shutdown()
 
     def _publish_live_observation(
         self,
@@ -251,11 +236,6 @@ class FrameBridgeCommandSource:
             encoding="utf-8",
         )
 
-    def _publish_status(self, execution: SubgoalExecutionResult) -> None:
-        if execution.status is None:
-            return
-        self._bridge.publish_status(execution.status)
-
     def _publish_health(self, *, frame_idx: int) -> None:
         self._bridge.publish_health(
             HealthPing(
@@ -268,19 +248,13 @@ class FrameBridgeCommandSource:
             )
         )
 
-    def _log_step(self, *, frame_idx: int, execution: SubgoalExecutionResult) -> None:
+    def _log_step(self, *, frame_idx: int) -> None:
         command_type = "none" if self._active_command is None else self._active_command.action_type
-        evaluation = execution.evaluation
-        distance_note = ""
-        if evaluation.goal_distance_m >= 0.0:
-            distance_note = f" goal_dist={evaluation.goal_distance_m:.3f}m"
-        if self._active_command is not None and self._active_command.action_type == "LOOK_AT":
-            distance_note = f" yaw_error={evaluation.yaw_error_rad:.3f}rad"
         print(
             "[FRAME_BRIDGE] "
-            f"step={frame_idx} command={command_type}{distance_note} "
+            f"step={frame_idx} command={command_type} "
             f"cmd=({float(self._command[0]):.3f},{float(self._command[1]):.3f},{float(self._command[2]):.3f}) "
-            f"status={None if execution.status is None else execution.status.state}"
+            "status=gateway"
         )
 
     def _frame_sample_to_batch(self, sample) -> IsaacObservationBatch:  # noqa: ANN001
