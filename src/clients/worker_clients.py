@@ -5,7 +5,7 @@ from typing import Any, Protocol
 import numpy as np
 
 from ipc.messages import ActionCommand, ActionStatus
-from runtime.planning_session import ExecutionObservation, PlanningSession
+from runtime.planning_session import PlanningSession
 from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor
 from schemas.workers import (
@@ -176,20 +176,6 @@ class SupervisorTaskCommandClient:
             action_status=action_status,
             publish=publish,
         )
-
-
-class PlanningSessionTransportClient:
-    def __init__(self, planning_session: PlanningSession) -> None:
-        self._planning_session = planning_session
-
-    def ensure_navdp_service_ready(self, *, context: str) -> None:
-        self._planning_session.ensure_navdp_service_ready(context=context)
-
-    def ensure_dual_service_ready(self, *, context: str) -> None:
-        self._planning_session.ensure_dual_service_ready(context=context)
-
-    def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
-        return self._planning_session.capture_observation(frame_id, env=env)
 
 
 class PlanningSessionNavClient:
