@@ -82,6 +82,8 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
     snapshot = manager.snapshot()
 
     assert [spec.name for spec in created_specs] == ["navdp", "system2", "dual", "runtime"]
+    dual_spec = next(spec for spec in created_specs if spec.name == "dual")
+    assert dual_spec.script_path.name == "run_vlm_dual_server.ps1"
     assert created_specs[-1].args == (
         "--planner-mode",
         "interactive",

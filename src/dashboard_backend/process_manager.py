@@ -171,7 +171,7 @@ class ProcessManager:
                     ),
                     ProcessSpec(
                         name="dual",
-                        script_path=scripts_dir / "run_dual_server.ps1",
+                        script_path=scripts_dir / "run_vlm_dual_server.ps1",
                         args=(),
                         health_url=f"{dual_base_url}/health",
                         debug_url=f"{dual_base_url}/dual_debug_state",
