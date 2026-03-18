@@ -105,6 +105,7 @@ class SnapshotAdapter:
         services: dict[str, object],
         session_state: dict[str, object],
         transport_state: dict[str, object],
+        architecture: dict[str, object],
         recent_logs: list[dict[str, object]],
         last_status: dict[str, object] | None = None,
         detector_capability: dict[str, object] | None = None,
@@ -133,6 +134,7 @@ class SnapshotAdapter:
             "perception": perception,
             "memory": dict(legacy["memory"]),
             "services": dict(services),
+            "architecture": dict(architecture),
             "transport": transport,
             "logs": list(recent_logs),
         }

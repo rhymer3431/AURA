@@ -126,8 +126,8 @@ export function dashboardReducer(model: StateModel, action: Action): StateModel 
     return { ...model, error: action.payload };
   }
   const timestamp = Math.round((action.payload.timestamp ?? Date.now() / 1000) as number);
-  const navdpLatency = Number((action.payload.services.navdp?.latencyMs ?? NaN) || NaN);
-  const dualLatency = Number((action.payload.services.dual?.latencyMs ?? NaN) || NaN);
+  const navLatency = Number((action.payload.architecture.modules.nav?.latencyMs ?? NaN) || NaN);
+  const s2Latency = Number((action.payload.architecture.modules.s2?.latencyMs ?? NaN) || NaN);
   const stale = Number((action.payload.runtime.staleSec ?? NaN) || NaN);
   const goalDistance = Number((action.payload.runtime.goalDistanceM ?? NaN) || NaN);
   return {
@@ -137,8 +137,8 @@ export function dashboardReducer(model: StateModel, action: Action): StateModel 
     history: {
       stale: appendSeries(model.history.stale, stale, timestamp),
       goalDistance: appendSeries(model.history.goalDistance, goalDistance, timestamp),
-      navdpLatency: appendSeries(model.history.navdpLatency, navdpLatency, timestamp),
-      dualLatency: appendSeries(model.history.dualLatency, dualLatency, timestamp),
+      navLatency: appendSeries(model.history.navLatency, navLatency, timestamp),
+      s2Latency: appendSeries(model.history.s2Latency, s2Latency, timestamp),
     },
   };
 }
@@ -147,7 +147,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [model, dispatch] = useReducer(dashboardReducer, {
     bootstrap: null,
     state: null,
-    history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
+    history: { stale: [], goalDistance: [], navLatency: [], s2Latency: [] },
     error: "",
   });
   const [form, setFormState] = useState<SessionForm>(DEFAULT_FORM);

@@ -15,6 +15,9 @@ import { useDashboard } from "../state";
 import { requestJson } from "../network";
 import type { LogRecord } from "../types";
 import {
+  architectureModule,
+  architectureNode,
+  coreNode,
   asRecord,
   booleanValue,
   formatMs,
@@ -81,7 +84,7 @@ export function ProcessesWidget() {
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <SectionHeader icon={Box} title="프로세스 구성" />
+      <SectionHeader icon={Box} title="Implementation Diagnostics" />
       <div className="space-y-2.5">
         {processes.map((process) => (
           <div
@@ -116,10 +119,14 @@ export function ProcessesWidget() {
 export function SensorsWidget() {
   const { state } = useDashboard();
   const sensors = asRecord(state?.sensors);
+  const gateway = architectureNode(state, "gateway");
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <SectionHeader icon={MonitorSmartphone} title="센서 입력 상태" />
+      <div className="flex items-center justify-between mb-3">
+        <SectionHeader icon={MonitorSmartphone} title="Robot Gateway" />
+        <Chip color={toneForStatus(gateway.status)}>{statusLabel(gateway.status)}</Chip>
+      </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
           { label: "RGB", ok: booleanValue(sensors.rgbAvailable) },
@@ -133,6 +140,7 @@ export function SensorsWidget() {
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
+        <div className="flex justify-between items-center"><span className="text-black/50">Gateway</span><span className="text-black/70 truncate ml-1 bg-black/[0.03] px-1.5 py-0.5 rounded">{gateway.summary || "idle"}</span></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Frame Freshness</span><span className="text-emerald-600 font-medium">{formatMs(state?.transport.frameAgeMs, "n/a")}</span></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Frame Source</span><span className="text-black/70 truncate ml-1 bg-black/[0.03] px-1.5 py-0.5 rounded">{stringValue(sensors.source, "n/a")}</span></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Frame ID</span><span className="text-black/70">{String(sensors.frameId ?? "n/a")}</span></div>
@@ -145,12 +153,16 @@ export function PerceptionWidget() {
   const { state } = useDashboard();
   const perception = asRecord(state?.perception);
   const capability = asRecord(perception.detectorCapability);
+  const module = architectureModule(state, "perception");
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <SectionHeader icon={Scan} title="Perception / Inference" />
+      <div className="flex items-center justify-between mb-3">
+        <SectionHeader icon={Scan} title="Perception Module" />
+        <Chip color={toneForStatus(module.status)}>{statusLabel(module.status)}</Chip>
+      </div>
       <div className="flex items-center justify-between text-[11px] mb-3">
-        <span className="text-black/50">Detector Backend</span>
+        <span className="text-black/50">{module.summary || "Detector Backend"}</span>
         <Chip color={booleanValue(perception.detectorReady) ? "green" : "amber"}>
           {stringValue(perception.detectorBackend, stringValue(capability.backend_name, "unknown"))}
         </Chip>
@@ -169,6 +181,7 @@ export function PerceptionWidget() {
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
+        <div className="flex justify-between items-center"><span className="text-black/50">Module Detail</span><span className="text-black/70 bg-black/[0.03] px-1.5 py-0.5 rounded">{module.detail || "n/a"}</span></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Selected Reason</span><span className="text-black/70 bg-black/[0.03] px-1.5 py-0.5 rounded">{stringValue(perception.detectorSelectedReason, "n/a")}</span></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Capability Status</span><Chip color={stringValue(capability.status) === "ready" ? "green" : "amber"}>{stringValue(capability.status, "unknown")}</Chip></div>
       </div>
@@ -180,11 +193,16 @@ export function MemoryWidget() {
   const { state } = useDashboard();
   const memory = asRecord(state?.memory);
   const scratchpad = asRecord(memory.scratchpad);
+  const module = architectureModule(state, "memory");
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6 h-full flex flex-col">
-      <SectionHeader icon={Database} title="Memory 상태" />
+      <div className="flex items-center justify-between mb-3">
+        <SectionHeader icon={Database} title="Memory Module" />
+        <Chip color={toneForStatus(module.status)}>{statusLabel(module.status)}</Chip>
+      </div>
       <div className="space-y-2 text-[11px] mb-3">
+        <div className="flex justify-between items-center"><span className="text-black/50">Module Summary</span><Chip color={toneForStatus(module.status)}>{module.summary || "idle"}</Chip></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Memory-Aware</span><Chip color={booleanValue(memory.memoryAwareTaskActive) ? "blue" : "slate"}>{booleanValue(memory.memoryAwareTaskActive) ? "task_active" : "idle"}</Chip></div>
         <div className="flex justify-between items-center"><span className="text-black/50">Scratchpad</span><Chip color={stringValue(scratchpad.taskState) === "active" ? "green" : "amber"}>{stringValue(scratchpad.taskState, "idle")}</Chip></div>
       </div>
@@ -213,17 +231,79 @@ export function MemoryWidget() {
   );
 }
 
+export function MainControlServerWidget() {
+  const { state } = useDashboard();
+  const server = architectureNode(state, "mainControlServer");
+  const coreEntries = [
+    coreNode(state, "worldStateStore"),
+    coreNode(state, "decisionEngine"),
+    coreNode(state, "plannerCoordinator"),
+    coreNode(state, "commandResolver"),
+    coreNode(state, "safetySupervisor"),
+  ];
+  const metrics = asRecord(server.metrics);
+
+  return (
+    <div className="bg-[#F7F9FB] rounded-3xl p-6">
+      <div className="flex items-center justify-between mb-4">
+        <SectionHeader icon={Layers} title="Main Control Server" />
+        <Chip color={toneForStatus(server.status)}>{statusLabel(server.status)}</Chip>
+      </div>
+      <div className="bg-white rounded-2xl px-4 py-3 shadow-sm mb-4">
+        <div className="text-[12px] font-medium text-black/80">{server.summary || "Ready"}</div>
+        <div className="text-[11px] text-black/45 mt-1">{server.detail || "No active runtime task"}</div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 mb-4 text-[11px]">
+        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
+          <div className="text-black/45 mb-1">Mode</div>
+          <div className="text-black font-medium">{stringValue(metrics.mode, "idle")}</div>
+        </div>
+        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
+          <div className="text-black/45 mb-1">Task State</div>
+          <div className="text-black font-medium">{stringValue(metrics.taskState, "idle")}</div>
+        </div>
+        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
+          <div className="text-black/45 mb-1">Control Mode</div>
+          <div className="text-black font-medium">{stringValue(metrics.plannerControlMode, "idle")}</div>
+        </div>
+        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
+          <div className="text-black/45 mb-1">Recovery</div>
+          <div className="text-black font-medium">{stringValue(metrics.recoveryState, "NORMAL")}</div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {coreEntries.map((node) => (
+          <div key={node.name} className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-[12px] font-medium text-black/80">{node.name}</div>
+                <div className="text-[11px] text-black/45 mt-1 truncate">{node.summary || node.detail || "idle"}</div>
+              </div>
+              <Chip color={toneForStatus(node.status)}>{statusLabel(node.status)}</Chip>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function IpcOrchestrationWidget() {
   const { state } = useDashboard();
   const transport = asRecord(state?.transport);
   const runtime = asRecord(state?.runtime);
   const busHealth = asRecord(transport.busHealth);
   const lastStatus = asRecord(runtime.lastStatusEvent);
+  const gateway = architectureNode(state, "gateway");
+  const telemetry = architectureModule(state, "telemetry");
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6 flex flex-col gap-4">
       <div>
-        <SectionHeader icon={Eye} title="IPC / Viewer Transport" />
+        <div className="flex items-center justify-between mb-3">
+          <SectionHeader icon={Eye} title="Gateway / Telemetry" />
+          <Chip color={toneForStatus(telemetry.status)}>{statusLabel(telemetry.status)}</Chip>
+        </div>
         <div className="space-y-2 text-[11px]">
           <div className="bg-black/[0.02] border border-black/[0.04] rounded-lg px-2.5 py-2 font-mono text-[10px] text-black/60">
             <div>control: {stringValue(busHealth.control_endpoint, "tcp://127.0.0.1:5580")}</div>
@@ -238,18 +318,22 @@ export function IpcOrchestrationWidget() {
       <div className="h-px bg-black/5 w-full"></div>
 
       <div>
-        <SectionHeader icon={Layers} title="Orchestration" />
+        <SectionHeader icon={Layers} title="Gateway State Mirror" />
         <div className="bg-white rounded-2xl p-4 shadow-sm text-[12px]">
           <div className="flex justify-between mb-2">
-            <span className="text-black/50">planner_control_mode</span>
-            <span className="text-black/80 font-medium">{stringValue(runtime.plannerControlMode, "idle")}</span>
+            <span className="text-black/50">gateway</span>
+            <span className="text-black/80 font-medium">{gateway.summary || "idle"}</span>
+          </div>
+          <div className="flex justify-between mb-2">
+            <span className="text-black/50">telemetry</span>
+            <span className="text-black/70">{telemetry.summary || "inactive"}</span>
           </div>
           <div className="flex justify-between mb-2">
             <span className="text-black/50">last status</span>
             <span className="text-black/70">{stringValue(lastStatus.state, "n/a")}</span>
           </div>
           <div className="text-[10px] text-black/30 mt-2 bg-white px-1.5 py-1 rounded border border-black/5 text-center">
-            {stringValue(lastStatus.reason, "viewer/state bridge active")}
+            {stringValue(lastStatus.reason, gateway.detail || telemetry.detail || "viewer/state bridge active")}
           </div>
         </div>
       </div>

@@ -10,6 +10,7 @@ import { ExternalServicesPanel } from "./components/ExternalServicesPanel";
 import { RobotViewer } from "./components/RobotViewer";
 import { ControlStrip } from "./components/ControlStrip";
 import {
+  MainControlServerWidget,
   ProcessesWidget,
   SensorsWidget,
   PerceptionWidget,
@@ -83,8 +84,8 @@ export default function App() {
               <RobotViewer />
             </div>
             <div className="xl:col-span-4 grid grid-cols-1 gap-6">
-              <ProcessesWidget />
               <SensorsWidget />
+              <MainControlServerWidget />
             </div>
           </div>
           <PipelineFlow />

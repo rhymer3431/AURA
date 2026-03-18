@@ -25,6 +25,32 @@ const mockDashboard = {
     sensors: {},
     perception: {},
     memory: {},
+    architecture: {
+      gateway: { name: "Robot Gateway", status: "ok", summary: "frames live", detail: "", required: true, metrics: {} },
+      mainControlServer: {
+        name: "Main Control Server",
+        status: "ok",
+        summary: "idle",
+        detail: "",
+        required: true,
+        metrics: {},
+        core: {
+          worldStateStore: { name: "World State Store", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+          decisionEngine: { name: "Decision Engine", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+          plannerCoordinator: { name: "Planner Coordinator", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+          commandResolver: { name: "Command Resolver", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+          safetySupervisor: { name: "Safety Supervisor", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        },
+      },
+      modules: {
+        perception: { name: "Perception", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        memory: { name: "Memory", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        s2: { name: "S2", status: "not_required", summary: "", detail: "", required: false, metrics: {} },
+        nav: { name: "Nav", status: "inactive", summary: "", detail: "", required: false, metrics: {} },
+        locomotion: { name: "Locomotion", status: "inactive", summary: "", detail: "", required: false, metrics: {} },
+        telemetry: { name: "Telemetry", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+      },
+    },
     services: {},
     transport: {},
     logs: [
@@ -32,7 +58,7 @@ const mockDashboard = {
       { source: "dual", stream: "stderr", level: "error", message: "timeout retry" },
     ],
   },
-  history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
+  history: { stale: [], goalDistance: [], navLatency: [], s2Latency: [] },
   form: {
     plannerMode: "interactive" as const,
     launchMode: "gui" as const,

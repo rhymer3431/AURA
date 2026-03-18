@@ -132,3 +132,7 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     assert state["runtime"]["interactiveInstruction"] == "dock"
     assert state["runtime"]["recoveryState"] == "REPLAN_PENDING"
     assert state["transport"]["viewerPublish"] is True
+    assert state["architecture"]["gateway"]["name"] == "Robot Gateway"
+    assert state["architecture"]["mainControlServer"]["metrics"]["recoveryState"] == "REPLAN_PENDING"
+    assert state["architecture"]["modules"]["s2"]["name"] == "S2"
+    assert "dual" not in state["architecture"]["modules"]

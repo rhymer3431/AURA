@@ -43,6 +43,39 @@ export type ServiceSnapshot = {
   debug?: Record<string, unknown>;
 };
 
+export type ArchitectureNode = {
+  name: string;
+  status: string;
+  summary: string;
+  detail: string;
+  required: boolean;
+  latencyMs?: number | null;
+  metrics: Record<string, unknown>;
+};
+
+export type MainControlServerNode = ArchitectureNode & {
+  core: {
+    worldStateStore: ArchitectureNode;
+    decisionEngine: ArchitectureNode;
+    plannerCoordinator: ArchitectureNode;
+    commandResolver: ArchitectureNode;
+    safetySupervisor: ArchitectureNode;
+  };
+};
+
+export type DashboardArchitecture = {
+  gateway: ArchitectureNode;
+  mainControlServer: MainControlServerNode;
+  modules: {
+    perception: ArchitectureNode;
+    memory: ArchitectureNode;
+    s2: ArchitectureNode;
+    nav: ArchitectureNode;
+    locomotion: ArchitectureNode;
+    telemetry: ArchitectureNode;
+  };
+};
+
 export type DashboardState = {
   timestamp?: number;
   session: {
@@ -71,6 +104,7 @@ export type DashboardState = {
   sensors: Record<string, unknown>;
   perception: Record<string, unknown>;
   memory: Record<string, unknown>;
+  architecture: DashboardArchitecture;
   services: {
     navdp?: ServiceSnapshot;
     dual?: ServiceSnapshot;
@@ -104,8 +138,8 @@ export type NumericSeries = Array<{ t: number; v: number }>;
 export type DashboardHistory = {
   stale: NumericSeries;
   goalDistance: NumericSeries;
-  navdpLatency: NumericSeries;
-  dualLatency: NumericSeries;
+  navLatency: NumericSeries;
+  s2Latency: NumericSeries;
 };
 
 export type DashboardContextValue = {

@@ -1,4 +1,4 @@
-import type { DashboardState, LogRecord, ProcessRecord, ServiceSnapshot } from "./types";
+import type { ArchitectureNode, DashboardState, LogRecord, ProcessRecord } from "./types";
 
 export function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -60,11 +60,53 @@ export function processByName(state: DashboardState | null, name: string): Proce
   return state.processes.find((item) => item.name === name) ?? null;
 }
 
-export function serviceSnapshot(state: DashboardState | null, name: "navdp" | "dual"): ServiceSnapshot {
+const EMPTY_NODE: ArchitectureNode = {
+  name: "",
+  status: "unknown",
+  summary: "",
+  detail: "",
+  required: false,
+  metrics: {},
+};
+
+export function architectureRoot(state: DashboardState | null): DashboardState["architecture"] | null {
   if (state === null) {
-    return { name, status: "unknown" };
+    return null;
   }
-  return state.services[name] ?? { name, status: "unknown" };
+  return state.architecture;
+}
+
+export function architectureNode(
+  state: DashboardState | null,
+  name: "gateway" | "mainControlServer",
+): ArchitectureNode {
+  const root = architectureRoot(state);
+  if (root === null) {
+    return EMPTY_NODE;
+  }
+  return root[name];
+}
+
+export function architectureModule(
+  state: DashboardState | null,
+  name: keyof DashboardState["architecture"]["modules"],
+): ArchitectureNode {
+  const root = architectureRoot(state);
+  if (root === null) {
+    return EMPTY_NODE;
+  }
+  return root.modules[name];
+}
+
+export function coreNode(
+  state: DashboardState | null,
+  name: keyof DashboardState["architecture"]["mainControlServer"]["core"],
+): ArchitectureNode {
+  const root = architectureRoot(state);
+  if (root === null) {
+    return EMPTY_NODE;
+  }
+  return root.mainControlServer.core[name];
 }
 
 export function recentLogs(state: DashboardState | null, limit = 60): LogRecord[] {

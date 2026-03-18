@@ -168,6 +168,39 @@ class _FakeStateAggregator:
             "sensors": {},
             "perception": {},
             "memory": {},
+            "architecture": {
+                "gateway": {"name": "Robot Gateway", "status": "ok", "summary": "frames live", "detail": "", "required": True, "metrics": {}},
+                "mainControlServer": {
+                    "name": "Main Control Server",
+                    "status": "ok",
+                    "summary": "task idle" if request is None else "task active",
+                    "detail": "",
+                    "required": True,
+                    "metrics": {"mode": "idle" if request is None else request.planner_mode},
+                    "core": {
+                        "worldStateStore": {"name": "World State Store", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
+                        "decisionEngine": {"name": "Decision Engine", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
+                        "plannerCoordinator": {"name": "Planner Coordinator", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
+                        "commandResolver": {"name": "Command Resolver", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
+                        "safetySupervisor": {"name": "Safety Supervisor", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
+                    },
+                },
+                "modules": {
+                    "perception": {"name": "Perception", "status": "ok", "summary": "0 detections", "detail": "", "required": True, "metrics": {}},
+                    "memory": {"name": "Memory", "status": "inactive", "summary": "No active memory task", "detail": "", "required": False, "metrics": {}},
+                    "s2": {
+                        "name": "S2",
+                        "status": "not_required" if request is None or request.planner_mode == "pointgoal" else "ok",
+                        "summary": "",
+                        "detail": "",
+                        "required": request is not None and request.planner_mode == "interactive",
+                        "metrics": {},
+                    },
+                    "nav": {"name": "Nav", "status": "ok" if request is not None else "inactive", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
+                    "locomotion": {"name": "Locomotion", "status": "ok" if request is not None else "inactive", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
+                    "telemetry": {"name": "Telemetry", "status": "ok", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
+                },
+            },
             "services": {
                 "navdp": {"name": "navdp", "status": "ok"},
                 "dual": {"name": "dual", "status": "not_required" if request is None or request.planner_mode == "pointgoal" else "ok"},
@@ -267,6 +300,9 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert events_response.headers["Access-Control-Allow-Origin"] == "http://tauri.localhost"
                 payload = json.loads(first_event.decode("utf-8").split("data:", 1)[1].strip())
                 assert payload["session"]["active"] is False
+                assert payload["architecture"]["gateway"]["name"] == "Robot Gateway"
+                assert payload["architecture"]["mainControlServer"]["name"] == "Main Control Server"
+                assert payload["architecture"]["modules"]["s2"]["name"] == "S2"
                 events_response.close()
 
                 response = await client.post(
@@ -295,6 +331,8 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert started["session"]["config"]["locomotionConfig"]["actionScale"] == 0.65
                 assert started["session"]["config"]["locomotionConfig"]["onnxDevice"] == "cuda"
                 assert started["session"]["config"]["locomotionConfig"]["cmdMaxVx"] == 0.8
+                assert started["architecture"]["modules"]["s2"]["status"] == "ok"
+                assert started["architecture"]["modules"]["nav"]["status"] == "ok"
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/runtime/task",

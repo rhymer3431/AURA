@@ -25,11 +25,37 @@ const mockDashboard = {
     sensors: {},
     perception: {},
     memory: {},
+    architecture: {
+      gateway: { name: "Robot Gateway", status: "ok", summary: "frames live", detail: "", required: true, metrics: {} },
+      mainControlServer: {
+        name: "Main Control Server",
+        status: "ok",
+        summary: "task idle",
+        detail: "",
+        required: true,
+        metrics: {},
+        core: {
+          worldStateStore: { name: "World State Store", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
+          decisionEngine: { name: "Decision Engine", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
+          plannerCoordinator: { name: "Planner Coordinator", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
+          commandResolver: { name: "Command Resolver", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
+          safetySupervisor: { name: "Safety Supervisor", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
+        },
+      },
+      modules: {
+        perception: { name: "Perception", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        memory: { name: "Memory", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        s2: { name: "S2", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        nav: { name: "Nav", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        locomotion: { name: "Locomotion", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+        telemetry: { name: "Telemetry", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+      },
+    },
     services: {},
     transport: {},
     logs: [],
   },
-  history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
+  history: { stale: [], goalDistance: [], navLatency: [], s2Latency: [] },
   form: {
     plannerMode: "interactive" as const,
     launchMode: "gui" as const,
@@ -90,6 +116,7 @@ vi.mock("./components/ControlStrip", () => ({
 }));
 
 vi.mock("./components/SystemStatusWidgets", () => ({
+  MainControlServerWidget: () => <div>MainControlServerWidget</div>,
   ProcessesWidget: () => <div>ProcessesWidget</div>,
   SensorsWidget: () => <div>SensorsWidget</div>,
   PerceptionWidget: () => <div>PerceptionWidget</div>,
@@ -116,7 +143,8 @@ describe("App navigation", () => {
 
     expect(screen.getByText("StatCards")).toBeInTheDocument();
     expect(screen.getByText("PipelineFlow")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Pipeline Overview" })).toBeInTheDocument();
+    expect(screen.getByText("MainControlServerWidget")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Runtime Overview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Planner & Control" }));
 

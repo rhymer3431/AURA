@@ -52,7 +52,7 @@ describe("dashboard state helpers", () => {
       {
         bootstrap: null,
         state: null,
-        history: { stale: [], goalDistance: [], navdpLatency: [], dualLatency: [] },
+        history: { stale: [], goalDistance: [], navLatency: [], s2Latency: [] },
         error: "",
       },
       {
@@ -65,6 +65,32 @@ describe("dashboard state helpers", () => {
           sensors: {},
           perception: {},
           memory: {},
+          architecture: {
+            gateway: { name: "Robot Gateway", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+            mainControlServer: {
+              name: "Main Control Server",
+              status: "ok",
+              summary: "",
+              detail: "",
+              required: true,
+              metrics: {},
+              core: {
+                worldStateStore: { name: "World State Store", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+                decisionEngine: { name: "Decision Engine", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+                plannerCoordinator: { name: "Planner Coordinator", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+                commandResolver: { name: "Command Resolver", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+                safetySupervisor: { name: "Safety Supervisor", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+              },
+            },
+            modules: {
+              perception: { name: "Perception", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+              memory: { name: "Memory", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+              s2: { name: "S2", status: "ok", summary: "", detail: "", required: true, latencyMs: 130, metrics: {} },
+              nav: { name: "Nav", status: "ok", summary: "", detail: "", required: true, latencyMs: 48, metrics: {} },
+              locomotion: { name: "Locomotion", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+              telemetry: { name: "Telemetry", status: "ok", summary: "", detail: "", required: true, metrics: {} },
+            },
+          },
           services: {
             navdp: { name: "navdp", status: "ok", latencyMs: 48 },
             dual: { name: "dual", status: "ok", latencyMs: 130 },
@@ -77,7 +103,7 @@ describe("dashboard state helpers", () => {
 
     expect(next.history.stale[next.history.stale.length - 1]).toEqual({ t: 100, v: 0.4 });
     expect(next.history.goalDistance[next.history.goalDistance.length - 1]).toEqual({ t: 100, v: 2.3 });
-    expect(next.history.navdpLatency[next.history.navdpLatency.length - 1]).toEqual({ t: 100, v: 48 });
-    expect(next.history.dualLatency[next.history.dualLatency.length - 1]).toEqual({ t: 100, v: 130 });
+    expect(next.history.navLatency[next.history.navLatency.length - 1]).toEqual({ t: 100, v: 48 });
+    expect(next.history.s2Latency[next.history.s2Latency.length - 1]).toEqual({ t: 100, v: 130 });
   });
 });

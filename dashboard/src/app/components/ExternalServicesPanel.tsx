@@ -1,8 +1,9 @@
 import { BarChart, Bar, ResponsiveContainer, Tooltip } from "recharts";
-import { Radio } from "lucide-react";
+import { Layers3, Radio } from "lucide-react";
 
 import { useDashboard } from "../state";
-import { asRecord, formatMs, processByName, serviceSnapshot, statusLabel, statusTone, stringValue } from "../selectors";
+import { architectureModule, architectureNode, asRecord, formatMs, statusLabel, statusTone, stringValue } from "../selectors";
+import type { ArchitectureNode } from "../types";
 
 function statusClasses(status: string) {
   if (statusTone(status) === "green") {
@@ -17,50 +18,66 @@ function statusClasses(status: string) {
   return "bg-slate-50 text-slate-600 border-slate-200";
 }
 
-function ServiceCard({
-  name,
-  url,
-  status,
-  avgLatency,
+function metricRows(node: ArchitectureNode) {
+  const metrics = asRecord(node.metrics);
+  return [
+    { label: "Status", value: statusLabel(node.status) },
+    { label: "Required", value: node.required ? "yes" : "no" },
+    { label: "Summary", value: node.summary || "idle" },
+    { label: "Detail", value: node.detail || "n/a" },
+    { label: "Latency", value: formatMs(node.latencyMs, "n/a") },
+    { label: "Signal", value: stringValue(metrics.recoveryState, stringValue(metrics.taskState, stringValue(metrics.activeCommandType, "n/a"))) },
+  ];
+}
+
+function ModuleCard({
+  node,
   latencyData,
   barColor,
-  meta,
 }: {
-  name: string;
-  url: string;
-  status: string;
-  avgLatency: string;
+  node: ArchitectureNode;
   latencyData: { t: number; v: number }[];
   barColor: string;
-  meta: Array<{ label: string; value: string }>;
 }) {
+  const metrics = metricRows(node);
+
   return (
     <div className="bg-white rounded-2xl p-4 flex-1 min-w-0">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
           <Radio className="size-3.5 text-black/30" />
-          <span className="text-[12px] font-medium text-black">{name}</span>
+          <span className="text-[12px] font-medium text-black">{node.name}</span>
         </div>
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${statusClasses(status)}`}>
-          <span className={`size-1.5 rounded-full ${statusTone(status) === "green" ? "bg-emerald-500" : statusTone(status) === "amber" ? "bg-amber-500" : statusTone(status) === "red" ? "bg-red-500" : "bg-slate-500"}`} />
-          {statusLabel(status)}
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${statusClasses(node.status)}`}>
+          <span
+            className={`size-1.5 rounded-full ${
+              statusTone(node.status) === "green"
+                ? "bg-emerald-500"
+                : statusTone(node.status) === "amber"
+                  ? "bg-amber-500"
+                  : statusTone(node.status) === "red"
+                    ? "bg-red-500"
+                    : "bg-slate-500"
+            }`}
+          />
+          {statusLabel(node.status)}
         </span>
       </div>
 
-      <div className="text-[10px] text-black/30 mb-2 truncate">{url}</div>
+      <div className="text-[10px] text-black/30 mb-2 truncate">{node.summary || "idle"}</div>
 
-      <div className="grid grid-cols-4 gap-1.5 text-[10px] mb-2">
-        {meta.map((item) => (
+      <div className="grid grid-cols-3 gap-1.5 text-[10px] mb-2">
+        {metrics.slice(0, 6).map((item) => (
           <div key={item.label} className="bg-black/[0.02] rounded-lg px-2 py-1.5">
             <div className="text-black/30">{item.label}</div>
-            <div className="text-black/80 font-medium">{item.value}</div>
+            <div className="text-black/80 font-medium truncate">{item.value}</div>
           </div>
         ))}
       </div>
 
       <div className="h-[32px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={latencyData.length > 0 ? latencyData : [{ t: 0, v: 0 }]}>
+        <ResponsiveContainer width="100%" height="100%" minWidth={120} minHeight={32}>
+          <BarChart data={latencyData.length > 0 ? latencyData : [{ t: 0, v: Number(node.latencyMs ?? 0) || 0 }]}>
             <Bar dataKey="v" fill={barColor} radius={[2, 2, 0, 0]} />
             <Tooltip
               contentStyle={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 8, fontSize: 10 }}
@@ -70,78 +87,42 @@ function ServiceCard({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-2 text-[10px] text-black/40">avg latency {avgLatency}</div>
+      <div className="mt-2 text-[10px] text-black/40">latency mirror {formatMs(node.latencyMs, "n/a")}</div>
     </div>
   );
 }
 
 export function ExternalServicesPanel() {
   const { history, state } = useDashboard();
-  const navdp = serviceSnapshot(state, "navdp");
-  const dual = serviceSnapshot(state, "dual");
-  const system2 = processByName(state, "system2");
-  const system2Info = asRecord(state?.services.system2);
+  const cards: Array<{ node: ArchitectureNode; color: string; latencyData: { t: number; v: number }[] }> = [
+    { node: architectureNode(state, "mainControlServer"), color: "#BFDDF6", latencyData: [] },
+    { node: architectureNode(state, "gateway"), color: "#A8C5DA", latencyData: [] },
+    { node: architectureModule(state, "s2"), color: "#C6C7F8", latencyData: history.s2Latency },
+    { node: architectureModule(state, "nav"), color: "#A7E6D7", latencyData: history.navLatency },
+    { node: architectureModule(state, "perception"), color: "#F8D6A3", latencyData: [] },
+    { node: architectureModule(state, "memory"), color: "#E8D1FF", latencyData: [] },
+    { node: architectureModule(state, "locomotion"), color: "#FFC9B8", latencyData: [] },
+    { node: architectureModule(state, "telemetry"), color: "#D4E7F7", latencyData: [] },
+  ];
 
   return (
     <div className="bg-[#F7F9FB] rounded-3xl p-6">
       <div className="flex items-center gap-2 mb-4">
-        <h3 className="text-[15px] font-semibold text-black">External Services</h3>
-      </div>
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <ServiceCard
-          name="NavDP Server"
-          url={stringValue(navdp.healthUrl, "http://127.0.0.1:8888/health")}
-          status={stringValue(navdp.status, "unknown")}
-          avgLatency={formatMs(navdp.latencyMs, "n/a")}
-          latencyData={history.navdpLatency}
-          barColor="#A8C5DA"
-          meta={[
-            { label: "Status", value: statusLabel(stringValue(navdp.status, "unknown")) },
-            { label: "Health", value: Object.keys(asRecord(navdp.health)).length > 0 ? "ok" : "n/a" },
-            { label: "Debug", value: Object.keys(asRecord(navdp.debug)).length > 0 ? "ready" : "n/a" },
-            { label: "Latency", value: formatMs(navdp.latencyMs, "n/a") },
-          ]}
-        />
-        <ServiceCard
-          name="Dual Server"
-          url={stringValue(dual.healthUrl, "http://127.0.0.1:8890/health")}
-          status={stringValue(dual.status, "inactive")}
-          avgLatency={formatMs(dual.latencyMs, "n/a")}
-          latencyData={history.dualLatency}
-          barColor="#C6C7F8"
-          meta={[
-            { label: "Status", value: statusLabel(stringValue(dual.status, "inactive")) },
-            { label: "Health", value: Object.keys(asRecord(dual.health)).length > 0 ? "ok" : "n/a" },
-            { label: "Debug", value: Object.keys(asRecord(dual.debug)).length > 0 ? "ready" : "n/a" },
-            { label: "Latency", value: formatMs(dual.latencyMs, "n/a") },
-          ]}
-        />
-        <div className="bg-white rounded-2xl p-4 flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-1.5">
-            <div className="flex items-center gap-1.5">
-              <Radio className="size-3.5 text-black/30" />
-              <span className="text-[12px] font-medium text-black">System2</span>
-            </div>
-            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${statusClasses(stringValue(system2?.state, "inactive"))}`}>
-              {statusLabel(stringValue(system2?.state, "inactive"))}
-            </span>
-          </div>
-          <div className="text-[10px] text-black/30 mb-3 truncate">{stringValue(system2?.healthUrl, "http://127.0.0.1:8080")}</div>
-          <div className="grid grid-cols-2 gap-2 text-[10px]">
-            <div className="bg-black/[0.02] rounded-lg px-2 py-2">
-              <div className="text-black/30">PID</div>
-              <div className="text-black/80 font-medium">{system2?.pid ?? "n/a"}</div>
-            </div>
-            <div className="bg-black/[0.02] rounded-lg px-2 py-2">
-              <div className="text-black/30">Required</div>
-              <div className="text-black/80 font-medium">{system2?.required ? "yes" : "no"}</div>
-            </div>
-            <div className="bg-black/[0.02] rounded-lg px-2 py-2 col-span-2">
-              <div className="text-black/30">Logs</div>
-              <div className="text-black/80 font-medium truncate">{stringValue(system2Info.stdoutLog, system2?.stdoutLog ?? "n/a")}</div>
-            </div>
-          </div>
+        <Layers3 className="size-4 text-black/40" />
+        <div>
+          <h3 className="text-[15px] font-semibold text-black">Module Health</h3>
+          <p className="text-[12px] text-black/50 mt-0.5">robot gateway와 main control server를 포함한 runtime modules 상태를 world state 기준으로 정렬해 보여줍니다.</p>
         </div>
+      </div>
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        {cards.map((card) => (
+          <ModuleCard
+            key={card.node.name}
+            node={card.node}
+            latencyData={card.latencyData}
+            barColor={card.color}
+          />
+        ))}
       </div>
     </div>
   );

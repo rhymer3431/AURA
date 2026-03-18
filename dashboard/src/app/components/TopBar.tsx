@@ -32,7 +32,7 @@ export function TopBar({ page }: { page: DashboardPage }) {
           {state?.session.active ? "session running" : "session idle"}
         </span>
         <span>
-          mode: <span className="text-black/80 font-medium">{state?.session.config?.plannerMode ?? "none"}</span>
+          runtime mode: <span className="text-black/80 font-medium">{state?.session.config?.plannerMode ?? "none"}</span>
         </span>
       </div>
     </div>

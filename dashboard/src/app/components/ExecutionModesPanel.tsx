@@ -60,21 +60,21 @@ export function ExecutionModesPanel() {
       <div className="flex items-center gap-2">
         <SlidersHorizontal className="size-4 text-black/40" />
         <div>
-          <h3 className="text-[15px] font-semibold text-black">Execution Modes</h3>
-          <p className="text-[12px] text-black/50 mt-0.5">draft launch options와 현재 실행 중인 세션 설정을 분리해서 보여줍니다.</p>
+          <h3 className="text-[15px] font-semibold text-black">Runtime Modes</h3>
+          <p className="text-[12px] text-black/50 mt-0.5">dashboard에서 정의한 runtime entry profile과 현재 활성 세션 설정을 분리해서 보여줍니다.</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <div className="text-[12px] font-semibold text-black/75 mb-4">Draft Session</div>
+          <div className="text-[12px] font-semibold text-black/75 mb-4">Draft Runtime Profile</div>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Planner Mode</div>
+              <div className="text-black/45 mb-1">Runtime Mode</div>
               <div className="font-medium text-black">{form.plannerMode}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Launch Mode</div>
+              <div className="text-black/45 mb-1">Gateway Launch</div>
               <div className="font-medium text-black">{form.launchMode}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
@@ -99,7 +99,7 @@ export function ExecutionModesPanel() {
 
         <div className="bg-white rounded-2xl p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <div className="text-[12px] font-semibold text-black/75">Active Session</div>
+            <div className="text-[12px] font-semibold text-black/75">Active Runtime Session</div>
             <span
               className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
                 state?.session.active
@@ -112,11 +112,11 @@ export function ExecutionModesPanel() {
           </div>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Planner Mode</div>
+              <div className="text-black/45 mb-1">Runtime Mode</div>
               <div className="font-medium text-black">{liveConfig?.plannerMode ?? "inactive"}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Launch Mode</div>
+              <div className="text-black/45 mb-1">Gateway Launch</div>
               <div className="font-medium text-black">{liveConfig?.launchMode ?? "inactive"}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
@@ -144,21 +144,21 @@ export function ExecutionModesPanel() {
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-[12px] font-medium text-black/75 mb-2">
             <Layers3 className="size-4 text-black/35" />
-            Planner Modes
+            Runtime Entry Modes
           </div>
           <div className="text-[12px] text-black/60 leading-6">{plannerModes.join(" / ")}</div>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-[12px] font-medium text-black/75 mb-2">
             <Eye className="size-4 text-black/35" />
-            Launch Modes
+            Gateway Launch Modes
           </div>
           <div className="text-[12px] text-black/60 leading-6">{launchModes.join(" / ")}</div>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-[12px] font-medium text-black/75 mb-2">
             <Crosshair className="size-4 text-black/35" />
-            Current Control
+            Active Control Surface
           </div>
           <div className="text-[12px] text-black/60 leading-6">
             {state?.session.active ? liveConfig?.plannerMode ?? "inactive" : "no active session"}

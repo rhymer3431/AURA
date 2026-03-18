@@ -1,45 +1,52 @@
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 import { useDashboard } from "../state";
-import { asRecord, formatMeters, formatMs, stringValue } from "../selectors";
+import { architectureModule, architectureNode, asRecord, formatMeters, formatMs, statusLabel, stringValue } from "../selectors";
 
 export function StatCards() {
   const { state } = useDashboard();
   const runtime = asRecord(state?.runtime);
-  const perception = asRecord(state?.perception);
-  const navdp = asRecord(state?.services.navdp);
-  const activeProcesses = state?.processes.filter((item) => item.state === "running").length ?? 0;
-  const requiredProcesses = state?.processes.filter((item) => item.required).length ?? 0;
-  const plannerPhase = stringValue(runtime.interactivePhase || runtime.plannerControlMode, "idle");
-  const detectionCount = Number(perception.detectionCount ?? 0);
+  const gateway = architectureNode(state, "gateway");
+  const controlServer = architectureNode(state, "mainControlServer");
+  const modules = [
+    architectureModule(state, "perception"),
+    architectureModule(state, "memory"),
+    architectureModule(state, "s2"),
+    architectureModule(state, "nav"),
+    architectureModule(state, "locomotion"),
+    architectureModule(state, "telemetry"),
+  ];
+  const requiredModules = modules.filter((item) => item.required);
+  const healthyModules = requiredModules.filter((item) => item.status === "ok").length;
+  const recoveryState = stringValue(runtime.recoveryState, "NORMAL");
 
   const stats = [
     {
-      label: "Active Processes",
-      value: `${activeProcesses} / ${requiredProcesses}`,
-      change: state?.session.active ? "running" : "idle",
-      trend: "up" as const,
+      label: "Gateway",
+      value: statusLabel(gateway.status),
+      change: gateway.detail || "idle",
+      trend: gateway.status === "ok" ? ("up" as const) : ("down" as const),
       bg: "bg-[#E3E5FE]",
     },
     {
-      label: "Planner Phase",
-      value: plannerPhase,
-      change: formatMeters(runtime.goalDistanceM, "n/a"),
-      trend: Number(runtime.staleSec ?? 0) > 1.0 ? ("down" as const) : ("up" as const),
+      label: "Control Server",
+      value: controlServer.summary || "Ready",
+      change: stringValue(controlServer.detail, "idle"),
+      trend: controlServer.status === "ok" ? ("up" as const) : ("down" as const),
       bg: "bg-[#E3F1FC]",
     },
     {
-      label: "Perception",
-      value: `${detectionCount} det.`,
-      change: stringValue(perception.detectorBackend, "unknown"),
-      trend: detectionCount > 0 ? ("up" as const) : ("down" as const),
+      label: "Modules Ready",
+      value: `${healthyModules} / ${requiredModules.length}`,
+      change: `${modules.filter((item) => item.status === "ok").length} active`,
+      trend: healthyModules === requiredModules.length && requiredModules.length > 0 ? ("up" as const) : ("down" as const),
       bg: "bg-[#EFE8FC]",
     },
     {
-      label: "Ext. Services",
-      value: formatMs(navdp.latencyMs, "n/a"),
-      change: stringValue(navdp.status, "unknown"),
-      trend: stringValue(navdp.status) === "ok" ? ("up" as const) : ("down" as const),
+      label: "Recovery State",
+      value: recoveryState,
+      change: formatMeters(runtime.goalDistanceM, stringValue(runtime.activeCommandType, "idle")),
+      trend: recoveryState === "NORMAL" ? ("up" as const) : ("down" as const),
       bg: "bg-[#E6F2FA]",
     },
   ];

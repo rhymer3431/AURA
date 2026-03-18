@@ -43,22 +43,22 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "pipeline-overview",
-        label: "Pipeline Overview",
-        description: "핵심 런타임 상태와 전체 파이프라인을 한눈에 봅니다.",
+        label: "Runtime Overview",
+        description: "Gateway, Main Control Server, 그리고 핵심 모듈 상태를 한눈에 봅니다.",
         groupTitle: "Dashboards",
         icon: LayoutDashboard,
       },
       {
         id: "planner-control",
         label: "Planner & Control",
-        description: "플래너 상태, trajectory freshness, action status를 집중해서 확인합니다.",
+        description: "planning context, recovery state, command arbitration을 집중해서 확인합니다.",
         groupTitle: "Dashboards",
         icon: Navigation,
       },
       {
         id: "perception-memory",
         label: "Perception & Memory",
-        description: "탐지 파이프라인과 memory scratchpad 상태를 분리해서 봅니다.",
+        description: "snapshot-backed Perception / Memory 모듈 상태를 분리해서 봅니다.",
         groupTitle: "Dashboards",
         icon: Scan,
       },
@@ -76,15 +76,15 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "ipc-viewer",
-        label: "IPC & Viewer",
-        description: "WebRTC 뷰어, 센서 입력, IPC transport를 전용 페이지로 분리했습니다.",
+        label: "Gateway & Telemetry",
+        description: "WebRTC 뷰어, gateway ingress, telemetry mirror 상태를 전용 페이지에서 확인합니다.",
         groupTitle: "Monitoring",
         icon: Eye,
       },
       {
         id: "external-services",
-        label: "External Services",
-        description: "NavDP, Dual, System2와 관련 프로세스 구성을 함께 모니터링합니다.",
+        label: "Module Health",
+        description: "Main Control Server와 각 모듈의 health를 보고, raw process diagnostics는 보조로 확인합니다.",
         groupTitle: "Monitoring",
         icon: Radio,
       },
@@ -102,15 +102,15 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "execution-modes",
-        label: "Execution Modes",
-        description: "세션 시작 옵션과 현재 실행 모드를 별도 설정 화면으로 분리했습니다.",
+        label: "Runtime Modes",
+        description: "runtime entry mode와 현재 세션 설정을 별도 화면에서 비교합니다.",
         groupTitle: "Configuration",
         icon: Bot,
       },
       {
         id: "artifacts-storage",
-        label: "Artifacts & Storage",
-        description: "로그 파일, endpoint, memory footprint 같은 운영 산출물을 모아 봅니다.",
+        label: "Artifacts & Diagnostics",
+        description: "runtime artifacts, endpoints, raw process logs 같은 구현 진단 정보를 모아 봅니다.",
         groupTitle: "Configuration",
         icon: Settings,
       },
