@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from schemas.recovery import RecoveryStateSnapshot
+
 
 def _dict(payload: object) -> dict[str, Any]:
     return dict(payload) if isinstance(payload, dict) else {}
@@ -188,7 +190,7 @@ class SafetyStateSnapshot:
     stale: bool = False
     timeout: bool = False
     sensor_unavailable: bool = False
-    recovery_state: dict[str, Any] = field(default_factory=dict)
+    recovery_state: RecoveryStateSnapshot = field(default_factory=RecoveryStateSnapshot)
 
     @classmethod
     def from_dict(cls, payload: object) -> SafetyStateSnapshot:
@@ -198,7 +200,7 @@ class SafetyStateSnapshot:
             stale=bool(data.get("stale", False)),
             timeout=bool(data.get("timeout", False)),
             sensor_unavailable=bool(data.get("sensor_unavailable", False)),
-            recovery_state=_dict(data.get("recovery_state")),
+            recovery_state=RecoveryStateSnapshot.from_dict(data.get("recovery_state")),
         )
 
 
@@ -275,8 +277,8 @@ class WorldStateSnapshot:
         return dict(self.planning.active_nav_plan)
 
     @property
-    def recovery_state(self) -> dict[str, Any]:
-        return dict(self.safety.recovery_state)
+    def recovery_state(self) -> RecoveryStateSnapshot:
+        return RecoveryStateSnapshot.from_dict(self.safety.recovery_state.to_dict())
 
     @property
     def stale_timers(self) -> dict[str, Any]:
@@ -308,6 +310,4 @@ class WorldStateSnapshot:
             memory=MemoryStateSnapshot.from_dict(data.get("memory")),
             planning=PlanningStateSnapshot.from_dict(data.get("planning")),
             execution=ExecutionStateSnapshot.from_dict(data.get("execution")),
-            safety=SafetyStateSnapshot.from_dict(data.get("safety")),
-            runtime=RuntimeStateSnapshot.from_dict(data.get("runtime")),
-        )
+       
