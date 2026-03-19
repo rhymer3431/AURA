@@ -220,14 +220,14 @@ function Stop-StaleDashboardBackend {
         return
     }
 
-    foreach ($Pid in @($ExistingPids | Where-Object { $_ -gt 0 })) {
-        $CommandLine = Get-ProcessCommandLine -ProcessId ([int]$Pid)
+    foreach ($ProcessId in @($ExistingPids | Where-Object { $_ -gt 0 })) {
+        $CommandLine = Get-ProcessCommandLine -ProcessId ([int]$ProcessId)
         $IsDashboardBackend = $CommandLine -like "*apps.dashboard_backend_app*" -or $CommandLine -like "*dashboard_backend_app*" -or $CommandLine -like "*$RepoDir*isaac-aura*"
         if (-not $IsDashboardBackend) {
-            throw "Port $Port is already in use by pid=$Pid. Refusing to stop a non-dashboard process."
+            throw "Port $Port is already in use by pid=$ProcessId. Refusing to stop a non-dashboard process."
         }
-        Write-Host "[AURA_DASHBOARD] stopping stale dashboard backend pid=$Pid on port $Port"
-        Stop-Process -Id ([int]$Pid) -Force -ErrorAction Stop
+        Write-Host "[AURA_DASHBOARD] stopping stale dashboard backend pid=$ProcessId on port $Port"
+        Stop-Process -Id ([int]$ProcessId) -Force -ErrorAction Stop
     }
 
     $Deadline = (Get-Date).AddSeconds(10)
