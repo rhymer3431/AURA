@@ -38,7 +38,7 @@ class _FakeProcess:
         return 0
 
 
-def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_process_manager_starts_full_stack_and_stops_in_reverse_order(monkeypatch: pytest.MonkeyPatch) -> None:
     created_specs = []
     lifecycle_events: list[tuple[str, str]] = []
 
@@ -62,7 +62,6 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
 
     request = parse_session_request(
         {
-            "plannerMode": "interactive",
             "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": True,
@@ -88,8 +87,6 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
     assert created_specs[-1].args == (
         "-Component",
         "runtime",
-        "--planner-mode",
-        "interactive",
         "--native-viewer",
         "off",
         "--server-url",
@@ -147,13 +144,11 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
 
     request = parse_session_request(
         {
-            "plannerMode": "pointgoal",
             "launchMode": "gui",
             "scenePreset": "warehouse",
             "viewerEnabled": False,
             "memoryStore": True,
             "detectionEnabled": True,
-            "goal": {"x": 2.0, "y": 0.0},
         }
     )
 
@@ -163,9 +158,9 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
 
     assert snapshot["navdp"]["state"] == "running"
     assert snapshot["runtime"]["state"] == "running"
-    assert snapshot["system2"]["state"] == "not_required"
-    assert snapshot["dual"]["state"] == "not_required"
-    assert "--no-exit-on-pointgoal-failure" in runtime_spec.args
+    assert snapshot["system2"]["state"] == "running"
+    assert snapshot["dual"]["state"] == "running"
+    assert "--dual-server-url" in runtime_spec.args
     assert dict(runtime_spec.env)["G1_POINTGOAL_SCENE_PRESET"] == "warehouse"
 
 
@@ -192,13 +187,11 @@ def test_process_manager_includes_default_locomotion_config_when_not_overridden(
 
     request = parse_session_request(
         {
-            "plannerMode": "pointgoal",
             "launchMode": "gui",
             "scenePreset": "warehouse",
             "viewerEnabled": False,
             "memoryStore": True,
             "detectionEnabled": True,
-            "goal": {"x": 2.0, "y": 0.0},
         }
     )
 
@@ -238,7 +231,6 @@ def test_process_manager_propagates_allocated_service_ports(monkeypatch: pytest.
 
     request = parse_session_request(
         {
-            "plannerMode": "interactive",
             "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": True,
@@ -298,7 +290,6 @@ def test_process_manager_uses_windows_process_tree_kill_for_running_processes(mo
 
     request = parse_session_request(
         {
-            "plannerMode": "interactive",
             "launchMode": "headless",
             "scenePreset": "warehouse",
             "viewerEnabled": True,
@@ -321,13 +312,11 @@ def test_parse_session_request_rejects_cpu_when_default_policy_is_engine() -> No
     with pytest.raises(ValueError, match="locomotionConfig.onnxDevice=cpu"):
         parse_session_request(
             {
-                "plannerMode": "pointgoal",
                 "launchMode": "gui",
                 "scenePreset": "warehouse",
                 "viewerEnabled": False,
                 "memoryStore": True,
                 "detectionEnabled": True,
-                "goal": {"x": 2.0, "y": 0.0},
                 "locomotionConfig": {
                     "onnxDevice": "cpu",
                 },

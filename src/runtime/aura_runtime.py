@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import threading
 import time
 import traceback
 from typing import Any
@@ -28,7 +27,7 @@ from server.main_control_server import MainControlServer
 from server.snapshot_adapter import SnapshotAdapter
 
 from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
-from .planning_session import PlanningSession, TrajectoryUpdate
+from .planning_session import PlanningSession
 from .subgoal_executor import CommandEvaluation, SubgoalExecutor
 from .supervisor import Supervisor, SupervisorConfig
 
@@ -62,7 +61,6 @@ class AuraRuntimeCommandSource:
         self.requires_render = self._launch_mode in {"g1_view", "headless"}
 
         self._controller = None
-        self._mode = str(getattr(args, "planner_mode", "interactive")).strip().lower()
         self._planning_session = planning_session or PlanningSession(args)
         self._executor = SubgoalExecutor(args)
         self._supervisor_config = SupervisorConfig(
@@ -82,11 +80,6 @@ class AuraRuntimeCommandSource:
         self._pending_exit_code: int | None = None
         self._pending_exit_frames = 0
         self._pending_exit_reason = ""
-        self._last_suppressed_pointgoal_failure_reason = ""
-        self._interactive_running = False
-        self._interactive_input_thread: threading.Thread | None = None
-        self._last_interactive_phase = ""
-        self._last_interactive_command_id = -1
         self._last_viewer_overlay: dict[str, object] = {}
         self._last_runtime_snapshot_frame = -1
         self._server: MainControlServer | None = None
@@ -115,21 +108,11 @@ class AuraRuntimeCommandSource:
             level="info",
             notice="aura runtime ready",
             details={
-                "plannerMode": self._mode,
                 "launchMode": self._launch_mode,
                 "viewerPublish": bool(self._viewer_publish),
                 "nativeViewer": self._native_viewer,
             },
         )
-        if self._mode == "interactive":
-            self._interactive_running = True
-            self._print_interactive_help()
-            self._interactive_input_thread = threading.Thread(
-                target=self._interactive_input_loop,
-                name="aura-runtime-stdin",
-                daemon=True,
-            )
-            self._interactive_input_thread.start()
 
     def update(self, frame_idx: int) -> None:
         if self._controller is None:
@@ -215,7 +198,6 @@ class AuraRuntimeCommandSource:
         if self._pending_status is not None and self._runtime_io is not None:
             self.supervisor.bridge.publish_status(self._pending_status)
         self._publish_runtime_snapshot(frame_idx)
-        self._handle_pointgoal_terminal_state(frame_idx=frame_idx, evaluation=evaluation)
 
         if self._pending_exit_code is not None:
             if self._pending_exit_frames <= 0:
@@ -228,8 +210,6 @@ class AuraRuntimeCommandSource:
                 self._pending_exit_frames -= 1
 
         log_interval = max(int(self.args.log_interval), 1)
-        if self._mode == "interactive" and update.interactive_phase == "roaming":
-            log_interval = max(int(self.args.interactive_idle_log_interval), 1)
         if frame_idx % log_interval == 0:
             self._log_step(frame_idx, update, tick_result.action_command, evaluation)
 
@@ -237,7 +217,6 @@ class AuraRuntimeCommandSource:
         return self._command.copy()
 
     def shutdown(self) -> None:
-        self._interactive_running = False
         self._publish_notice(level="info", notice="aura runtime shutdown", details={"reason": self.shutdown_reason})
         if getattr(self, "_server", None) is not None:
             self._server.shutdown()
@@ -298,71 +277,6 @@ class AuraRuntimeCommandSource:
             self._pending_exit_reason = str(reason)
             self._pending_exit_frames = 1
 
-    def _handle_pointgoal_terminal_state(self, *, frame_idx: int, evaluation: CommandEvaluation) -> None:
-        if self._mode != "pointgoal":
-            return
-        if evaluation.reached_goal:
-            self._last_suppressed_pointgoal_failure_reason = ""
-            self._arm_exit(0, f"goal reached at step={frame_idx} dist={evaluation.goal_distance_m:.3f}m")
-            return
-        if self._pending_status is None or self._pending_status.state != "failed":
-            self._last_suppressed_pointgoal_failure_reason = ""
-            return
-        reason = self._pending_status.reason or "pointgoal planning failed"
-        if bool(getattr(self.args, "exit_on_pointgoal_failure", True)):
-            self._arm_exit(1, reason)
-            return
-        if reason != self._last_suppressed_pointgoal_failure_reason:
-            print(f"[G1_POINTGOAL] planner failure suppressed for dashboard session: {reason}")
-            self._last_suppressed_pointgoal_failure_reason = str(reason)
-
-    def _print_interactive_help(self) -> None:
-        print("[G1_INTERACTIVE][ROAM] terminal natural-language control")
-        print("[G1_INTERACTIVE][ROAM]   text      : submit a System2 navigation request")
-        print("[G1_INTERACTIVE][ROAM]   /help     : show this help")
-        print("[G1_INTERACTIVE][ROAM]   /cancel   : cancel the active task and resume roaming")
-        print("[G1_INTERACTIVE][ROAM]   /quit     : exit the runtime")
-
-    def _interactive_input_loop(self) -> None:
-        prompt = str(getattr(self.args, "interactive_prompt", "nl>")).strip() or "nl>"
-        while self._interactive_running and not self.quit_requested:
-            try:
-                raw = input(f"{prompt} ")
-            except EOFError:
-                return
-            except Exception as exc:  # noqa: BLE001
-                print(f"[G1_INTERACTIVE][ROAM] input loop stopped: {type(exc).__name__}: {exc}")
-                return
-
-            text = raw.strip()
-            if text == "":
-                continue
-
-            lowered = text.lower()
-            if lowered == "/help":
-                self._print_interactive_help()
-                continue
-            if lowered == "/cancel":
-                cancelled = self._cancel_interactive_task(source="stdin")
-                if cancelled:
-                    print("[G1_INTERACTIVE][TASK] cancel requested")
-                else:
-                    print("[G1_INTERACTIVE][ROAM] no active task to cancel")
-                continue
-            if lowered == "/quit":
-                self._arm_exit(0, "interactive quit requested")
-                return
-            if lowered.startswith("/"):
-                print(f"[G1_INTERACTIVE][ROAM] unknown command: {text}")
-                continue
-
-            try:
-                command_id = self._submit_interactive_instruction(text, source="stdin")
-            except Exception as exc:  # noqa: BLE001
-                print(f"[G1_INTERACTIVE][TASK] rejected instruction={text!r} error={type(exc).__name__}: {exc}")
-                continue
-            print(f"[G1_INTERACTIVE][TASK] command_id={command_id} queued instruction={text!r}")
-
     def _ensure_runtime_bridge(self) -> None:
         if self._runtime_io is not None:
             return
@@ -416,38 +330,19 @@ class AuraRuntimeCommandSource:
         )
 
     def _log_prefix(self) -> str:
-        if self._mode == "pointgoal":
-            return "[G1_POINTGOAL]"
-        if self._mode == "dual":
-            return "[G1_DUAL]"
-        if self._mode == "interactive":
-            return "[G1_INTERACTIVE]"
-        return "[G1_DIRECT]"
+        return "[AURA_RUNTIME]"
 
-    def _build_planner_managed_command(self, *, task_id: str, source: str) -> ActionCommand:
-        return ActionCommand(
-            action_type="LOCAL_SEARCH",
-            task_id=task_id,
-            metadata={
-                "source": source,
-                "planner_managed": True,
-                "planner_mode": self._mode,
-            },
-        )
-
-    def _submit_interactive_instruction(self, text: str, *, source: str, task_id: str = "") -> int:
+    def _submit_task_request(self, text: str, *, source: str, task_id: str = "") -> int:
         assert self._server is not None
-        command_id, notice = self._server.submit_interactive_instruction(
-            text,
-            source=source,
-            task_id=str(task_id),
-        )
-        self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
-        return command_id
+        notices = self._server.submit_task_request(TaskRequest(command_text=text, task_id=str(task_id or "task")))
+        if notices:
+            notice = notices[-1]
+            self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
+        return -1
 
-    def _cancel_interactive_task(self, *, source: str) -> bool:
+    def _set_idle(self, *, source: str) -> bool:
         assert self._server is not None
-        cancelled, notice = self._server.cancel_interactive_task(source=source)
+        cancelled, notice = self._server.set_idle(source=source)
         if notice is not None:
             self._publish_notice(level=notice.level, notice=notice.notice, details=notice.details)
         return cancelled
@@ -469,20 +364,8 @@ class AuraRuntimeCommandSource:
                 details={"taskId": str(request.task_id), "source": "dashboard"},
             )
             return
-        if self._mode != "interactive":
-            self._publish_notice(
-                level="warning",
-                notice="task request rejected",
-                details={
-                    "reason": "planner_mode_not_interactive",
-                    "plannerMode": self._mode,
-                    "taskId": str(request.task_id),
-                    "instruction": instruction,
-                },
-            )
-            return
         try:
-            self._submit_interactive_instruction(instruction, source="dashboard", task_id=str(request.task_id))
+            self._submit_task_request(instruction, source="dashboard", task_id=str(request.task_id))
         except Exception as exc:  # noqa: BLE001
             self._publish_notice(
                 level="error",
@@ -496,17 +379,17 @@ class AuraRuntimeCommandSource:
 
     def _handle_runtime_control(self, request: RuntimeControlRequest) -> None:
         action = str(request.action).strip().lower()
-        if action != "cancel_interactive_task":
+        if action not in {"set_idle", "cancel_interactive_task"}:
             self._publish_notice(
                 level="warning",
                 notice="unsupported runtime control request",
                 details={"action": action},
             )
             return
-        if not self._cancel_interactive_task(source="dashboard"):
+        if not self._set_idle(source="dashboard"):
             self._publish_notice(
                 level="warning",
-                notice="interactive cancel ignored",
+                notice="set idle ignored",
                 details={"reason": "no_active_task"},
             )
 
@@ -552,39 +435,6 @@ class AuraRuntimeCommandSource:
             )
         )
 
-    def _sync_planner_scratchpad(self, update: TrajectoryUpdate) -> None:
-        if self._mode == "interactive":
-            current_phase = str(update.interactive_phase or "")
-            current_command_id = int(update.interactive_command_id)
-            if current_phase == "task_active" and update.interactive_instruction.strip() != "":
-                if self._last_interactive_phase != "task_active" or self._last_interactive_command_id != current_command_id:
-                    self.supervisor.memory_service.set_planner_task(
-                        instruction=update.interactive_instruction,
-                        planner_mode="interactive",
-                        task_state="active",
-                        task_id="interactive",
-                        command_id=current_command_id,
-                    )
-            elif self._last_interactive_phase == "task_active" and current_phase == "roaming":
-                clear_state = "completed" if bool(update.stop) else "idle"
-                clear_reason = "interactive task complete" if bool(update.stop) else "interactive task cleared"
-                if update.stats.last_error != "":
-                    clear_state = "failed"
-                    clear_reason = str(update.stats.last_error)
-                self.supervisor.memory_service.clear_planner_task(
-                    task_state=clear_state,
-                    reason=clear_reason,
-                )
-            self._last_interactive_phase = current_phase
-            self._last_interactive_command_id = current_command_id
-            return
-
-        if self._mode == "dual" and bool(update.stop) and update.planner_control_mode == "stop":
-            self.supervisor.memory_service.clear_planner_task(
-                task_state="completed",
-                reason="dual task complete",
-            )
-
     def _log_step(
         self,
         frame_idx: int,
@@ -595,24 +445,21 @@ class AuraRuntimeCommandSource:
         error_note = f" last_error={update.stats.last_error}" if update.stats.last_error != "" else ""
         command_type = command.action_type if command is not None else "none"
         distance_note = ""
-        route_note = ""
         if evaluation.goal_distance_m >= 0.0:
             distance_note = f" goal_dist={evaluation.goal_distance_m:.3f}m"
         if command is not None and command.action_type == "LOOK_AT":
             distance_note = f" yaw_error={evaluation.yaw_error_rad:.3f}rad"
-        if self._mode == "pointgoal":
-            snapshot = self._server.snapshot() if getattr(self, "_server", None) is not None else None
-            if snapshot is not None and int(snapshot.planning.global_route.get("waypoint_count", 0) or 0) > 0:
-                route_note = (
-                    " global_route={} wp={}/{} replan={}".format(
-                        "active"
-                        if bool(snapshot.planning.global_route.get("active", False))
-                        else "idle",
-                        int(snapshot.planning.global_route.get("waypoint_index", 0) or 0),
-                        int(snapshot.planning.global_route.get("waypoint_count", 0) or 0),
-                        str(snapshot.planning.planner_control_reason) or "-",
-                    )
+        route_note = ""
+        snapshot = self._server.snapshot() if getattr(self, "_server", None) is not None else None
+        if snapshot is not None and int(snapshot.planning.global_route.get("waypoint_count", 0) or 0) > 0:
+            route_note = (
+                " global_route={} wp={}/{} replan={}".format(
+                    "active" if bool(snapshot.planning.global_route.get("active", False)) else "idle",
+                    int(snapshot.planning.global_route.get("waypoint_index", 0) or 0),
+                    int(snapshot.planning.global_route.get("waypoint_count", 0) or 0),
+                    str(snapshot.planning.planner_control_reason) or "-",
                 )
+            )
         print(
             f"{self._log_prefix()}"
             f"[step={frame_idx}] command={command_type}{distance_note} "

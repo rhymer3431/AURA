@@ -16,6 +16,7 @@ from control.async_planners import (
 from ipc.messages import ActionCommand
 from runtime.global_route import GlobalRoutePlanner
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
+from schemas.execution_mode import normalize_execution_mode
 
 from .planner_runtime_state import PlannerRuntimeState
 
@@ -37,8 +38,8 @@ class PlannerRuntimeEngine:
         return self._state.viewer_overlay_state()
 
     def start_dual_task(self, instruction: str) -> None:
-        if self._state.mode != "dual":
-            raise RuntimeError("start_dual_task requires planner-mode=dual")
+        if self._state.mode != "NAV":
+            raise RuntimeError("start_dual_task requires execution mode NAV")
         text = str(instruction).strip()
         if text == "":
             raise ValueError("dual instruction must be non-empty")
@@ -101,14 +102,10 @@ class PlannerRuntimeEngine:
         robot_quat_wxyz: np.ndarray,
     ) -> TrajectoryUpdate:
         del robot_quat_wxyz
-        if self._state.mode == "dual":
+        if self._state.mode == "NAV":
             if getattr(self._transport, "dual_planner", None) is None:
                 raise RuntimeError("PlanningSession is not initialized.")
             return self._run_dual(observation, action_command=action_command)
-        if self._state.mode == "interactive":
-            if getattr(self._transport, "nogoal_planner", None) is None or getattr(self._transport, "dual_planner", None) is None:
-                raise RuntimeError("PlanningSession is not initialized.")
-            return self._run_interactive(observation, action_command=action_command)
         if getattr(self._transport, "pointgoal_planner", None) is None or getattr(self._transport, "nogoal_planner", None) is None:
             raise RuntimeError("PlanningSession is not initialized.")
         if action_command is None or action_command.action_type in {"STOP", "LOOK_AT"}:
@@ -121,7 +118,7 @@ class PlannerRuntimeEngine:
                 stop=True,
                 sensor_meta=dict(observation.sensor_meta),
             )
-        if action_command.action_type == "LOCAL_SEARCH":
+        if self._state.mode == "EXPLORE" or action_command.action_type == "LOCAL_SEARCH":
             return self._run_nogoal(observation, action_command=action_command)
         if action_command.target_pose_xyz is None:
             return TrajectoryUpdate(
@@ -240,7 +237,7 @@ class PlannerRuntimeEngine:
         )
 
     def _global_route_enabled(self) -> bool:
-        return self._state.mode == "pointgoal" and str(getattr(self._args, "global_map_image", "")).strip() != ""
+        return self._state.mode == "MEM_NAV" and str(getattr(self._args, "global_map_image", "")).strip() != ""
 
     def _ensure_global_route_planner(self) -> GlobalRoutePlanner:
         route_state = self._state.global_route
@@ -802,7 +799,7 @@ class PlannerRuntimeEngine:
             plan_version=int(self._state.trajectory.plan_version),
             stats=self._state.trajectory.stats,
             source_frame_id=int(frame_id),
-            goal_local_xy=np.asarray(self._state.goal.local_xy, dtype=np.float32).copy() if self._state.mode == "pointgoal" else None,
+            goal_local_xy=np.asarray(self._state.goal.local_xy, dtype=np.float32).copy() if self._state.mode == "MEM_NAV" else None,
             action_command=action_command,
             stop=bool(stop),
             planner_control_mode=self._state.trajectory.planner_control_mode,
@@ -816,3 +813,10 @@ class PlannerRuntimeEngine:
             interactive_command_id=interactive_command_id,
             interactive_instruction=interactive_instruction,
         )
+
+    def reset_for_mode(self, mode: str, *, reason: str = "") -> None:
+        del reason
+        if normalize_execution_mode(mode) == self._state.mode:
+            return
+        self._state.set_mode(mode)
+        self._state.reset_navigation_state()

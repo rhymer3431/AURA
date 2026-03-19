@@ -2,55 +2,25 @@ from __future__ import annotations
 
 from ipc.messages import ActionCommand, RuntimeControlRequest, RuntimeNotice, TaskRequest
 from runtime.planning_session import TrajectoryUpdate
+from schemas.execution_mode import ExecutionMode, normalize_execution_mode
 from schemas.world_state import TaskSnapshot
 
+from .execution_mode_classifier import ExecutionModeClassifier
 
 class TaskManager:
     def __init__(self, args) -> None:
         self._args = args
-        self.mode = str(getattr(args, "planner_mode", "interactive")).strip().lower()
+        self._classifier = ExecutionModeClassifier()
+        self.mode: ExecutionMode = "IDLE"
         self._manual_command: ActionCommand | None = None
         self._task = TaskSnapshot(mode=self.mode)
-        self._last_interactive_phase = ""
-        self._last_interactive_command_id = -1
+        self._route_state_seed: dict[str, object] = {}
 
     def bootstrap(self, *, planner_coordinator, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
-        notices: list[RuntimeNotice] = []
-        if self.mode == "pointgoal":
-            goal_x = float(self._args.goal_x if self._args.goal_x is not None else 0.0)
-            goal_y = float(self._args.goal_y if self._args.goal_y is not None else 0.0)
-            self._manual_command = ActionCommand(
-                action_type="NAV_TO_POSE",
-                task_id="pointgoal",
-                target_pose_xyz=(goal_x, goal_y, 0.0),
-                stop_radius_m=float(getattr(self._args, "goal_tolerance_m", 0.4)),
-                metadata={"source": "aura_runtime_pointgoal"},
-            )
-            self._task = TaskSnapshot(task_id="pointgoal", mode=self.mode, state="active")
-            return notices
-
-        if self.mode == "dual":
-            instruction = str(getattr(self._args, "instruction", "")).strip()
-            if instruction != "":
-                planner_coordinator.ensure_navdp_service_ready(context="dual startup")
-                planner_coordinator.ensure_dual_service_ready(context="dual startup")
-                planner_coordinator.start_dual_task(instruction)
-                memory_client.set_planner_task(
-                    instruction=instruction,
-                    planner_mode="dual",
-                    task_state="active",
-                    task_id="dual",
-                )
-                self._task = TaskSnapshot(task_id="dual", instruction=instruction, mode="dual", state="active")
-                self._manual_command = self._planner_managed_command(task_id="dual", source="aura_runtime_dual")
-            return notices
-
-        if self.mode == "interactive":
-            planner_coordinator.ensure_navdp_service_ready(context="interactive startup")
-            planner_coordinator.activate_interactive_roaming("startup")
-            self._manual_command = self._planner_managed_command(task_id="interactive", source="aura_runtime_interactive")
-            self._task = TaskSnapshot(task_id="interactive", mode="interactive", state="idle")
-        return notices
+        _ = memory_client
+        planner_coordinator.activate_idle("startup")
+        self._set_idle_state()
+        return []
 
     def manual_command(self) -> ActionCommand | None:
         return self._manual_command
@@ -58,57 +28,8 @@ class TaskManager:
     def snapshot(self) -> TaskSnapshot:
         return self._task
 
-    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str, planner_coordinator, memory_client) -> tuple[int, RuntimeNotice]:  # noqa: ANN001,E501
-        if self.mode != "interactive":
-            raise RuntimeError("interactive instruction requires planner-mode=interactive")
-        text = str(instruction).strip()
-        if text == "":
-            raise ValueError("interactive instruction must be non-empty")
-        planner_coordinator.ensure_navdp_service_ready(context=f"interactive task ({source})")
-        planner_coordinator.ensure_dual_service_ready(context=f"interactive task ({source})")
-        command_id = int(planner_coordinator.submit_interactive_instruction(text))
-        resolved_task_id = str(task_id or "interactive")
-        memory_client.set_planner_task(
-            instruction=text,
-            planner_mode="interactive",
-            task_state="pending",
-            task_id=resolved_task_id,
-            command_id=command_id,
-        )
-        self._task = TaskSnapshot(
-            task_id=resolved_task_id,
-            instruction=text,
-            mode="interactive",
-            state="pending",
-            command_id=command_id,
-        )
-        return command_id, RuntimeNotice(
-            component="main_control_server",
-            level="info",
-            notice="interactive task queued",
-            details={
-                "source": source,
-                "taskId": resolved_task_id,
-                "commandId": command_id,
-                "instruction": text,
-            },
-        )
-
-    def cancel_interactive_task(self, *, source: str, planner_coordinator, memory_client) -> tuple[bool, RuntimeNotice | None]:  # noqa: ANN001
-        cancelled = bool(planner_coordinator.cancel_interactive_task())
-        if not cancelled:
-            return False, None
-        memory_client.clear_planner_task(
-            task_state="cancelled",
-            reason=f"interactive task cancelled via {source}",
-        )
-        self._task = TaskSnapshot(task_id=self._task.task_id, instruction="", mode="interactive", state="cancelled")
-        return True, RuntimeNotice(
-            component="main_control_server",
-            level="info",
-            notice="interactive task cancelled",
-            details={"source": source},
-        )
+    def route_state_seed(self) -> dict[str, object]:
+        return dict(self._route_state_seed)
 
     def handle_event(self, event, *, planner_coordinator, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
         notices: list[RuntimeNotice] = []
@@ -124,28 +45,14 @@ class TaskManager:
                     )
                 )
                 return notices
-            if self.mode != "interactive":
-                notices.append(
-                    RuntimeNotice(
-                        component="main_control_server",
-                        level="warning",
-                        notice="task request rejected",
-                        details={
-                            "reason": "planner_mode_not_interactive",
-                            "plannerMode": self.mode,
-                            "taskId": str(event.task_id),
-                            "instruction": instruction,
-                        },
-                    )
-                )
-                return notices
             try:
-                _, notice = self.submit_interactive_instruction(
-                    instruction,
-                    source="dashboard",
-                    task_id=str(event.task_id),
-                    planner_coordinator=planner_coordinator,
-                    memory_client=memory_client,
+                notices.extend(
+                    self._activate_task_request(
+                        event,
+                        source="dashboard",
+                        planner_coordinator=planner_coordinator,
+                        memory_client=memory_client,
+                    )
                 )
             except Exception as exc:  # noqa: BLE001
                 notices.append(
@@ -160,13 +67,11 @@ class TaskManager:
                         },
                     )
                 )
-            else:
-                notices.append(notice)
             return notices
 
         if isinstance(event, RuntimeControlRequest):
             action = str(event.action).strip().lower()
-            if action != "cancel_interactive_task":
+            if action not in {"set_idle", "cancel_interactive_task"}:
                 notices.append(
                     RuntimeNotice(
                         component="main_control_server",
@@ -176,17 +81,17 @@ class TaskManager:
                     )
                 )
                 return notices
-            cancelled, notice = self.cancel_interactive_task(
+            changed, notice = self.set_idle(
                 source="dashboard",
                 planner_coordinator=planner_coordinator,
                 memory_client=memory_client,
             )
-            if not cancelled:
+            if not changed:
                 notices.append(
                     RuntimeNotice(
                         component="main_control_server",
                         level="warning",
-                        notice="interactive cancel ignored",
+                        notice="set idle ignored",
                         details={"reason": "no_active_task"},
                     )
                 )
@@ -194,49 +99,30 @@ class TaskManager:
                 notices.append(notice)
         return notices
 
-    def sync_after_update(self, update: TrajectoryUpdate, *, memory_client) -> bool:  # noqa: ANN001
-        reset_recovery = False
-        if self.mode == "interactive":
-            current_phase = str(update.interactive_phase or "")
-            current_command_id = int(update.interactive_command_id)
-            current_instruction = str(update.interactive_instruction)
-            if current_phase == "task_active" and current_instruction != "":
-                if self._last_interactive_phase != "task_active" or self._last_interactive_command_id != current_command_id:
-                    memory_client.set_planner_task(
-                        instruction=current_instruction,
-                        planner_mode="interactive",
-                        task_state="active",
-                        task_id=self._task.task_id or "interactive",
-                        command_id=current_command_id,
-                    )
-                self._task = TaskSnapshot(
-                    task_id=self._task.task_id or "interactive",
-                    instruction=current_instruction,
-                    mode="interactive",
-                    state="active",
-                    command_id=current_command_id,
-                )
-            elif self._last_interactive_phase == "task_active" and current_phase == "roaming":
-                clear_state = "completed" if bool(update.stop) else "idle"
-                clear_reason = "interactive task complete" if bool(update.stop) else "interactive task cleared"
-                if update.stats.last_error != "":
-                    clear_state = "failed"
-                    clear_reason = str(update.stats.last_error)
-                memory_client.clear_planner_task(task_state=clear_state, reason=clear_reason)
-                self._task = TaskSnapshot(task_id=self._task.task_id, instruction="", mode="interactive", state=clear_state)
-                reset_recovery = True
-            self._last_interactive_phase = current_phase
-            self._last_interactive_command_id = current_command_id
-            return reset_recovery
-
-        if self.mode == "dual" and bool(update.stop) and update.planner_control_mode == "stop":
-            memory_client.clear_planner_task(
-                task_state="completed",
-                reason="dual task complete",
+    def sync_after_update(self, update: TrajectoryUpdate, status, *, memory_client) -> bool:  # noqa: ANN001
+        if self.mode == "IDLE":
+            return False
+        if self.mode == "TALK":
+            memory_client.clear_planner_task(task_state="completed", reason="talk hook emitted")
+            self._set_idle_state()
+            return True
+        terminal_state = "" if status is None else str(getattr(status, "state", "") or "")
+        if update.stats.last_error != "" and terminal_state == "":
+            terminal_state = "failed"
+        if terminal_state not in {"succeeded", "failed"}:
+            self._task = TaskSnapshot(
+                task_id=self._task.task_id,
+                instruction=self._task.instruction,
+                mode=self.mode,
+                state="active",
+                command_id=self._task.command_id,
             )
-            self._task = TaskSnapshot(task_id="dual", instruction=self._task.instruction, mode="dual", state="completed")
-            reset_recovery = True
-        return reset_recovery
+            return False
+        clear_state = "completed" if terminal_state == "succeeded" else "failed"
+        clear_reason = str(update.stats.last_error or getattr(status, "reason", "") or clear_state)
+        memory_client.clear_planner_task(task_state=clear_state, reason=clear_reason)
+        self._set_idle_state()
+        return True
 
     @staticmethod
     def _planner_managed_command(*, task_id: str, source: str) -> ActionCommand:
@@ -248,3 +134,132 @@ class TaskManager:
                 "planner_managed": True,
             },
         )
+
+    def set_idle(self, *, source: str, planner_coordinator, memory_client) -> tuple[bool, RuntimeNotice | None]:  # noqa: ANN001
+        if self.mode == "IDLE" and self._task.state == "idle":
+            return False, None
+        memory_client.clear_planner_task(
+            task_state="cancelled",
+            reason=f"set idle via {source}",
+        )
+        planner_coordinator.activate_idle(f"set_idle:{source}")
+        self._set_idle_state()
+        return True, RuntimeNotice(
+            component="main_control_server",
+            level="info",
+            notice="execution mode set to idle",
+            details={"source": source, "action": "set_idle"},
+        )
+
+    def _activate_task_request(self, request: TaskRequest, *, source: str, planner_coordinator, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
+        instruction = str(request.command_text).strip()
+        classification = self._classifier.classify(request)
+        task_id = str(request.task_id)
+        planner_coordinator.activate_idle(f"switch_to_{classification.mode.lower()}")
+        notices: list[RuntimeNotice] = [
+            RuntimeNotice(
+                component="main_control_server",
+                level="info",
+                notice="task classified",
+                details={
+                    "taskId": task_id,
+                    "instruction": instruction,
+                    "executionMode": classification.mode,
+                    "reason": classification.reason,
+                    "intent": classification.intent_name,
+                },
+            )
+        ]
+        if classification.mode == "TALK":
+            self.mode = "TALK"
+            self._manual_command = None
+            self._route_state_seed = {"hookStatus": "ready"}
+            self._task = TaskSnapshot(task_id=task_id, instruction=instruction, mode="TALK", state="active", command_id=-1)
+            memory_client.set_planner_task(
+                instruction=instruction,
+                planner_mode="talk",
+                task_state="active",
+                task_id=task_id,
+                command_id=-1,
+            )
+            return notices
+
+        if classification.mode == "NAV":
+            planner_coordinator.ensure_navdp_service_ready(context=f"NAV task ({source})")
+            planner_coordinator.ensure_dual_service_ready(context=f"NAV task ({source})")
+            planner_coordinator.start_dual_task(instruction, mode="NAV")
+            planner_coordinator.set_execution_mode("NAV")
+            self.mode = "NAV"
+            self._manual_command = self._planner_managed_command(task_id=task_id, source=f"{source}:NAV")
+            self._manual_command.metadata["execution_mode"] = "NAV"
+            self._route_state_seed = {}
+        elif classification.mode == "EXPLORE":
+            planner_coordinator.ensure_navdp_service_ready(context=f"EXPLORE task ({source})")
+            planner_coordinator.set_execution_mode("EXPLORE")
+            self.mode = "EXPLORE"
+            self._manual_command = self._planner_managed_command(task_id=task_id, source=f"{source}:EXPLORE")
+            self._manual_command.metadata.update({"execution_mode": "EXPLORE", "policy": "nogoal"})
+            self._route_state_seed = {"policy": "nogoal"}
+        elif classification.mode == "MEM_NAV":
+            planner_coordinator.ensure_navdp_service_ready(context=f"MEM_NAV task ({source})")
+            target = memory_client.resolve_navigation_target(
+                instruction=instruction,
+                current_pose=None,
+                target_class=classification.target_class,
+                room_id=str(request.target_json.get("room_id", "")),
+            )
+            if target is None:
+                self._set_idle_state()
+                notices.append(
+                    RuntimeNotice(
+                        component="main_control_server",
+                        level="error",
+                        notice="memory navigation target not found",
+                        details={"taskId": task_id, "instruction": instruction},
+                    )
+                )
+                return notices
+            planner_coordinator.set_execution_mode("MEM_NAV")
+            self.mode = "MEM_NAV"
+            self._manual_command = ActionCommand(
+                action_type="NAV_TO_POSE",
+                task_id=task_id,
+                target_pose_xyz=target.goal_pose_xyz,
+                stop_radius_m=float(getattr(self._args, "goal_tolerance_m", 0.4)),
+                metadata={
+                    "source": f"{source}:MEM_NAV",
+                    "planner_managed": True,
+                    "execution_mode": "MEM_NAV",
+                    "pose_source": "memory",
+                    "memory_pose_xyz": list(target.memory_pose_xyz),
+                    "goal_pose_xyz": list(target.goal_pose_xyz),
+                    "target_object_id": target.object_id,
+                    "target_place_id": target.place_id,
+                    "target_class": classification.target_class,
+                },
+            )
+            self._route_state_seed = {
+                "memoryPoseXyz": list(target.memory_pose_xyz),
+                "goalPoseXyz": list(target.goal_pose_xyz),
+                "waypointIndex": 0,
+                "waypointCount": 0,
+            }
+        else:
+            self._set_idle_state()
+            return notices
+
+        memory_client.set_planner_task(
+            instruction=instruction,
+            planner_mode=self.mode.lower(),
+            task_state="active",
+            task_id=task_id,
+            command_id=-1,
+        )
+        self._task = TaskSnapshot(task_id=task_id, instruction=instruction, mode=self.mode, state="active", command_id=-1)
+        return notices
+
+    def _set_idle_state(self) -> None:
+        self.mode = "IDLE"
+        self._manual_command = None
+        self._route_state_seed = {}
+        self._task = TaskSnapshot(mode="IDLE", state="idle")

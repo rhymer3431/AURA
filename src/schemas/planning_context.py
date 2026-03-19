@@ -5,6 +5,7 @@ from typing import Any
 
 from ipc.messages import ActionCommand
 
+from .execution_mode import ExecutionMode
 from .events import WorkerMetadata
 from .world_state import TaskSnapshot
 
@@ -13,7 +14,7 @@ from .world_state import TaskSnapshot
 class PlanningContext:
     metadata: WorkerMetadata
     task: TaskSnapshot
-    planner_mode: str
+    planner_mode: ExecutionMode
     instruction: str
     robot_pose_xyz: tuple[float, float, float]
     robot_yaw_rad: float

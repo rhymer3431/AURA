@@ -25,14 +25,14 @@ export function NavigationControlPanel() {
   const actionStatus = asRecord(runtime.actionStatus);
   const controlServer = architectureNode(state, "mainControlServer");
   const serverMetrics = asRecord(controlServer.metrics);
-  const currentPhase = stringValue(runtime.interactivePhase || runtime.plannerControlMode, "idle");
-  const plannerMode = state?.session.config?.plannerMode ?? "idle";
+  const currentPhase = stringValue(runtime.plannerControlMode, "idle");
+  const executionMode = stringValue(runtime.executionMode || runtime.modes?.executionMode, "IDLE");
   const recoveryState = stringValue(runtime.recoveryState, "NORMAL");
   const recoveryReason = stringValue(runtime.recoveryReason, "clear");
   const phaseTone =
-    currentPhase === "task_active" || currentPhase === "trajectory"
+    currentPhase === "trajectory"
       ? "green"
-      : currentPhase === "roaming"
+      : currentPhase === "yaw_delta" || executionMode === "EXPLORE"
         ? "blue"
         : "amber";
 
@@ -62,8 +62,8 @@ export function NavigationControlPanel() {
       <div className="bg-black/[0.02] border border-black/[0.06] rounded-xl p-4 mb-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-[12px]">
           <div>
-            <div className="text-black/50 mb-1 text-[11px]">runtime_mode</div>
-            <div className="text-black font-medium">{plannerMode}</div>
+            <div className="text-black/50 mb-1 text-[11px]">execution_mode</div>
+            <div className="text-black font-medium">{executionMode}</div>
           </div>
           <div>
             <div className="text-black/50 mb-1 text-[11px]">task_state</div>
@@ -96,7 +96,7 @@ export function NavigationControlPanel() {
       <div className="flex items-center gap-2.5 mb-5 bg-black/[0.01] border border-black/5 rounded-lg px-3 py-2 flex-wrap">
         <span className="text-[11px] text-black/50 font-medium">Arbitration:</span>
         <Badge color={phaseTone}>{stringValue(runtime.plannerControlMode, "idle")}</Badge>
-        <span className="text-[11px] text-black/40">instruction: {stringValue(runtime.interactiveInstruction, "none") || "none"}</span>
+        <span className="text-[11px] text-black/40">instruction: {stringValue(runtime.activeInstruction, "none") || "none"}</span>
         <div className="flex-1" />
         <div className="flex items-center gap-1.5 text-[11px] text-black/40 font-medium">
           <AlertTriangle className="size-3.5" />
@@ -142,8 +142,8 @@ export function NavigationControlPanel() {
         <div className="text-[11px] font-medium text-black/50 mb-2">Main Control Server Snapshot</div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
           <div className="bg-[#F7F9FB] rounded-xl px-3 py-2">
-            <div className="text-black/40 mb-1">Command ID</div>
-            <div className="text-black/80 font-medium">{Number(runtime.interactiveCommandId ?? -1)}</div>
+            <div className="text-black/40 mb-1">Execution Mode</div>
+            <div className="text-black/80 font-medium">{executionMode}</div>
           </div>
           <div className="bg-[#F7F9FB] rounded-xl px-3 py-2">
             <div className="text-black/40 mb-1">Active Command</div>

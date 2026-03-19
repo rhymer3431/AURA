@@ -31,6 +31,16 @@ class MemoryClient(Protocol):
     def retrieve(self, request: MemoryRequest) -> MemoryResult:
         ...
 
+    def resolve_navigation_target(
+        self,
+        *,
+        instruction: str,
+        current_pose: tuple[float, float, float] | None = None,
+        target_class: str = "",
+        room_id: str = "",
+    ):
+        ...
+
     def set_planner_task(self, **kwargs) -> None:  # noqa: ANN003
         ...
 
@@ -135,6 +145,21 @@ class SupervisorMemoryClient:
 
     def clear_planner_task(self, **kwargs) -> None:  # noqa: ANN003
         self._supervisor.memory_service.clear_planner_task(**kwargs)
+
+    def resolve_navigation_target(
+        self,
+        *,
+        instruction: str,
+        current_pose: tuple[float, float, float] | None = None,
+        target_class: str = "",
+        room_id: str = "",
+    ):
+        return self._supervisor.memory_service.resolve_navigation_target(
+            instruction=instruction,
+            current_pose=current_pose,
+            target_class=target_class,
+            room_id=room_id,
+        )
 
     def _summary(self) -> dict[str, object]:
         scratchpad = self._supervisor.memory_service.scratchpad

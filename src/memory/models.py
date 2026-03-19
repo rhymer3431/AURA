@@ -169,6 +169,17 @@ class RecallResult:
 
 
 @dataclass(frozen=True)
+class MemoryNavigationTarget:
+    instruction: str
+    object_id: str = ""
+    place_id: str = ""
+    memory_pose_xyz: Pose3D = (0.0, 0.0, 0.0)
+    goal_pose_xyz: Pose3D = (0.0, 0.0, 0.0)
+    room_id: str = ""
+    summary: str = ""
+
+
+@dataclass(frozen=True)
 class ScratchpadState:
     instruction: str = ""
     planner_mode: str = ""

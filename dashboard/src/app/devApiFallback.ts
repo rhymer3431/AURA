@@ -24,7 +24,7 @@ function buildMockLog(nowMs: number, message: string) {
 function buildMockBootstrap(apiBaseUrl: string) {
   const normalizedBase = trimTrailingSlash(apiBaseUrl);
   return {
-    plannerModes: ["interactive", "pointgoal"],
+    executionModes: ["TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE"],
     launchModes: ["gui", "headless"],
     scenePresets: ["warehouse", "interioragent", "interior agent kujiale 3"],
     apiBaseUrl: normalizedBase,
@@ -59,7 +59,10 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
       },
     ],
     runtime: {
+      executionMode: "IDLE",
       plannerControlMode: "idle",
+      activeInstruction: "",
+      routeState: {},
       lastStatusEvent: {
         state: "mock_mode",
         reason: message,
@@ -177,10 +180,10 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
         },
         s2: {
           name: "S2",
-          status: "not_required",
-          summary: "Not required for pointgoal",
+          status: "inactive",
+          summary: "Session inactive",
           detail: "backend offline",
-          required: false,
+          required: true,
           metrics: {},
         },
         nav: {

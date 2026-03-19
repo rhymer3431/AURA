@@ -29,8 +29,8 @@ from webrtc.models import FrameCache
 
 def _snapshot() -> WorldStateSnapshot:
     return WorldStateSnapshot(
-        task=TaskSnapshot(task_id="interactive", instruction="go to apple", mode="interactive", state="active", command_id=8),
-        mode="interactive",
+        task=TaskSnapshot(task_id="task-1", instruction="go to apple", mode="NAV", state="active", command_id=8),
+        mode="NAV",
         robot=RobotStateSnapshot(
             pose_xyz=(1.0, 2.0, 3.0),
             yaw_rad=0.25,
@@ -66,14 +66,13 @@ def _snapshot() -> WorldStateSnapshot:
             plan_version=4,
             goal_version=2,
             traj_version=3,
-            planner_mode="interactive",
+            planner_mode="NAV",
+            active_instruction="go to apple",
+            route_state={"pixelGoal": [24, 18], "plannerControlMode": "trajectory", "plannerControlReason": "route_refresh"},
             planner_control_mode="trajectory",
             planner_control_reason="route_refresh",
             planner_yaw_delta_rad=0.12,
             system2_pixel_goal=[24, 18],
-            interactive_phase="task_active",
-            interactive_command_id=8,
-            interactive_instruction="go to apple",
             stale_info={"planner_stale_sec": 0.4},
             global_route={"enabled": True, "active": True, "waypoint_index": 1, "waypoint_count": 3},
         ),
@@ -143,9 +142,10 @@ def test_snapshot_adapter_preserves_legacy_runtime_contract() -> None:
     payload = SnapshotAdapter.to_legacy_runtime_payload(_snapshot())
 
     assert set(payload) == {"modes", "planner", "sensor", "perception", "memory", "transport"}
-    assert payload["modes"]["plannerMode"] == "interactive"
+    assert payload["modes"]["executionMode"] == "NAV"
     assert payload["planner"]["planVersion"] == 4
-    assert payload["planner"]["interactiveInstruction"] == "go to apple"
+    assert payload["planner"]["activeInstruction"] == "go to apple"
+    assert payload["planner"]["routeState"]["pixelGoal"] == [24, 18]
     assert payload["planner"]["recoveryState"] == "REPLAN_PENDING"
     assert payload["sensor"]["frameId"] == 11
     assert payload["sensor"]["stale"] is True
@@ -171,7 +171,7 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
         detector_capability={"component": "detector", "status": "ready"},
     )
 
-    assert state["runtime"]["modes"]["plannerMode"] == "interactive"
+    assert state["runtime"]["modes"]["executionMode"] == "NAV"
     assert state["runtime"]["lastStatusEvent"]["state"] == "running"
     assert state["perception"]["detectorCapability"]["status"] == "ready"
     assert state["transport"]["frameSeq"] == 7
@@ -188,6 +188,8 @@ def test_snapshot_adapter_uses_world_state_for_webrtc_payloads() -> None:
     assert state_payload["robot_pose_xyz"] == [1.0, 2.0, 3.0]
     assert state_payload["planVersion"] == 4
     assert state_payload["active_command_type"] == "NAV_TO_POSE"
+    assert state_payload["executionMode"] == "NAV"
+    assert state_payload["activeInstruction"] == "go to apple"
     assert state_payload["system2PixelGoal"] == [24, 18]
     assert state_payload["recoveryState"] == "REPLAN_PENDING"
 

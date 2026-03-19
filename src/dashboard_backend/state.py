@@ -123,7 +123,7 @@ class StateAggregator:
         peer_active = bool(transport_state.get("peerActive", False))
         goal_distance = world_state.execution.locomotion_proposal_summary.get("goal_distance_m")
         yaw_error = world_state.execution.locomotion_proposal_summary.get("yaw_error_rad")
-        system2_required = session_active and planner_mode == "interactive"
+        system2_required = session_active
 
         if not session_active and not frame_available:
             gateway_status = "inactive"
@@ -281,10 +281,10 @@ class StateAggregator:
         dual_status = str(dual_service.get("status", "unknown"))
         if not system2_required:
             s2_status = "not_required"
-            s2_summary = "Not required for pointgoal"
+            s2_summary = "Session inactive"
         elif self._process_status(system2_process) == "ok" and dual_status == "ok":
             s2_status = "ok"
-            s2_summary = "Interactive planning active"
+            s2_summary = "Standing by" if planner_mode != "NAV" else "NAV planning active"
         elif self._process_status(system2_process) in {"failed", "down"} or dual_status in {"down", "failed"}:
             s2_status = "failed"
             s2_summary = "S2 path unavailable"
@@ -403,13 +403,14 @@ class StateAggregator:
                     status=s2_status,
                     summary=s2_summary,
                     detail=self._node_detail(
-                        str(world_state.planning.interactive_phase or "idle"),
+                        str(world_state.planning.active_instruction or "idle"),
                         "pixel goal ready" if world_state.planning.system2_pixel_goal is not None else "",
                     ),
                     required=system2_required,
                     latency_ms=float(s2_latency) if isinstance(s2_latency, (int, float)) else None,
                     metrics={
-                        "interactivePhase": str(world_state.planning.interactive_phase),
+                        "executionMode": str(world_state.mode),
+                        "activeInstruction": str(world_state.planning.active_instruction),
                         "system2PixelGoal": None
                         if world_state.planning.system2_pixel_goal is None
                         else list(world_state.planning.system2_pixel_goal),

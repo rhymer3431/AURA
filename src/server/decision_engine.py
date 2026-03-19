@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from schemas.events import FrameEvent
+from schemas.execution_mode import normalize_execution_mode
 from schemas.recovery import RecoveryState, RecoveryStateSnapshot
 from schemas.world_state import TaskSnapshot, WorldStateSnapshot
 
@@ -56,22 +57,23 @@ class DecisionEngine:
         now_ns: int | None = None,
     ) -> DecisionDirective:
         current = world_state.recovery_state if recovery_state is None else recovery_state
+        execution_mode = normalize_execution_mode(task.mode or world_state.mode)
         current_state = current.state
         current_time_ns = int(frame_event.timestamp_ns if now_ns is None else now_ns)
         backoff_active = bool(current.backoff_until_ns > 0 and current_time_ns < int(current.backoff_until_ns))
-        allow_planning = current_state not in {RecoveryState.WAIT_SENSOR, RecoveryState.SAFE_STOP, RecoveryState.FAILED}
+        allow_planning = execution_mode in {"NAV", "MEM_NAV", "EXPLORE"} and current_state not in {
+            RecoveryState.WAIT_SENSOR,
+            RecoveryState.SAFE_STOP,
+            RecoveryState.FAILED,
+        }
         if backoff_active:
             allow_planning = False
-        process_perception = bool(frame_event.batch is not None and frame_event.observation is not None and allow_planning)
-        retrieve_memory = process_perception and str(active_memory_instruction).strip() != ""
-        route_task_command = not bool(manual_command_present)
-        reason = "manual_command"
-        if route_task_command:
-            reason = "task_orchestrator"
+        process_perception = bool(frame_event.batch is not None and frame_event.observation is not None and execution_mode in {"NAV", "MEM_NAV", "EXPLORE"})
+        retrieve_memory = False
+        route_task_command = False
+        reason = f"mode:{execution_mode}"
         if not process_perception:
             reason = "planning_suppressed"
-        if retrieve_memory:
-            reason = "memory_aware_planning"
         if is_terminal_recovery_state(current_state):
             reason = f"recovery:{current_state.value}"
         elif backoff_active:

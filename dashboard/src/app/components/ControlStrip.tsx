@@ -29,10 +29,8 @@ export function ControlStrip() {
   const [instruction, setInstruction] = useState("");
   const sessionConfig = state?.session.config;
   const locomotionConfig = form.locomotionConfig;
-  const isInteractiveSession = state?.session.active === true && sessionConfig?.plannerMode === "interactive";
-  const isPointGoalValid =
-    form.plannerMode !== "pointgoal" ||
-    (Number.isFinite(Number(form.goalX)) && Number.isFinite(Number(form.goalY)));
+  const runtimeMode = String((state?.runtime.executionMode ?? state?.runtime.modes?.executionMode ?? "IDLE"));
+  const canSubmitTask = state?.session.active === true;
   const isLocomotionConfigValid =
     Number.isFinite(Number(locomotionConfig.actionScale)) &&
     Number(locomotionConfig.actionScale) > 0 &&
@@ -49,17 +47,6 @@ export function ControlStrip() {
     <div className="bg-[#F7F9FB] rounded-3xl p-5 border border-black/5">
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <div className="text-[11px] text-black/40 mb-1">planner mode</div>
-            <select
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
-              value={form.plannerMode}
-              onChange={(event) => setForm({ plannerMode: event.target.value as "interactive" | "pointgoal" })}
-            >
-              <option value="interactive">interactive</option>
-              <option value="pointgoal">pointgoal</option>
-            </select>
-          </div>
           <div>
             <div className="text-[11px] text-black/40 mb-1">launch mode</div>
             <select
@@ -85,30 +72,10 @@ export function ControlStrip() {
               ))}
             </select>
           </div>
-          {form.plannerMode === "pointgoal" && (
-            <>
-              <div>
-                <div className="text-[11px] text-black/40 mb-1">goal x</div>
-                <input
-                  className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-[100px]"
-                  value={form.goalX}
-                  onChange={(event) => setForm({ goalX: event.target.value })}
-                />
-              </div>
-              <div>
-                <div className="text-[11px] text-black/40 mb-1">goal y</div>
-                <input
-                  className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-[100px]"
-                  value={form.goalY}
-                  onChange={(event) => setForm({ goalY: event.target.value })}
-                />
-              </div>
-            </>
-          )}
           <div className="flex gap-2 ml-auto">
             <button
               onClick={() => void startSession()}
-              disabled={loading || !isPointGoalValid || !isLocomotionConfigValid}
+              disabled={loading || !isLocomotionConfigValid}
               className="inline-flex items-center gap-2 rounded-xl bg-black text-white px-4 py-2 text-[13px] disabled:opacity-50"
             >
               <Play className="size-4" />
@@ -134,11 +101,6 @@ export function ControlStrip() {
           </div>
         </div>
 
-        {!isPointGoalValid && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
-            pointgoal 모드에서는 numeric `goal x / goal y`가 필요합니다.
-          </div>
-        )}
         {!isLocomotionConfigValid && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             {"locomotion config는 `action scale > 0`, `cmd max vx/vy >= 0`, `cmd max wz > 0` 이어야 합니다."}
@@ -210,17 +172,17 @@ export function ControlStrip() {
         <div className="flex flex-wrap gap-3">
           <input
             className="flex-1 min-w-[280px] bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
-            placeholder={isInteractiveSession ? "자연어 task를 입력하세요" : "running interactive 세션에서만 task를 제출할 수 있습니다"}
+            placeholder={canSubmitTask ? "instruction을 입력하면 서버가 실행 모드를 분류합니다" : "running session에서만 task를 제출할 수 있습니다"}
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
-            disabled={!isInteractiveSession}
+            disabled={!canSubmitTask}
           />
           <button
             onClick={() => {
               void submitTask(instruction);
               setInstruction("");
             }}
-            disabled={!isInteractiveSession || instruction.trim() === ""}
+            disabled={!canSubmitTask || instruction.trim() === ""}
             className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2 text-[13px] disabled:opacity-40"
           >
             <Send className="size-4" />
@@ -228,11 +190,11 @@ export function ControlStrip() {
           </button>
           <button
             onClick={() => void cancelTask()}
-            disabled={!isInteractiveSession}
+            disabled={!canSubmitTask}
             className="inline-flex items-center gap-2 rounded-xl bg-white border border-black/10 px-4 py-2 text-[13px] disabled:opacity-40"
           >
             <Ban className="size-4" />
-            Cancel Task
+            Set Idle
           </button>
         </div>
 
@@ -240,7 +202,7 @@ export function ControlStrip() {
           <span>
             runtime:{" "}
             <span className="text-black/80 font-medium">
-              {sessionConfig?.plannerMode ?? form.plannerMode} / {sessionConfig?.launchMode ?? form.launchMode}
+              {runtimeMode} / {sessionConfig?.launchMode ?? form.launchMode}
             </span>
           </span>
           <span className="truncate">

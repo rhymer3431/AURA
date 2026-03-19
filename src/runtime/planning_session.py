@@ -180,7 +180,7 @@ class PlanningSession:
         dual_client_factory: Callable[[argparse.Namespace], DualSystemClient] | None = None,
     ) -> None:
         self.args = args
-        self.mode = str(getattr(args, "planner_mode", "pointgoal")).strip().lower()
+        self.mode = str(getattr(args, "planner_mode", "IDLE")).strip().upper() or "IDLE"
         self.sensor_factory = sensor_factory or (lambda cfg: D455SensorAdapter(cfg))
         self.navdp_client_factory = navdp_client_factory or self._default_navdp_client_factory
         self.dual_client_factory = dual_client_factory or self._default_dual_client_factory
@@ -247,10 +247,9 @@ class PlanningSession:
         )
         self.pointgoal_planner.start()
         self.nogoal_planner.start()
-        if self.mode in {"dual", "interactive"}:
-            self._dual_client = dual_client or self.dual_client_factory(self.args)
-            self.dual_planner = AsyncDualPlanner(client=self._dual_client)
-            self.dual_planner.start()
+        self._dual_client = dual_client or self.dual_client_factory(self.args)
+        self.dual_planner = AsyncDualPlanner(client=self._dual_client)
+        self.dual_planner.start()
 
     def shutdown(self) -> None:
         for planner in (self.pointgoal_planner, self.nogoal_planner, self.dual_planner):
@@ -384,9 +383,6 @@ class PlanningSession:
 
             self._legacy_runtime_state = PlannerRuntimeState(mode=self.mode)
             self._legacy_engine = PlannerRuntimeEngine(self.args, transport=self, state=self._legacy_runtime_state)
-            if self.mode == "interactive":
-                if not self._legacy_engine.activate_interactive_roaming("startup"):
-                    raise RuntimeError("interactive roaming initialization failed")
         return self._legacy_engine
 
     @staticmethod

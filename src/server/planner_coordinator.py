@@ -16,6 +16,7 @@ from ipc.messages import ActionCommand
 from locomotion.types import CommandEvaluation
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from schemas.commands import LocomotionProposal
+from schemas.execution_mode import ExecutionMode, normalize_execution_mode
 from schemas.events import FrameEvent
 from schemas.planning_context import PlanningContext
 from schemas.workers import (
@@ -92,7 +93,20 @@ class PlannerCoordinator:
             return True
         return self._engine.activate_interactive_roaming(reason)
 
-    def start_dual_task(self, instruction: str) -> None:
+    def set_execution_mode(self, mode: ExecutionMode) -> None:
+        normalized = normalize_execution_mode(mode)
+        if normalized == self._runtime_state.mode:
+            return
+        self._runtime_state.set_mode(normalized)
+        if self._engine is not None:
+            self._engine.reset_for_mode(normalized)
+
+    def activate_idle(self, reason: str) -> None:
+        self.set_execution_mode("IDLE")
+        _ = reason
+
+    def start_dual_task(self, instruction: str, *, mode: ExecutionMode = "NAV") -> None:
+        self.set_execution_mode(mode)
         if self._engine is None:
             starter = getattr(self._transport, "start_dual_task", None)
             if callable(starter):

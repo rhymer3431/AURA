@@ -18,7 +18,7 @@ def test_ipc_message_roundtrip_encode_decode() -> None:
         ActionCommand(action_type="NAV_TO_PLACE", target_place_id="place_0001", target_pose_xyz=(1.0, 2.0, 0.0)),
         ActionStatus(command_id="cmd_1", state="running", robot_pose_xyz=(0.0, 0.0, 0.0)),
         TaskRequest(command_text="아까 봤던 사과를 찾아가", target_json={"target_class": "apple"}),
-        RuntimeControlRequest(action="cancel_interactive_task"),
+        RuntimeControlRequest(action="set_idle"),
         CapabilityReport(component="detector", status="fallback", backend_name="color_seg_fallback"),
         RuntimeNotice(component="bridge", level="warning", notice="fallback"),
         HealthPing(component="memory_agent"),

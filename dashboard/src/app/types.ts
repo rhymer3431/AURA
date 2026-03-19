@@ -1,4 +1,4 @@
-export type PlannerMode = "interactive" | "pointgoal";
+export type ExecutionMode = "TALK" | "NAV" | "MEM_NAV" | "EXPLORE" | "IDLE";
 export type LaunchMode = "gui" | "headless";
 export type OnnxDevice = "auto" | "cuda" | "cpu";
 
@@ -11,15 +11,12 @@ export type LocomotionConfigForm = {
 };
 
 export type SessionForm = {
-  plannerMode: PlannerMode;
   launchMode: LaunchMode;
   scenePreset: string;
   viewerEnabled: boolean;
   memoryStore: boolean;
   detectionEnabled: boolean;
   locomotionConfig: LocomotionConfigForm;
-  goalX: string;
-  goalY: string;
 };
 
 export type ProcessRecord = {
@@ -82,7 +79,6 @@ export type DashboardState = {
     active: boolean;
     startedAt: number | null;
     config: {
-      plannerMode: PlannerMode;
       launchMode: LaunchMode;
       scenePreset: string;
       viewerEnabled: boolean;
@@ -95,7 +91,6 @@ export type DashboardState = {
         cmdMaxVy: number;
         cmdMaxWz: number;
       };
-      goal?: { x: number; y: number };
     } | null;
     lastEvent: LogRecord | null;
   };
@@ -115,7 +110,7 @@ export type DashboardState = {
 };
 
 export type BootstrapData = {
-  plannerModes: PlannerMode[];
+  executionModes: ExecutionMode[];
   launchModes: LaunchMode[];
   scenePresets: string[];
   apiBaseUrl: string;

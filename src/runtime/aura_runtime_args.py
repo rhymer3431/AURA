@@ -78,8 +78,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--planner-mode",
         dest="planner_mode",
         type=str,
-        choices=("pointgoal", "dual", "interactive"),
-        default="interactive",
+        choices=("TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE", "talk", "nav", "mem_nav", "explore", "idle"),
+        default="IDLE",
     )
     parser.add_argument("--dual-server-url", dest="dual_server_url", type=str, default="http://127.0.0.1:8890")
     parser.add_argument(
@@ -134,7 +134,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def apply_demo_defaults(args: argparse.Namespace) -> argparse.Namespace:
-    if bool(getattr(args, "spawn_demo_object", False)) and str(args.planner_mode).lower() == "dual":
+    if bool(getattr(args, "spawn_demo_object", False)) and str(args.planner_mode).upper() == "NAV":
         instruction = str(getattr(args, "instruction", "")).strip()
         if instruction == "" or instruction == DEFAULT_DUAL_INSTRUCTION:
             args.instruction = DEFAULT_OBJECT_SEARCH_INSTRUCTION
@@ -142,7 +142,7 @@ def apply_demo_defaults(args: argparse.Namespace) -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    planner_mode = str(args.planner_mode).lower()
+    planner_mode = str(args.planner_mode).strip().upper()
     if float(args.demo_object_size_m) <= 0.0:
         raise ValueError("--demo-object-size-m must be positive")
     if float(args.object_stop_radius_m) <= 0.0:
@@ -172,28 +172,15 @@ def validate_args(args: argparse.Namespace) -> None:
     if global_map_config != "" and global_map_image == "":
         raise ValueError("--global-map-config requires --global-map-image")
 
-    if planner_mode == "pointgoal":
-        if args.goal_x is None or args.goal_y is None:
-            raise ValueError("--goal-x and --goal-y are required in planner-mode=pointgoal")
-        if bool(args.spawn_demo_object):
-            raise ValueError("--spawn-demo-object requires --planner-mode dual")
-        if global_map_image != "":
-            if not Path(global_map_image).exists():
-                raise ValueError(f"--global-map-image not found: {global_map_image}")
-            if global_map_config != "" and not Path(global_map_config).exists():
-                raise ValueError(f"--global-map-config not found: {global_map_config}")
-    elif planner_mode == "dual":
-        if str(args.instruction).strip() == "":
-            raise ValueError("--instruction must be non-empty in planner-mode=dual")
-        if str(getattr(args, "global_map_image", "")).strip() != "":
-            raise ValueError("--global-map-image requires --planner-mode pointgoal")
-    else:
-        if bool(args.spawn_demo_object):
-            raise ValueError("--spawn-demo-object requires --planner-mode dual")
-        if str(args.interactive_prompt).strip() == "":
-            raise ValueError("--interactive-prompt must be non-empty in planner-mode=interactive")
-        if str(getattr(args, "global_map_image", "")).strip() != "":
-            raise ValueError("--global-map-image requires --planner-mode pointgoal")
+    if planner_mode == "MEM_NAV" and global_map_image != "":
+        if not Path(global_map_image).exists():
+            raise ValueError(f"--global-map-image not found: {global_map_image}")
+        if global_map_config != "" and not Path(global_map_config).exists():
+            raise ValueError(f"--global-map-config not found: {global_map_config}")
+    elif planner_mode != "MEM_NAV" and str(getattr(args, "global_map_image", "")).strip() != "":
+        raise ValueError("--global-map-image requires --planner-mode MEM_NAV")
+    if bool(args.spawn_demo_object):
+        raise ValueError("--spawn-demo-object is not supported in the server-owned execution modes runtime")
     launch_mode = str(getattr(args, "launch_mode", "")).strip().lower()
     if (
         str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() == "opencv"

@@ -159,7 +159,7 @@ class DashboardWebApp:
         _ = request
         return web.json_response(
             {
-                "plannerModes": ["interactive", "pointgoal"],
+                "executionModes": ["TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE"],
                 "launchModes": ["gui", "headless"],
                 "scenePresets": ["warehouse", "interioragent", "interior agent kujiale 3"],
                 "apiBaseUrl": self.config.api_base_url,
@@ -261,8 +261,8 @@ class DashboardWebApp:
         if not isinstance(payload, dict):
             raise web.HTTPBadRequest(reason="task payload must be a JSON object")
         current = self.process_manager.current_request
-        if current is None or current.planner_mode != "interactive":
-            raise web.HTTPConflict(reason="interactive runtime session is not active")
+        if current is None:
+            raise web.HTTPConflict(reason="runtime session is not active")
         instruction = str(payload.get("instruction", "")).strip()
         if instruction == "":
             raise web.HTTPBadRequest(reason="instruction is required")
@@ -273,9 +273,9 @@ class DashboardWebApp:
     async def handle_runtime_cancel(self, request) -> web.Response:  # noqa: ANN001
         _ = request
         current = self.process_manager.current_request
-        if current is None or current.planner_mode != "interactive":
-            raise web.HTTPConflict(reason="interactive runtime session is not active")
-        control = self.control_client.cancel_interactive_task()
+        if current is None:
+            raise web.HTTPConflict(reason="runtime session is not active")
+        control = self.control_client.set_idle()
         await self.state_aggregator.force_refresh()
         return web.json_response({"requestId": control.request_id, "action": control.action})
 

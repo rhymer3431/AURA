@@ -77,7 +77,7 @@ class TaskRequest:
 
 @dataclass(frozen=True)
 class RuntimeControlRequest:
-    action: Literal["cancel_interactive_task"]
+    action: Literal["set_idle", "cancel_interactive_task"]
     request_id: str = field(default_factory=lambda: _message_id("rtctl"))
     metadata: dict[str, Any] = field(default_factory=dict)
 

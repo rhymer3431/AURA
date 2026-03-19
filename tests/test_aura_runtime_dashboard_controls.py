@@ -10,9 +10,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import ActionCommand, HealthPing, RuntimeControlRequest, TaskRequest
+from ipc.messages import ActionCommand, HealthPing, RuntimeControlRequest, RuntimeNotice, TaskRequest
 from runtime.aura_runtime import AuraRuntimeCommandSource
-from runtime.subgoal_executor import CommandEvaluation
 from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import PlanningStateSnapshot, RuntimeStateSnapshot, SafetyStateSnapshot, TaskSnapshot, WorldStateSnapshot
 
@@ -27,50 +26,50 @@ class _FakeServer:
         self._planning_session = planning_session
         self._memory_service = memory_service
 
-    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str = ""):
+    def submit_task_request(self, request: TaskRequest):
         self._planning_session.events.extend(
             [
-                f"navdp:interactive task ({source})",
-                f"dual:interactive task ({source})",
-                f"submit:{instruction}",
+                f"classify:{request.command_text}",
+                "submit_task_request",
             ]
         )
         self._memory_service.set_planner_task(
-            instruction=instruction,
-            planner_mode="interactive",
+            instruction=request.command_text,
+            planner_mode="nav",
             task_state="pending",
-            task_id=str(task_id or "interactive"),
-            command_id=7,
+            task_id=str(request.task_id),
+            command_id=-1,
         )
-        notice = SimpleNamespace(
-            level="info",
-            notice="interactive task queued",
-            details={"source": source, "taskId": str(task_id or "interactive"), "commandId": 7, "instruction": instruction},
+        return (
+            RuntimeNotice(
+                component="main_control_server",
+                level="info",
+                notice="task classified",
+                details={"taskId": str(request.task_id), "executionMode": "NAV", "instruction": request.command_text},
+            ),
         )
-        return 7, notice
 
-    def cancel_interactive_task(self, *, source: str):
-        self._planning_session.events.append("cancel")
+    def set_idle(self, *, source: str):
+        self._planning_session.events.append(f"set_idle:{source}")
         self._memory_service.clear_planner_task(
             task_state="cancelled",
-            reason=f"interactive task cancelled via {source}",
+            reason=f"set idle via {source}",
         )
-        notice = SimpleNamespace(level="info", notice="interactive task cancelled", details={"source": source})
+        notice = SimpleNamespace(level="info", notice="execution mode set to idle", details={"source": source, "action": "set_idle"})
         return True, notice
 
     def snapshot(self) -> WorldStateSnapshot:
         return WorldStateSnapshot(
-            task=TaskSnapshot(task_id="interactive", mode="interactive", state="active"),
-            mode="interactive",
+            task=TaskSnapshot(task_id="task-1", instruction="inspect loading dock", mode="NAV", state="active"),
+            mode="NAV",
             planning=PlanningStateSnapshot(
                 plan_version=4,
                 goal_version=2,
                 traj_version=3,
-                planner_mode="interactive",
+                planner_mode="NAV",
+                active_instruction="inspect loading dock",
+                route_state={"pixelGoal": [24, 18], "plannerControlMode": "trajectory", "plannerControlReason": "route_refresh"},
                 planner_control_mode="trajectory",
-                interactive_phase="task_active",
-                interactive_command_id=7,
-                interactive_instruction="inspect loading dock",
                 global_route={"enabled": True, "active": True, "waypoint_index": 0, "waypoint_count": 2},
             ),
             safety=SafetyStateSnapshot(
@@ -106,10 +105,10 @@ class _FakeMemoryService:
         self.keyframes = [1, 2, 3]
         self.scratchpad = SimpleNamespace(
             instruction="inspect loading dock",
-            planner_mode="interactive",
+            planner_mode="nav",
             task_state="active",
-            task_id="interactive",
-            command_id=7,
+            task_id="task-1",
+            command_id=-1,
             goal_summary="dock",
             recent_hint="watch pallet",
             next_priority="keep heading",
@@ -149,7 +148,6 @@ def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _Fa
         skip_detection=False,
         scene_preset="warehouse",
     )
-    source._mode = "interactive"
     source._launch_mode = "headless"
     source._viewer_publish = False
     source._native_viewer = "off"
@@ -177,42 +175,41 @@ def _build_source() -> tuple[AuraRuntimeCommandSource, _FakePlanningSession, _Fa
     return source, planning_session, memory_service, notices, health_events
 
 
-def test_handle_task_request_routes_dashboard_instruction_into_interactive_planner() -> None:
+def test_handle_task_request_routes_dashboard_instruction_into_server_owned_flow() -> None:
     source, planning_session, memory_service, notices, _ = _build_source()
 
     source._handle_task_request(TaskRequest(command_text="go to the loading dock", task_id="task-1"))
 
     assert planning_session.events == [
-        "navdp:interactive task (dashboard)",
-        "dual:interactive task (dashboard)",
-        "submit:go to the loading dock",
+        "classify:go to the loading dock",
+        "submit_task_request",
     ]
     assert memory_service.set_calls == [
         {
             "instruction": "go to the loading dock",
-            "planner_mode": "interactive",
+            "planner_mode": "nav",
             "task_state": "pending",
             "task_id": "task-1",
-            "command_id": 7,
+            "command_id": -1,
         }
     ]
-    assert notices[-1]["notice"] == "interactive task queued"
+    assert notices[-1]["notice"] == "task classified"
     assert notices[-1]["details"]["taskId"] == "task-1"
 
 
-def test_handle_runtime_control_cancels_active_interactive_task() -> None:
+def test_handle_runtime_control_sets_runtime_idle() -> None:
     source, planning_session, memory_service, notices, _ = _build_source()
 
-    source._handle_runtime_control(RuntimeControlRequest(action="cancel_interactive_task"))
+    source._handle_runtime_control(RuntimeControlRequest(action="set_idle"))
 
-    assert planning_session.events == ["cancel"]
+    assert planning_session.events == ["set_idle:dashboard"]
     assert memory_service.clear_calls == [
         {
             "task_state": "cancelled",
-            "reason": "interactive task cancelled via dashboard",
+            "reason": "set idle via dashboard",
         }
     ]
-    assert [item["notice"] for item in notices] == ["interactive task cancelled"]
+    assert [item["notice"] for item in notices] == ["execution mode set to idle"]
 
 
 def test_publish_runtime_snapshot_contains_world_state_and_legacy_contract() -> None:
@@ -223,50 +220,13 @@ def test_publish_runtime_snapshot_contains_world_state_and_legacy_contract() -> 
     assert len(health_events) == 1
     payload = health_events[0].details
     assert set(payload) == {"worldState", "snapshot"}
-    assert payload["worldState"]["task"]["task_id"] == "interactive"
-    assert payload["snapshot"]["modes"]["plannerMode"] == "interactive"
+    assert payload["worldState"]["task"]["task_id"] == "task-1"
+    assert payload["snapshot"]["modes"]["executionMode"] == "NAV"
     assert payload["snapshot"]["planner"]["planVersion"] == 4
+    assert payload["snapshot"]["planner"]["activeInstruction"] == "inspect loading dock"
     assert payload["snapshot"]["planner"]["recoveryState"] == "REPLAN_PENDING"
     assert payload["snapshot"]["transport"]["viewerPublish"] is False
 
 
 def test_runtime_snapshot_builder_is_removed_in_favor_of_server_snapshot() -> None:
     assert not hasattr(AuraRuntimeCommandSource, "_build_runtime_snapshot")
-
-
-def test_pointgoal_failure_exit_can_be_suppressed_for_dashboard_sessions() -> None:
-    source = object.__new__(AuraRuntimeCommandSource)
-    source.args = Namespace(exit_on_pointgoal_failure=False)
-    source._mode = "pointgoal"
-    source._pending_status = SimpleNamespace(state="failed", reason="planner timeout")
-    source._pending_exit_code = None
-    source._pending_exit_reason = ""
-    source._pending_exit_frames = 0
-    source._last_suppressed_pointgoal_failure_reason = ""
-
-    source._handle_pointgoal_terminal_state(
-        frame_idx=12,
-        evaluation=CommandEvaluation(force_stop=True, goal_distance_m=1.2, yaw_error_rad=0.0, reached_goal=False),
-    )
-
-    assert source._pending_exit_code is None
-    assert source._last_suppressed_pointgoal_failure_reason == "planner timeout"
-
-
-def test_pointgoal_failure_exit_remains_enabled_by_default() -> None:
-    source = object.__new__(AuraRuntimeCommandSource)
-    source.args = Namespace(exit_on_pointgoal_failure=True)
-    source._mode = "pointgoal"
-    source._pending_status = SimpleNamespace(state="failed", reason="planner timeout")
-    source._pending_exit_code = None
-    source._pending_exit_reason = ""
-    source._pending_exit_frames = 0
-    source._last_suppressed_pointgoal_failure_reason = ""
-
-    source._handle_pointgoal_terminal_state(
-        frame_idx=12,
-        evaluation=CommandEvaluation(force_stop=True, goal_distance_m=1.2, yaw_error_rad=0.0, reached_goal=False),
-    )
-
-    assert source._pending_exit_code == 1
-    assert source._pending_exit_reason == "planner timeout"

@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from schemas.recovery import RecoveryStateSnapshot
+from schemas.execution_mode import ExecutionMode, normalize_execution_mode
 
 
 def _dict(payload: object) -> dict[str, Any]:
@@ -24,7 +25,7 @@ def _pose_xyz(payload: object) -> tuple[float, float, float]:
 class TaskSnapshot:
     task_id: str = ""
     instruction: str = ""
-    mode: str = ""
+    mode: ExecutionMode = "IDLE"
     state: str = "idle"
     command_id: int = -1
 
@@ -34,7 +35,7 @@ class TaskSnapshot:
         return cls(
             task_id=str(data.get("task_id", "")),
             instruction=str(data.get("instruction", "")),
-            mode=str(data.get("mode", "")),
+            mode=normalize_execution_mode(data.get("mode")),
             state=str(data.get("state", "idle")),
             command_id=int(data.get("command_id", -1) or -1),
         )
@@ -123,14 +124,13 @@ class PlanningStateSnapshot:
     plan_version: int = -1
     goal_version: int = -1
     traj_version: int = -1
-    planner_mode: str = ""
+    planner_mode: ExecutionMode = "IDLE"
+    active_instruction: str = ""
+    route_state: dict[str, Any] = field(default_factory=dict)
     planner_control_mode: str = ""
     planner_control_reason: str = ""
     planner_yaw_delta_rad: float | None = None
     system2_pixel_goal: list[int] | None = None
-    interactive_phase: str = ""
-    interactive_command_id: int = -1
-    interactive_instruction: str = ""
     stale_info: dict[str, Any] = field(default_factory=dict)
     global_route: dict[str, Any] = field(default_factory=dict)
 
@@ -147,16 +147,15 @@ class PlanningStateSnapshot:
             plan_version=int(data.get("plan_version", -1) or -1),
             goal_version=int(data.get("goal_version", -1) or -1),
             traj_version=int(data.get("traj_version", -1) or -1),
-            planner_mode=str(data.get("planner_mode", "")),
+            planner_mode=normalize_execution_mode(data.get("planner_mode")),
+            active_instruction=str(data.get("active_instruction", data.get("interactive_instruction", ""))),
+            route_state=_dict(data.get("route_state")),
             planner_control_mode=str(data.get("planner_control_mode", "")),
             planner_control_reason=str(data.get("planner_control_reason", "")),
             planner_yaw_delta_rad=None
             if data.get("planner_yaw_delta_rad") is None
             else float(data.get("planner_yaw_delta_rad", 0.0)),
             system2_pixel_goal=system2_pixel_goal,
-            interactive_phase=str(data.get("interactive_phase", "")),
-            interactive_command_id=int(data.get("interactive_command_id", -1) or -1),
-            interactive_instruction=str(data.get("interactive_instruction", "")),
             stale_info=_dict(data.get("stale_info")),
             global_route=_dict(data.get("global_route")),
         )
@@ -239,7 +238,7 @@ class RuntimeStateSnapshot:
 @dataclass(frozen=True)
 class WorldStateSnapshot:
     task: TaskSnapshot = field(default_factory=TaskSnapshot)
-    mode: str = ""
+    mode: ExecutionMode = "IDLE"
     robot: RobotStateSnapshot = field(default_factory=RobotStateSnapshot)
     perception: PerceptionStateSnapshot = field(default_factory=PerceptionStateSnapshot)
     memory: MemoryStateSnapshot = field(default_factory=MemoryStateSnapshot)
@@ -304,7 +303,7 @@ class WorldStateSnapshot:
         data = _dict(payload)
         return cls(
             task=TaskSnapshot.from_dict(data.get("task")),
-            mode=str(data.get("mode", "")),
+            mode=normalize_execution_mode(data.get("mode")),
             robot=RobotStateSnapshot.from_dict(data.get("robot")),
             perception=PerceptionStateSnapshot.from_dict(data.get("perception")),
             memory=MemoryStateSnapshot.from_dict(data.get("memory")),

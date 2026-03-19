@@ -27,12 +27,8 @@ function ModeBadge({
 export function ExecutionModesPanel() {
   const { bootstrap, form, state } = useDashboard();
   const liveConfig = state?.session.config;
-  const plannerModes = bootstrap?.plannerModes ?? ["interactive", "pointgoal"];
+  const executionModes = bootstrap?.executionModes ?? ["TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE"];
   const launchModes = bootstrap?.launchModes ?? ["gui", "headless"];
-  const goalText =
-    form.plannerMode === "pointgoal"
-      ? `${form.goalX || "?"}, ${form.goalY || "?"}`
-      : "not used";
   const locomotionText = [
     `action ${form.locomotionConfig.actionScale}`,
     form.locomotionConfig.onnxDevice,
@@ -40,13 +36,9 @@ export function ExecutionModesPanel() {
     `vy ${form.locomotionConfig.cmdMaxVy}`,
     `wz ${form.locomotionConfig.cmdMaxWz}`,
   ].join(" / ");
-  const liveGoalText =
-    liveConfig?.goal === undefined
-      ? "not used"
-      : `${liveConfig.goal.x.toFixed(2)}, ${liveConfig.goal.y.toFixed(2)}`;
   const liveLocomotionText =
     liveConfig == null
-        ? "inactive"
+      ? "inactive"
       : [
           `action ${liveConfig.locomotionConfig.actionScale.toFixed(3)}`,
           liveConfig.locomotionConfig.onnxDevice,
@@ -70,20 +62,12 @@ export function ExecutionModesPanel() {
           <div className="text-[12px] font-semibold text-black/75 mb-4">Draft Runtime Profile</div>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Runtime Mode</div>
-              <div className="font-medium text-black">{form.plannerMode}</div>
-            </div>
-            <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
               <div className="text-black/45 mb-1">Gateway Launch</div>
               <div className="font-medium text-black">{form.launchMode}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
               <div className="text-black/45 mb-1">Scene Preset</div>
               <div className="font-medium text-black">{form.scenePreset}</div>
-            </div>
-            <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Point Goal</div>
-              <div className="font-medium text-black">{goalText}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3 col-span-2">
               <div className="text-black/45 mb-1">G1 Locomotion Config</div>
@@ -112,8 +96,8 @@ export function ExecutionModesPanel() {
           </div>
           <div className="grid grid-cols-2 gap-3 text-[12px]">
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Runtime Mode</div>
-              <div className="font-medium text-black">{liveConfig?.plannerMode ?? "inactive"}</div>
+              <div className="text-black/45 mb-1">Execution Mode</div>
+              <div className="font-medium text-black">{String(state?.runtime.executionMode ?? state?.runtime.modes?.executionMode ?? "IDLE")}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
               <div className="text-black/45 mb-1">Gateway Launch</div>
@@ -122,10 +106,6 @@ export function ExecutionModesPanel() {
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
               <div className="text-black/45 mb-1">Scene Preset</div>
               <div className="font-medium text-black">{liveConfig?.scenePreset ?? "inactive"}</div>
-            </div>
-            <div className="bg-[#F7F9FB] rounded-xl px-3 py-3">
-              <div className="text-black/45 mb-1">Point Goal</div>
-              <div className="font-medium text-black">{liveGoalText}</div>
             </div>
             <div className="bg-[#F7F9FB] rounded-xl px-3 py-3 col-span-2">
               <div className="text-black/45 mb-1">G1 Locomotion Config</div>
@@ -144,9 +124,9 @@ export function ExecutionModesPanel() {
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-[12px] font-medium text-black/75 mb-2">
             <Layers3 className="size-4 text-black/35" />
-            Runtime Entry Modes
+            Execution Modes
           </div>
-          <div className="text-[12px] text-black/60 leading-6">{plannerModes.join(" / ")}</div>
+          <div className="text-[12px] text-black/60 leading-6">{executionModes.join(" / ")}</div>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <div className="flex items-center gap-2 text-[12px] font-medium text-black/75 mb-2">
@@ -161,7 +141,7 @@ export function ExecutionModesPanel() {
             Active Control Surface
           </div>
           <div className="text-[12px] text-black/60 leading-6">
-            {state?.session.active ? liveConfig?.plannerMode ?? "inactive" : "no active session"}
+            {state?.session.active ? String(state?.runtime.executionMode ?? state?.runtime.modes?.executionMode ?? "IDLE") : "no active session"}
           </div>
         </div>
         <div className="bg-white rounded-2xl p-4 shadow-sm">

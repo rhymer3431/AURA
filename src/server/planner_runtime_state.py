@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from runtime.planning_session import PlannerStats
+from schemas.execution_mode import ExecutionMode, normalize_execution_mode
 
 
 @dataclass
@@ -64,7 +65,7 @@ class GlobalRouteState:
 
 @dataclass
 class PlannerRuntimeState:
-    mode: str
+    mode: ExecutionMode
     goal: GoalState = field(default_factory=GoalState)
     trajectory: TrajectoryState = field(default_factory=TrajectoryState)
     interactive: InteractiveTaskState = field(default_factory=InteractiveTaskState)
@@ -72,15 +73,34 @@ class PlannerRuntimeState:
     launcher_processes: dict[str, subprocess.Popen[Any]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
-        if self.mode == "interactive" and self.interactive.phase == "":
-            self.interactive.phase = "roaming"
+        self.mode = normalize_execution_mode(self.mode)
 
     def active_memory_instruction(self) -> str:
-        if self.mode == "dual":
+        if self.mode == "NAV":
             return str(self.goal.dual_instruction).strip()
-        if self.mode == "interactive" and self.interactive.phase == "task_active":
-            return str(self.interactive.active_instruction).strip()
         return ""
+
+    def set_mode(self, mode: ExecutionMode) -> None:
+        self.mode = normalize_execution_mode(mode)
+
+    def reset_navigation_state(self) -> None:
+        self.goal.local_xy = np.zeros(2, dtype=np.float32)
+        self.goal.goal_version = -1
+        self.goal.traj_version = -1
+        self.goal.system2_pixel_goal = None
+        self.goal.dual_instruction = ""
+        self.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+        self.trajectory.plan_version = -1
+        self.trajectory.stale_sec = -1.0
+        self.trajectory.stats = PlannerStats()
+        self.reset_planner_control()
+        self.clear_global_route_progress()
+        self.interactive.phase = ""
+        self.interactive.pending_command_id = -1
+        self.interactive.pending_instruction = ""
+        self.interactive.active_command_id = -1
+        self.interactive.active_instruction = ""
+        self.interactive.cancel_requested = False
 
     def reset_planner_control(self) -> None:
         self.trajectory.planner_control_mode = None
@@ -108,7 +128,7 @@ class PlannerRuntimeState:
             "trajectory_world": np.asarray(self.trajectory.trajectory_world, dtype=np.float32).tolist(),
             "plan_version": int(self.trajectory.plan_version),
         }
-        if self.mode == "pointgoal" and (self.global_route.planner is not None or len(self.global_route.waypoints_world) > 0):
+        if self.mode == "MEM_NAV" and (self.global_route.planner is not None or len(self.global_route.waypoints_world) > 0):
             route = self.global_route
             state.update(
                 {
@@ -127,7 +147,7 @@ class PlannerRuntimeState:
             if route.active_index < len(route.waypoints_world):
                 active_waypoint = route.waypoints_world[route.active_index]
                 state["global_route_active_waypoint_xy"] = [float(active_waypoint[0]), float(active_waypoint[1])]
-        if self.mode in {"dual", "interactive"}:
+        if self.mode == "NAV":
             state.update(
                 {
                     "goal_version": int(self.goal.goal_version),
@@ -140,6 +160,4 @@ class PlannerRuntimeState:
             )
             if self.goal.system2_pixel_goal is not None:
                 state["system2_pixel_goal"] = list(self.goal.system2_pixel_goal)
-        if self.mode == "interactive":
-            state.update(self.interactive_overlay())
         return state

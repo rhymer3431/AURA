@@ -103,12 +103,13 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
             "component": "aura_runtime",
             "details": {
                 "worldState": WorldStateSnapshot(
-                    task=TaskSnapshot(task_id="interactive", instruction="dock", mode="interactive", state="active", command_id=7),
-                    mode="interactive",
+                    task=TaskSnapshot(task_id="task-1", instruction="dock", mode="NAV", state="active", command_id=7),
+                    mode="NAV",
                     planning=PlanningStateSnapshot(
                         plan_version=4,
-                        planner_mode="interactive",
-                        interactive_instruction="dock",
+                        planner_mode="NAV",
+                        active_instruction="dock",
+                        route_state={"pixelGoal": [10, 20]},
                     ),
                     safety=SafetyStateSnapshot(
                         stale=True,
@@ -128,8 +129,8 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     state = aggregator._build_state()
 
     assert "_runtime_snapshot" not in aggregator.__dict__
-    assert state["runtime"]["modes"]["plannerMode"] == "interactive"
-    assert state["runtime"]["interactiveInstruction"] == "dock"
+    assert state["runtime"]["modes"]["executionMode"] == "NAV"
+    assert state["runtime"]["activeInstruction"] == "dock"
     assert state["runtime"]["recoveryState"] == "REPLAN_PENDING"
     assert state["transport"]["viewerPublish"] is True
     assert state["architecture"]["gateway"]["name"] == "Robot Gateway"

@@ -7,6 +7,7 @@ from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from ipc.messages import ActionCommand, ActionStatus
 from runtime.planning_session import TrajectoryUpdate
 from schemas.recovery import RecoveryState, RecoveryStateSnapshot
+from schemas.execution_mode import normalize_execution_mode
 from server.planner_runtime_state import PlannerRuntimeState
 
 from schemas.commands import ResolvedCommand
@@ -26,9 +27,10 @@ from schemas.world_state import (
 
 class WorldStateStore:
     def __init__(self, *, initial_mode: str = "", runtime: RuntimeStateSnapshot | None = None) -> None:
+        normalized_mode = normalize_execution_mode(initial_mode)
         self._snapshot = WorldStateSnapshot(
-            mode=str(initial_mode),
-            planning=PlanningStateSnapshot(planner_mode=str(initial_mode)),
+            mode=normalized_mode,
+            planning=PlanningStateSnapshot(planner_mode=normalized_mode),
             runtime=RuntimeStateSnapshot() if runtime is None else runtime,
         )
 
@@ -36,18 +38,31 @@ class WorldStateStore:
         self._snapshot = replace(self._snapshot, runtime=runtime)
 
     def set_mode(self, mode: str) -> None:
+        normalized = normalize_execution_mode(mode)
         self._snapshot = replace(
             self._snapshot,
-            mode=str(mode),
-            planning=replace(self._snapshot.planning, planner_mode=str(mode)),
+            mode=normalized,
+            planning=replace(self._snapshot.planning, planner_mode=normalized),
         )
 
     def update_task(self, task: TaskSnapshot) -> None:
         memory = replace(
             self._snapshot.memory,
-            memory_aware_task_active=bool(task.mode == "interactive" and task.state == "active"),
+            memory_aware_task_active=bool(task.mode == "MEM_NAV" and task.state == "active"),
         )
         self._snapshot = replace(self._snapshot, task=task, memory=memory)
+
+    def seed_planning_state(self, *, mode: str, instruction: str, route_state: dict[str, object] | None = None) -> None:
+        normalized = normalize_execution_mode(mode)
+        self._snapshot = replace(
+            self._snapshot,
+            planning=replace(
+                self._snapshot.planning,
+                planner_mode=normalized,
+                active_instruction=str(instruction),
+                route_state=dict(route_state or {}),
+            ),
+        )
 
     def recovery_state(self) -> RecoveryStateSnapshot:
         return RecoveryStateSnapshot.from_dict(self._snapshot.safety.recovery_state.to_dict())
@@ -153,7 +168,7 @@ class WorldStateStore:
             }
         memory_aware_task_active = False
         active_task = self._snapshot.task if task is None else task
-        if active_task.mode == "interactive" and active_task.state == "active":
+        if active_task.mode == "MEM_NAV" and active_task.state == "active":
             memory_aware_task_active = True
         self._snapshot = replace(
             self._snapshot,
@@ -205,6 +220,12 @@ class WorldStateStore:
                 if isinstance(overlay.get("global_route_waypoints_world"), list)
                 else [],
             }
+        active_instruction = str(self._snapshot.task.instruction)
+        route_state = self._build_route_state(
+            mode=self._snapshot.mode,
+            update=update,
+            global_route=global_route,
+        )
         planning = PlanningStateSnapshot(
             last_s2_result={
                 "goal_version": int(update.goal_version),
@@ -232,16 +253,15 @@ class WorldStateStore:
             plan_version=int(update.plan_version),
             goal_version=int(update.goal_version),
             traj_version=int(update.traj_version),
-            planner_mode=str(self._snapshot.mode),
+            planner_mode=self._snapshot.mode,
+            active_instruction=active_instruction,
+            route_state=route_state,
             planner_control_mode="" if update.planner_control_mode is None else str(update.planner_control_mode),
             planner_control_reason=planner_control_reason,
             planner_yaw_delta_rad=None
             if update.planner_yaw_delta_rad is None
             else float(update.planner_yaw_delta_rad),
             system2_pixel_goal=system2_pixel_goal,
-            interactive_phase="" if update.interactive_phase is None else str(update.interactive_phase),
-            interactive_command_id=int(update.interactive_command_id),
-            interactive_instruction=str(update.interactive_instruction),
             stale_info=stale_info,
             global_route=global_route,
         )
@@ -326,6 +346,38 @@ class WorldStateStore:
             sensor_unavailable=state == RecoveryState.WAIT_SENSOR or trigger == "sensor_missing",
             recovery_state=current,
         )
+
+    @staticmethod
+    def _build_route_state(*, mode: str, update: TrajectoryUpdate, global_route: dict[str, object]) -> dict[str, object]:
+        action_command = update.action_command
+        action_metadata = {} if action_command is None else dict(action_command.metadata)
+        normalized_mode = normalize_execution_mode(mode)
+        if normalized_mode == "NAV":
+            payload = {
+                "pixelGoal": None,
+                "plannerControlMode": "" if update.planner_control_mode is None else str(update.planner_control_mode),
+                "plannerControlReason": str(action_metadata.get("planner_control_reason", "")),
+            }
+            raw_goal = action_metadata.get("system2_pixel_goal")
+            if isinstance(raw_goal, list) and len(raw_goal) >= 2:
+                payload["pixelGoal"] = [int(raw_goal[0]), int(raw_goal[1])]
+            return payload
+        if normalized_mode == "MEM_NAV":
+            return {
+                "memoryPoseXyz": list(action_metadata.get("memory_pose_xyz", []))
+                if isinstance(action_metadata.get("memory_pose_xyz"), list)
+                else [],
+                "goalPoseXyz": list(action_metadata.get("goal_pose_xyz", []))
+                if isinstance(action_metadata.get("goal_pose_xyz"), list)
+                else [],
+                "waypointIndex": int(global_route.get("waypoint_index", 0) or 0),
+                "waypointCount": int(global_route.get("waypoint_count", 0) or 0),
+            }
+        if normalized_mode == "EXPLORE":
+            return {"policy": "nogoal"}
+        if normalized_mode == "TALK":
+            return {"hookStatus": "ready"}
+        return {}
 
 
 def _status_summary(status: ActionStatus | None) -> dict[str, object]:

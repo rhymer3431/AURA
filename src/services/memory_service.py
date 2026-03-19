@@ -15,6 +15,7 @@ from memory import (
     KeyframeRecord,
     MemoryContextBundle,
     MemoryConsolidator,
+    MemoryNavigationTarget,
     MemoryQueryEngine,
     RecallQuery,
     RetrievedMemoryLine,
@@ -257,6 +258,54 @@ class MemoryService:
             keyframes=keyframes[: max(int(max_keyframes), 0)],
             crop_path=crop_path,
             latent_backend_hint="llama.cpp_s2_only",
+        )
+
+    def resolve_navigation_target(
+        self,
+        *,
+        instruction: str,
+        current_pose: tuple[float, float, float] | None = None,
+        target_class: str = "",
+        room_id: str = "",
+    ) -> MemoryNavigationTarget | None:
+        normalized_instruction = str(instruction).strip()
+        if normalized_instruction == "":
+            return None
+        recall = self.query_engine.recall_object(
+            RecallQuery(
+                query_text=normalized_instruction,
+                target_class=str(target_class).strip(),
+                intent="goto_remembered_object",
+                room_id=str(room_id).strip(),
+            ),
+            current_pose=current_pose,
+        )
+        selected_object = recall.selected_object
+        selected_place = recall.selected_place
+        if selected_object is None and selected_place is None:
+            return None
+        memory_pose = (
+            selected_object.last_pose
+            if selected_object is not None
+            else selected_place.pose  # type: ignore[union-attr]
+        )
+        goal_pose = (
+            selected_place.pose
+            if selected_place is not None
+            else selected_object.last_pose  # type: ignore[union-attr]
+        )
+        goal_pose = (float(goal_pose[0]), float(goal_pose[1]), 0.0)
+        place = selected_place if selected_place is not None else self.spatial_store.place_for_object(selected_object.object_id)  # type: ignore[union-attr]
+        return MemoryNavigationTarget(
+            instruction=normalized_instruction,
+            object_id="" if selected_object is None else str(selected_object.object_id),
+            place_id="" if place is None else str(place.place_id),
+            memory_pose_xyz=(float(memory_pose[0]), float(memory_pose[1]), float(memory_pose[2])),
+            goal_pose_xyz=(float(goal_pose[0]), float(goal_pose[1]), float(goal_pose[2])),
+            room_id="" if place is None else str(place.room_id),
+            summary=""
+            if selected_object is None
+            else str(selected_object.metadata.get("memory_summary", "")).strip(),
         )
 
     def record_speaker_event(self, event: SpeakerEvent) -> None:

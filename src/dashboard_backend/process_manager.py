@@ -157,35 +157,34 @@ class ProcessManager:
                 env=(("NAVDP_PORT", str(navdp_port)),),
             )
         ]
-        if request.planner_mode == "interactive":
-            specs.extend(
-                [
-                    ProcessSpec(
-                        name="system2",
-                        script_path=scripts_dir / "run_system.ps1",
-                        args=("-Component", "s2"),
-                        health_url=system2_base_url,
-                        tcp_ready_host="127.0.0.1",
-                        tcp_ready_port=system2_port,
-                        env=(("INTERNVLA_HOST", "127.0.0.1"), ("INTERNVLA_PORT", str(system2_port))),
+        specs.extend(
+            [
+                ProcessSpec(
+                    name="system2",
+                    script_path=scripts_dir / "run_system.ps1",
+                    args=("-Component", "s2"),
+                    health_url=system2_base_url,
+                    tcp_ready_host="127.0.0.1",
+                    tcp_ready_port=system2_port,
+                    env=(("INTERNVLA_HOST", "127.0.0.1"), ("INTERNVLA_PORT", str(system2_port))),
+                ),
+                ProcessSpec(
+                    name="dual",
+                    script_path=scripts_dir / "run_system.ps1",
+                    args=("-Component", "dual"),
+                    health_url=f"{dual_base_url}/health",
+                    debug_url=f"{dual_base_url}/dual_debug_state",
+                    tcp_ready_host="127.0.0.1",
+                    tcp_ready_port=dual_port,
+                    env=(
+                        ("DUAL_SERVER_HOST", "127.0.0.1"),
+                        ("DUAL_SERVER_PORT", str(dual_port)),
+                        ("DUAL_NAVDP_URL", navdp_base_url),
+                        ("DUAL_VLM_URL", system2_base_url),
                     ),
-                    ProcessSpec(
-                        name="dual",
-                        script_path=scripts_dir / "run_system.ps1",
-                        args=("-Component", "dual"),
-                        health_url=f"{dual_base_url}/health",
-                        debug_url=f"{dual_base_url}/dual_debug_state",
-                        tcp_ready_host="127.0.0.1",
-                        tcp_ready_port=dual_port,
-                        env=(
-                            ("DUAL_SERVER_HOST", "127.0.0.1"),
-                            ("DUAL_SERVER_PORT", str(dual_port)),
-                            ("DUAL_NAVDP_URL", navdp_base_url),
-                            ("DUAL_VLM_URL", system2_base_url),
-                        ),
-                    ),
-                ]
-            )
+                ),
+            ]
+        )
         specs.append(
             ProcessSpec(
                 name="runtime",
@@ -208,15 +207,13 @@ class ProcessManager:
         dual_base_url: str,
     ) -> list[str]:
         args = [
-            "--planner-mode",
-            request.planner_mode,
             "--native-viewer",
             "off",
             "--server-url",
             navdp_base_url,
+            "--dual-server-url",
+            dual_base_url,
         ]
-        if request.planner_mode == "interactive":
-            args += ["--dual-server-url", dual_base_url]
         if request.launch_mode == "gui":
             args += ["--launch-mode", "gui"]
         else:
@@ -241,15 +238,6 @@ class ProcessManager:
             "--cmd-max-wz",
             str(request.locomotion_config.cmd_max_wz),
         ]
-        if request.planner_mode == "pointgoal":
-            assert request.goal_x is not None and request.goal_y is not None
-            args += [
-                "--goal-x",
-                str(request.goal_x),
-                "--goal-y",
-                str(request.goal_y),
-                "--no-exit-on-pointgoal-failure",
-            ]
         return args
 
     def service_urls(self, name: str) -> tuple[str, str]:

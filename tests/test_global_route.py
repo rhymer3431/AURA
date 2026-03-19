@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from runtime.global_route import GlobalRoutePlanner, MapMeta, a_star, inflate_occupancy_grid, load_occupancy_grid
+from runtime.global_route import GlobalRoutePlanner, MapMeta, inflate_occupancy_grid, load_occupancy_grid, theta_star
 
 
 def _write_map_assets(tmp_path: Path, image_array: np.ndarray, *, x_max: float | None = None, y_max: float | None = None) -> tuple[Path, Path]:
@@ -73,21 +73,21 @@ def test_load_occupancy_grid_marks_unknown_as_blocked_and_applies_inflation(tmp_
     assert inflated[2, 2] == 1
 
 
-def test_a_star_rejects_diagonal_corner_cutting() -> None:
+def test_theta_star_rejects_diagonal_corner_cutting() -> None:
     occupancy = np.zeros((3, 3), dtype=np.uint8)
     occupancy[0, 1] = 1
     occupancy[1, 0] = 1
 
     with pytest.raises(RuntimeError, match="No path found"):
-        a_star(occupancy, (0, 0), (1, 1))
+        theta_star(occupancy, (0, 0), (1, 1))
 
 
-def test_a_star_rejects_blocked_start() -> None:
+def test_theta_star_rejects_blocked_start() -> None:
     occupancy = np.zeros((3, 3), dtype=np.uint8)
     occupancy[0, 0] = 1
 
     with pytest.raises(ValueError, match="start is occupied"):
-        a_star(occupancy, (0, 0), (2, 2))
+        theta_star(occupancy, (0, 0), (2, 2))
 
 
 def test_global_route_planner_resamples_and_keeps_exact_final_goal(tmp_path: Path) -> None:

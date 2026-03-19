@@ -26,8 +26,8 @@ class RuntimeControlClient:
         self._bridge.publish_task_request(request)
         return request
 
-    def cancel_interactive_task(self) -> RuntimeControlRequest:
-        request = RuntimeControlRequest(action="cancel_interactive_task")
+    def set_idle(self) -> RuntimeControlRequest:
+        request = RuntimeControlRequest(action="set_idle")
         self._bridge.publish_runtime_control(request)
         return request
 

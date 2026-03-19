@@ -5,7 +5,7 @@ import { ControlStrip } from "./ControlStrip";
 
 const mockContext: any = {
   bootstrap: {
-    plannerModes: ["interactive", "pointgoal"],
+    executionModes: ["TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE"],
     launchModes: ["gui", "headless"],
     scenePresets: ["warehouse", "interior agent kujiale 3"],
     apiBaseUrl: "http://127.0.0.1:8095",
@@ -52,7 +52,6 @@ const mockContext: any = {
   },
   history: { stale: [], goalDistance: [], navLatency: [], s2Latency: [] },
   form: {
-    plannerMode: "pointgoal" as const,
     launchMode: "gui" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
@@ -65,8 +64,6 @@ const mockContext: any = {
       cmdMaxVy: "0.3",
       cmdMaxWz: "0.8",
     },
-    goalX: "abc",
-    goalY: "0",
   },
   loading: false,
   error: "",
@@ -83,19 +80,23 @@ vi.mock("../state", () => ({
 }));
 
 describe("ControlStrip", () => {
-  it("disables session start when pointgoal coordinates are invalid", () => {
+  it("disables session start when locomotion config is invalid", () => {
+    mockContext.form = {
+      ...mockContext.form,
+      locomotionConfig: {
+        ...mockContext.form.locomotionConfig,
+        actionScale: "0",
+      },
+    };
     render(<ControlStrip />);
 
-    expect(screen.getByText("pointgoal 모드에서는 numeric `goal x / goal y`가 필요합니다.")).toBeInTheDocument();
+    expect(screen.getByText(/locomotion config는/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /start stack/i })).toBeDisabled();
   });
 
-  it("submits interactive task only for active interactive session", () => {
+  it("submits instruction for any active runtime session", () => {
     mockContext.form = {
       ...mockContext.form,
-      plannerMode: "interactive",
-      goalX: "1",
-      goalY: "2",
     };
     mockContext.state = {
       ...mockContext.state,
@@ -103,7 +104,6 @@ describe("ControlStrip", () => {
         active: true,
         startedAt: 1,
         config: {
-          plannerMode: "interactive",
           launchMode: "gui",
           scenePreset: "warehouse",
           viewerEnabled: true,
@@ -119,10 +119,13 @@ describe("ControlStrip", () => {
         },
         lastEvent: null,
       },
+      runtime: {
+        executionMode: "NAV",
+      },
     };
 
     render(<ControlStrip />);
-    fireEvent.change(screen.getByPlaceholderText("자연어 task를 입력하세요"), {
+    fireEvent.change(screen.getByPlaceholderText("instruction을 입력하면 서버가 실행 모드를 분류합니다"), {
       target: { value: "go to the loading dock" },
     });
     fireEvent.click(screen.getByRole("button", { name: /submit task/i }));
@@ -133,10 +136,7 @@ describe("ControlStrip", () => {
   it("renders and selects the kujiale 3 scene preset", () => {
     mockContext.form = {
       ...mockContext.form,
-      plannerMode: "interactive",
       scenePreset: "warehouse",
-      goalX: "1",
-      goalY: "2",
     };
 
     render(<ControlStrip />);
@@ -152,13 +152,10 @@ describe("ControlStrip", () => {
   it("updates the locomotion config from the dashboard input", () => {
     mockContext.form = {
       ...mockContext.form,
-      plannerMode: "interactive",
       locomotionConfig: {
         ...mockContext.form.locomotionConfig,
         actionScale: "0.5",
       },
-      goalX: "1",
-      goalY: "2",
     };
 
     render(<ControlStrip />);

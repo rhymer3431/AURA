@@ -12,6 +12,7 @@ from clients.worker_clients import (
     SupervisorPerceptionClient,
     SupervisorTaskCommandClient,
 )
+from ipc.messages import TaskRequest
 from locomotion.types import CommandEvaluation
 from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor
@@ -68,7 +69,7 @@ class MainControlServer:
         self._safety_supervisor = SafetySupervisor(args)
         self._decision_engine = DecisionEngine(policy=self._safety_supervisor.policy)
         self._world_state = WorldStateStore(
-            initial_mode=str(getattr(args, "planner_mode", "")),
+            initial_mode="IDLE",
             runtime=RuntimeStateSnapshot(
                 launch_mode=str(getattr(args, "resolved_launch_mode", "")),
                 viewer_publish=bool(getattr(args, "viewer_publish", False)),
@@ -100,33 +101,58 @@ class MainControlServer:
                 memory_client=self._memory_client,
             )
         )
+        self._planner_coordinator.set_execution_mode(self._task_manager.mode)
         self._world_state.set_mode(self._task_manager.mode)
         self._world_state.update_task(self._task_manager.snapshot())
+        self._world_state.seed_planning_state(
+            mode=self._task_manager.mode,
+            instruction=self._task_manager.snapshot().instruction,
+            route_state=self._task_manager.route_state_seed(),
+        )
         self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
         return notices
 
-    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str = "") -> tuple[int, object]:
-        command_id, notice = self._task_manager.submit_interactive_instruction(
-            instruction,
+    def submit_task_request(self, request: TaskRequest) -> tuple[object, ...]:
+        notices = tuple(
+            self._task_manager.handle_event(
+                request,
+                planner_coordinator=self._planner_coordinator,
+                memory_client=self._memory_client,
+            )
+        )
+        self._planner_coordinator.set_execution_mode(self._task_manager.mode)
+        self._world_state.set_mode(self._task_manager.mode)
+        self._world_state.update_task(self._task_manager.snapshot())
+        self._world_state.seed_planning_state(
+            mode=self._task_manager.mode,
+            instruction=self._task_manager.snapshot().instruction,
+            route_state=self._task_manager.route_state_seed(),
+        )
+        self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
+        return notices
+
+    def set_idle(self, *, source: str) -> tuple[bool, object | None]:
+        changed, notice = self._task_manager.set_idle(
             source=source,
-            task_id=task_id,
             planner_coordinator=self._planner_coordinator,
             memory_client=self._memory_client,
         )
+        self._planner_coordinator.set_execution_mode(self._task_manager.mode)
+        self._world_state.set_mode(self._task_manager.mode)
         self._world_state.update_task(self._task_manager.snapshot())
-        self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
+        self._world_state.seed_planning_state(mode="IDLE", instruction="", route_state={})
+        if changed:
+            self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
+        return changed, notice
+
+    def submit_interactive_instruction(self, instruction: str, *, source: str, task_id: str = "") -> tuple[int, object]:
+        notices = self.submit_task_request(TaskRequest(command_text=instruction, task_id=task_id or "task"))
+        command_id = -1
+        notice = notices[-1] if notices else None
         return command_id, notice
 
     def cancel_interactive_task(self, *, source: str) -> tuple[bool, object | None]:
-        cancelled, notice = self._task_manager.cancel_interactive_task(
-            source=source,
-            planner_coordinator=self._planner_coordinator,
-            memory_client=self._memory_client,
-        )
-        self._world_state.update_task(self._task_manager.snapshot())
-        if cancelled:
-            self._world_state.reset_recovery_state(entered_at_ns=time.time_ns(), reason="task_reset")
-        return cancelled, notice
+        return self.set_idle(source=source)
 
     def snapshot(self) -> WorldStateSnapshot:
         return self._world_state.snapshot()
@@ -155,8 +181,14 @@ class MainControlServer:
                 )
             )
 
+        self._planner_coordinator.set_execution_mode(self._task_manager.mode)
         self._world_state.set_mode(self._task_manager.mode)
         self._world_state.update_task(self._task_manager.snapshot())
+        self._world_state.seed_planning_state(
+            mode=self._task_manager.mode,
+            instruction=self._task_manager.snapshot().instruction,
+            route_state=self._task_manager.route_state_seed(),
+        )
         if self._task_manager.snapshot() != initial_task:
             self._world_state.reset_recovery_state(entered_at_ns=now_ns, reason="task_reset")
         self._world_state.ingest_frame(frame_event)
@@ -255,6 +287,7 @@ class MainControlServer:
         )
         task_reset = self._task_manager.sync_after_update(
             resolved.trajectory_update,
+            resolved.status,
             memory_client=self._memory_client,
         )
         self._world_state.update_task(self._task_manager.snapshot())

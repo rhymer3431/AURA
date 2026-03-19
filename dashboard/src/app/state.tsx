@@ -21,7 +21,6 @@ import { createDashboardEventSource, requestJson } from "./network";
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
 export const DEFAULT_FORM: SessionForm = {
-  plannerMode: "interactive",
   launchMode: "gui",
   scenePreset: "warehouse",
   viewerEnabled: true,
@@ -34,8 +33,6 @@ export const DEFAULT_FORM: SessionForm = {
     cmdMaxVy: "0.3",
     cmdMaxWz: "0.8",
   },
-  goalX: "2.0",
-  goalY: "0.0",
 };
 
 type StateModel = {
@@ -60,7 +57,6 @@ function appendSeries(series: NumericSeries, value: number | null | undefined, t
 
 export function buildSessionPayload(form: SessionForm) {
   const payload: {
-    plannerMode: SessionForm["plannerMode"];
     launchMode: SessionForm["launchMode"];
     scenePreset: string;
     viewerEnabled: boolean;
@@ -73,9 +69,7 @@ export function buildSessionPayload(form: SessionForm) {
       cmdMaxVy: number;
       cmdMaxWz: number;
     };
-    goal?: { x: number; y: number };
   } = {
-    plannerMode: form.plannerMode,
     launchMode: form.launchMode,
     scenePreset: form.scenePreset,
     viewerEnabled: form.viewerEnabled,
@@ -106,14 +100,6 @@ export function buildSessionPayload(form: SessionForm) {
   }
   if (locomotionValues.cmdMaxWz <= 0) {
     throw new Error("locomotion cmdMaxWz must be positive");
-  }
-  if (form.plannerMode === "pointgoal") {
-    const goalX = Number(form.goalX);
-    const goalY = Number(form.goalY);
-    if (!Number.isFinite(goalX) || !Number.isFinite(goalY)) {
-      throw new Error("pointgoal goal must contain numeric x and y values");
-    }
-    payload.goal = { x: goalX, y: goalY };
   }
   return payload;
 }

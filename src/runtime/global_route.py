@@ -163,7 +163,7 @@ class GlobalRoutePlanner:
             raise ValueError(f"global route start cell is blocked: {start_rc}")
         if self.occupancy_grid[goal_rc] != 0:
             raise ValueError(f"global route goal cell is blocked: {goal_rc}")
-        grid_path = a_star(self.occupancy_grid, start_rc, goal_rc)
+        grid_path = theta_star(self.occupancy_grid, start_rc, goal_rc)
         world_path = [self.meta.grid_to_world(row, col) for row, col in grid_path]
         waypoints = resample_polyline(world_path, spacing_m=spacing_m)
         if len(waypoints) == 0:
@@ -205,7 +205,7 @@ def inflate_occupancy_grid(occupancy_grid: np.ndarray, *, radius_px: int) -> np.
     return _manual_dilate(occupancy, kernel)
 
 
-def a_star(occupancy_grid: np.ndarray, start: GridPoint, goal: GridPoint) -> list[GridPoint]:
+def theta_star(occupancy_grid: np.ndarray, start: GridPoint, goal: GridPoint) -> list[GridPoint]:
     occupancy = np.asarray(occupancy_grid, dtype=np.uint8)
     if occupancy.ndim != 2:
         raise ValueError(f"occupancy_grid must be rank-2, got shape={occupancy.shape}")
@@ -231,15 +231,17 @@ def a_star(occupancy_grid: np.ndarray, start: GridPoint, goal: GridPoint) -> lis
     )
     frontier: list[tuple[float, GridPoint]] = []
     heappush(frontier, (0.0, start))
-    came_from: dict[GridPoint, GridPoint] = {}
+    parent: dict[GridPoint, GridPoint] = {start: start}
     g_score: dict[GridPoint, float] = {start: 0.0}
-    open_set: set[GridPoint] = {start}
+    closed: set[GridPoint] = set()
 
     while frontier:
         _, current = heappop(frontier)
-        open_set.discard(current)
+        if current in closed:
+            continue
         if current == goal:
-            return _reconstruct_path(came_from, current)
+            return _reconstruct_path(parent, current)
+        closed.add(current)
         current_row, current_col = current
         for d_row, d_col, move_cost in neighbors:
             next_row = current_row + d_row
@@ -250,16 +252,24 @@ def a_star(occupancy_grid: np.ndarray, start: GridPoint, goal: GridPoint) -> lis
                 if not valid(current_row + d_row, current_col) or not valid(current_row, current_col + d_col):
                     continue
             neighbor = (next_row, next_col)
-            tentative = g_score[current] + move_cost
+            anchor = parent[current]
+            if _line_of_sight(occupancy, anchor, neighbor):
+                tentative = g_score[anchor] + math.hypot(neighbor[0] - anchor[0], neighbor[1] - anchor[1])
+                candidate_parent = anchor
+            else:
+                tentative = g_score[current] + move_cost
+                candidate_parent = current
             if tentative >= g_score.get(neighbor, float("inf")):
                 continue
-            came_from[neighbor] = current
+            parent[neighbor] = candidate_parent
             g_score[neighbor] = tentative
             f_score = tentative + math.hypot(goal[0] - next_row, goal[1] - next_col)
-            if neighbor not in open_set:
-                heappush(frontier, (f_score, neighbor))
-                open_set.add(neighbor)
+            heappush(frontier, (f_score, neighbor))
     raise RuntimeError("No path found")
+
+
+def a_star(occupancy_grid: np.ndarray, start: GridPoint, goal: GridPoint) -> list[GridPoint]:
+    return theta_star(occupancy_grid, start, goal)
 
 
 def resample_polyline(points: list[WorldPoint], *, spacing_m: float) -> list[WorldPoint]:
@@ -336,9 +346,35 @@ def _reconstruct_path(came_from: dict[GridPoint, GridPoint], current: GridPoint)
     node = current
     while node in came_from:
         node = came_from[node]
+        if node == path[-1]:
+            break
         path.append(node)
     path.reverse()
     return path
+
+
+def _line_of_sight(occupancy_grid: np.ndarray, start: GridPoint, goal: GridPoint) -> bool:
+    occupancy = np.asarray(occupancy_grid, dtype=np.uint8)
+    if occupancy.ndim != 2:
+        return False
+    steps = max(abs(goal[0] - start[0]), abs(goal[1] - start[1]))
+    if steps == 0:
+        return bool(occupancy[start] == 0)
+
+    prev_row = int(start[0])
+    prev_col = int(start[1])
+    for index in range(1, steps + 1):
+        ratio = float(index) / float(steps)
+        row = int(round(start[0] + (goal[0] - start[0]) * ratio))
+        col = int(round(start[1] + (goal[1] - start[1]) * ratio))
+        if not (0 <= row < occupancy.shape[0] and 0 <= col < occupancy.shape[1]) or occupancy[row, col] != 0:
+            return False
+        if row != prev_row and col != prev_col:
+            if occupancy[row, prev_col] != 0 or occupancy[prev_row, col] != 0:
+                return False
+        prev_row = row
+        prev_col = col
+    return True
 
 
 __all__ = [
@@ -347,6 +383,7 @@ __all__ = [
     "MapMeta",
     "WorldPoint",
     "a_star",
+    "theta_star",
     "inflate_occupancy_grid",
     "load_occupancy_grid",
     "resample_polyline",
