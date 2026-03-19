@@ -242,6 +242,113 @@ function Stop-ManagedProcess {
     }
 }
 
+function Get-ProcessCommandLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [int]$ProcessId
+    )
+
+    try {
+        $ProcessInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+        if ($null -eq $ProcessInfo) {
+            return ""
+        }
+        return [string]$ProcessInfo.CommandLine
+    }
+    catch {
+        return ""
+    }
+}
+
+function Resolve-LocalTcpEndpoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Endpoint
+    )
+
+    $Trimmed = [string]$Endpoint
+    if ([string]::IsNullOrWhiteSpace($Trimmed)) {
+        return @{ IsLocal = $false; Port = 0 }
+    }
+    $Trimmed = $Trimmed.Trim()
+    if ($Trimmed -notmatch '^tcp://(?<Host>\[[^\]]+\]|[^:]+):(?<Port>\d+)$') {
+        return @{ IsLocal = $false; Port = 0 }
+    }
+
+    $HostValue = [string]$Matches["Host"]
+    if ($HostValue.StartsWith("[") -and $HostValue.EndsWith("]")) {
+        $HostValue = $HostValue.Substring(1, $HostValue.Length - 2)
+    }
+    $NormalizedHost = $HostValue.Trim().ToLowerInvariant()
+    $IsLocal = $NormalizedHost -in @("127.0.0.1", "localhost", "0.0.0.0", "::1")
+    return @{
+        IsLocal = $IsLocal
+        Port    = [int]$Matches["Port"]
+    }
+}
+
+function Stop-StaleRuntimeBridgeListeners {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoDir,
+        [string[]]$Endpoints = @()
+    )
+
+    if (-not (Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    $ExistingPids = @()
+    $TrackedPorts = @()
+    foreach ($Endpoint in @($Endpoints)) {
+        $Binding = Resolve-LocalTcpEndpoint -Endpoint ([string]$Endpoint)
+        if (-not $Binding.IsLocal) {
+            continue
+        }
+        $TrackedPorts += [int]$Binding.Port
+        $ExistingPids += @(
+            Get-NetTCPConnection -State Listen -LocalPort ([int]$Binding.Port) -ErrorAction SilentlyContinue |
+                Select-Object -ExpandProperty OwningProcess -Unique
+        )
+    }
+
+    $TrackedPorts = @($TrackedPorts | Where-Object { $_ -gt 0 } | Select-Object -Unique)
+    $ExistingPids = @($ExistingPids | Where-Object { $_ -gt 0 } | Select-Object -Unique)
+    if ($TrackedPorts.Count -eq 0 -or $ExistingPids.Count -eq 0) {
+        return
+    }
+
+    foreach ($ProcessId in $ExistingPids) {
+        $CommandLine = Get-ProcessCommandLine -ProcessId ([int]$ProcessId)
+        $IsRuntimeProcess = $CommandLine -like "*runtime.aura_runtime*" -and $CommandLine -like "*isaac-aura*"
+        if (-not $IsRuntimeProcess) {
+            throw "Runtime bridge port(s) $([string]::Join(',', $TrackedPorts)) are already in use by pid=$ProcessId. Refusing to stop a non-runtime process."
+        }
+        Write-Host "[AURA_SYSTEM] stopping stale runtime bridge pid=$ProcessId on port(s) $([string]::Join(',', $TrackedPorts))"
+        Stop-Process -Id ([int]$ProcessId) -Force -ErrorAction Stop
+    }
+
+    $Deadline = (Get-Date).AddSeconds(10)
+    do {
+        $StillListening = $false
+        foreach ($TrackedPort in $TrackedPorts) {
+            $ActiveConnections = @(
+                Get-NetTCPConnection -State Listen -LocalPort ([int]$TrackedPort) -ErrorAction SilentlyContinue
+            )
+            if ($ActiveConnections.Count -gt 0) {
+                $StillListening = $true
+                break
+            }
+        }
+        if (-not $StillListening) {
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    } while ((Get-Date) -lt $Deadline)
+
+    throw "Stale runtime bridge listener on port(s) $([string]::Join(',', $TrackedPorts)) did not exit in time."
+}
+
 function Start-BackgroundSelf {
     param(
         [Parameter(Mandatory = $true)]
@@ -657,6 +764,9 @@ function Invoke-RuntimeComponent {
     }
 
     $RuntimeArgs = Build-RuntimeLaunchArgs -InputArgs $Arguments
+    $ViewerControlEndpoint = Get-LaunchArgValue -InputArgs $RuntimeArgs -Names @("--viewer-control-endpoint") -DefaultValue ""
+    $ViewerTelemetryEndpoint = Get-LaunchArgValue -InputArgs $RuntimeArgs -Names @("--viewer-telemetry-endpoint") -DefaultValue ""
+    Stop-StaleRuntimeBridgeListeners -RepoDir $RepoDir -Endpoints @($ViewerControlEndpoint, $ViewerTelemetryEndpoint)
     Write-Host "[AURA_SYSTEM] starting Main Control runtime via Isaac python"
     Push-Location $RepoDir
     $PreviousPythonPath = $env:PYTHONPATH
