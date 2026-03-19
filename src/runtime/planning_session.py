@@ -408,12 +408,12 @@ class PlanningSession:
     def _default_navdp_client_factory(intrinsic: np.ndarray, args: argparse.Namespace) -> InProcessNavDPClient:
         return create_inprocess_navdp_client(
             intrinsic=np.asarray(intrinsic, dtype=np.float32),
-            backend_name=str(getattr(args, "navdp_backend", "heuristic")),
+            backend=str(getattr(args, "navdp_backend", "heuristic")),
             checkpoint_path=str(getattr(args, "navdp_checkpoint", "")),
             device=str(getattr(args, "navdp_device", "cpu")),
-            use_amp=bool(getattr(args, "navdp_amp", False)),
+            amp=bool(getattr(args, "navdp_amp", False)),
             amp_dtype=str(getattr(args, "navdp_amp_dtype", "float16")),
-            allow_tf32=bool(getattr(args, "navdp_tf32", False)),
+            tf32=bool(getattr(args, "navdp_tf32", False)),
             stop_threshold=float(getattr(args, "stop_threshold", -3.0)),
         )
 

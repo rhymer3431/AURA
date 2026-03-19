@@ -17,6 +17,17 @@ from .paths import (
 )
 
 
+def _trace_runtime_event(message: str) -> None:
+    path = str(os.environ.get("AURA_RUNTIME_TRACE_PATH", "")).strip()
+    if path == "":
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{message}\n")
+    except OSError:
+        return
+
+
 def _resolve_runtime_paths(args) -> tuple[str, str, str | None]:
     base_dir = repo_dir()
     policy_path = os.path.abspath(args.policy) if args.policy else resolve_default_policy_path(base_dir)
@@ -121,9 +132,12 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
     controller = None
 
     try:
+        _trace_runtime_event("locomotion.run: creating world")
         world = World(stage_units_in_meters=1.0, physics_dt=args.physics_dt, rendering_dt=rendering_dt)
+        _trace_runtime_event("locomotion.run: spawning environment")
         spawn_environment(env_reference, args.scene_prim_path, tuple(args.scene_translate))
 
+        _trace_runtime_event("locomotion.run: creating controller")
         controller = G1PolicyController(
             prim_path=args.robot_prim_path,
             usd_path=robot_usd,
@@ -136,14 +150,17 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
         )
 
         stage = omni.usd.get_context().get_stage()
+        _trace_runtime_event("locomotion.run: initializing command source")
         command_source.initialize(simulation_app, stage, controller)
         if isinstance(command_source, ConsoleCmdVelController):
             command_source.print_help()
 
         state, on_physics_step = _build_physics_step_callback(world, controller, command_source)
 
+        _trace_runtime_event(f"locomotion.run: pre-reset is_running={simulation_app.is_running()}")
         world.reset()
         world.add_physics_callback("physics_step", callback_fn=on_physics_step)
+        _trace_runtime_event(f"locomotion.run: entering loop is_running={simulation_app.is_running()}")
 
         while simulation_app.is_running() and not command_source.quit_requested:
             if state["initialized"] and not state["reset_needed"]:
@@ -161,10 +178,13 @@ def run(args, simulation_app, command_source: CommandSource | None = None):
                 shutdown_reason = "simulation app is no longer running"
             else:
                 shutdown_reason = "runtime loop exited"
+        _trace_runtime_event(f"locomotion.run: shutdown_reason={shutdown_reason}")
         print(f"[INFO] Shutdown reason: {shutdown_reason}")
     finally:
         if controller is not None:
+            _trace_runtime_event("locomotion.run: closing controller")
             controller.close()
+        _trace_runtime_event("locomotion.run: shutting down command source")
         command_source.shutdown()
 
     return int(getattr(command_source, "exit_code", 0))

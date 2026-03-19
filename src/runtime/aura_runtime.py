@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
 import traceback
@@ -30,6 +31,17 @@ from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, 
 from .planning_session import PlanningSession, TrajectoryUpdate
 from .subgoal_executor import CommandEvaluation, SubgoalExecutor
 from .supervisor import Supervisor, SupervisorConfig
+
+
+def _trace_runtime_event(message: str) -> None:
+    path = str(os.environ.get("AURA_RUNTIME_TRACE_PATH", "")).strip()
+    if path == "":
+        return
+    try:
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {message}\n")
+    except OSError:
+        return
 
 
 class AuraRuntimeCommandSource:
@@ -624,7 +636,14 @@ def main() -> int:
         args = apply_demo_defaults(args)
         validate_args(args)
         args = apply_launch_mode_defaults(args)
+        _trace_runtime_event(
+            "args parsed "
+            f"planner_mode={getattr(args, 'planner_mode', '')} "
+            f"launch_mode={getattr(args, 'resolved_launch_mode', '')} "
+            f"headless={bool(getattr(args, 'headless', False))}"
+        )
     except ValueError as exc:
+        _trace_runtime_event(f"arg validation failed: {type(exc).__name__}: {exc}")
         print(f"[G1_POINTGOAL] {exc}")
         return 2
 
@@ -632,16 +651,24 @@ def main() -> int:
     from locomotion.runtime import run as run_g1_play
 
     launch_config = build_launch_config(args)
+    _trace_runtime_event(f"creating SimulationApp launch_config={launch_config}")
     simulation_app = SimulationApp(launch_config=launch_config)
+    _trace_runtime_event("SimulationApp created")
 
     try:
-        return run_g1_play(args, simulation_app, command_source=AuraRuntimeCommandSource(args))
+        _trace_runtime_event("entering locomotion runtime")
+        exit_code = run_g1_play(args, simulation_app, command_source=AuraRuntimeCommandSource(args))
+        _trace_runtime_event(f"locomotion runtime returned exit_code={exit_code}")
+        return exit_code
     except Exception as exc:  # noqa: BLE001
+        _trace_runtime_event(f"unhandled exception: {type(exc).__name__}: {exc}")
         print(f"[G1_POINTGOAL] unhandled exception: {type(exc).__name__}: {exc}")
         print(traceback.format_exc())
         return 1
     finally:
+        _trace_runtime_event("closing SimulationApp")
         simulation_app.close()
+        _trace_runtime_event("SimulationApp closed")
 
 
 if __name__ == "__main__":

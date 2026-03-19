@@ -132,6 +132,27 @@ def test_planning_session_no_longer_exposes_task_lifecycle_apis() -> None:
         assert not hasattr(session, name)
 
 
+def test_planning_session_default_navdp_client_factory_uses_supported_keyword_names(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _fake_create_inprocess_navdp_client(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr("runtime.planning_session.create_inprocess_navdp_client", _fake_create_inprocess_navdp_client)
+
+    session = PlanningSession(_args())
+    result = session._default_navdp_client_factory(np.eye(3, dtype=np.float32), _args())
+
+    assert result is not None
+    assert captured["backend"] == "heuristic"
+    assert captured["amp"] is False
+    assert captured["tf32"] is False
+    assert "backend_name" not in captured
+    assert "use_amp" not in captured
+    assert "allow_tf32" not in captured
+
+
 def test_planner_runtime_engine_owns_interactive_state_transitions() -> None:
     session, nogoal_planner, dual_planner, navdp_client, dual_client = _make_session(mode="interactive")
     state = PlannerRuntimeState(mode="interactive")

@@ -192,7 +192,10 @@ class ProcessManager:
                 script_path=scripts_dir / "run_system.ps1",
                 args=("-Component", "runtime", *runtime_args),
                 health_url="",
-                env=(("G1_POINTGOAL_SCENE_PRESET", request.scene_preset),),
+                env=(
+                    ("G1_POINTGOAL_SCENE_PRESET", request.scene_preset),
+                    ("AURA_RUNTIME_TRACE_PATH", str(self.config.process_log_dir / "runtime.trace.log")),
+                ),
             )
         )
         return specs
