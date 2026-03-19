@@ -398,9 +398,7 @@ function Build-RuntimeLaunchArgs {
     }
     $RobotUsd = if ($env:G1_POINTGOAL_ROBOT_USD) { $env:G1_POINTGOAL_ROBOT_USD } else { (Join-Path $RepoDir "src\locomotion\g1\g1_d455.usd") }
     $ScenePreset = if ($env:G1_POINTGOAL_SCENE_PRESET) { $env:G1_POINTGOAL_SCENE_PRESET } else { "warehouse" }
-    $PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "interactive" }
-    $GoalX = if ($env:G1_POINTGOAL_GOAL_X) { $env:G1_POINTGOAL_GOAL_X } else { "2.0" }
-    $GoalY = if ($env:G1_POINTGOAL_GOAL_Y) { $env:G1_POINTGOAL_GOAL_Y } else { "0.0" }
+    $PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "IDLE" }
     $LaunchMode = if ($env:G1_POINTGOAL_LAUNCH_MODE) { $env:G1_POINTGOAL_LAUNCH_MODE } else { "" }
     $ServerUrl = if ($env:G1_POINTGOAL_SERVER_URL) { $env:G1_POINTGOAL_SERVER_URL } else { $NavBaseUrl }
     $DualServerUrl = if ($env:G1_POINTGOAL_DUAL_SERVER_URL) { $env:G1_POINTGOAL_DUAL_SERVER_URL } else { $DualBaseUrl }
@@ -455,16 +453,10 @@ function Build-RuntimeLaunchArgs {
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--planner-mode"))) {
         $RuntimeArgs += @("--planner-mode", $EffectivePlannerMode)
     }
-    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--goal-x"))) {
-        $RuntimeArgs += @("--goal-x", $GoalX)
-    }
-    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--goal-y"))) {
-        $RuntimeArgs += @("--goal-y", $GoalY)
-    }
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--server-url"))) {
         $RuntimeArgs += @("--server-url", $ServerUrl)
     }
-    if ($EffectivePlannerMode -eq "interactive" -and -not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--dual-server-url"))) {
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--dual-server-url"))) {
         $RuntimeArgs += @("--dual-server-url", $DualServerUrl)
     }
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--viewer-control-endpoint"))) {
@@ -694,22 +686,19 @@ function Invoke-AllComponent {
         [string[]]$Arguments = @()
     )
 
-    $PlannerMode = Get-LaunchArgValue -InputArgs $Arguments -Names @("--planner-mode") -DefaultValue (if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "interactive" })
     $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
     try {
         $NavProcess = Start-BackgroundSelf -Name "nav" -TargetComponent "nav"
         $Processes.Add($NavProcess) | Out-Null
         Wait-TcpReady -Host "127.0.0.1" -Port $NavPort -Name "Nav module" -TimeoutSec $StartupTimeoutSec -Process $NavProcess
 
-        if ($PlannerMode -eq "interactive" -or $PlannerMode -eq "dual") {
-            $S2Process = Start-BackgroundSelf -Name "s2" -TargetComponent "s2"
-            $Processes.Add($S2Process) | Out-Null
-            Wait-TcpReady -Host $System2Host -Port $System2Port -Name "S2 module" -TimeoutSec $StartupTimeoutSec -Process $S2Process
+        $S2Process = Start-BackgroundSelf -Name "s2" -TargetComponent "s2"
+        $Processes.Add($S2Process) | Out-Null
+        Wait-TcpReady -Host $System2Host -Port $System2Port -Name "S2 module" -TimeoutSec $StartupTimeoutSec -Process $S2Process
 
-            $DualProcess = Start-BackgroundSelf -Name "dual" -TargetComponent "dual"
-            $Processes.Add($DualProcess) | Out-Null
-            Wait-TcpReady -Host $DualHost -Port $DualPort -Name "Dual bridge module" -TimeoutSec $StartupTimeoutSec -Process $DualProcess
-        }
+        $DualProcess = Start-BackgroundSelf -Name "dual" -TargetComponent "dual"
+        $Processes.Add($DualProcess) | Out-Null
+        Wait-TcpReady -Host $DualHost -Port $DualPort -Name "Dual bridge module" -TimeoutSec $StartupTimeoutSec -Process $DualProcess
 
         return (Invoke-RuntimeComponent -Arguments $Arguments)
     }
