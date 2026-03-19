@@ -192,6 +192,7 @@ class ProcessManager:
                 script_path=scripts_dir / "run_system.ps1",
                 args=("-Component", "runtime", *runtime_args),
                 health_url="",
+                env=(("G1_POINTGOAL_SCENE_PRESET", request.scene_preset),),
             )
         )
         return specs
@@ -206,8 +207,6 @@ class ProcessManager:
         args = [
             "--planner-mode",
             request.planner_mode,
-            "--scene-preset",
-            request.scene_preset,
             "--native-viewer",
             "off",
             "--server-url",

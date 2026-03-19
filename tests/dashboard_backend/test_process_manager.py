@@ -90,8 +90,6 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "runtime",
         "--planner-mode",
         "interactive",
-        "--scene-preset",
-        "warehouse",
         "--native-viewer",
         "off",
         "--server-url",
@@ -113,6 +111,7 @@ def test_process_manager_starts_interactive_stack_and_stops_in_reverse_order(mon
         "--cmd-max-wz",
         "1.0",
     )
+    assert dict(created_specs[-1].env)["G1_POINTGOAL_SCENE_PRESET"] == "warehouse"
     assert [item["name"] for item in snapshot if item["state"] == "running"] == ["navdp", "system2", "dual", "runtime"]
 
     asyncio.run(manager.stop_all())
@@ -167,6 +166,7 @@ def test_process_manager_marks_optional_services_not_required(monkeypatch: pytes
     assert snapshot["system2"]["state"] == "not_required"
     assert snapshot["dual"]["state"] == "not_required"
     assert "--no-exit-on-pointgoal-failure" in runtime_spec.args
+    assert dict(runtime_spec.env)["G1_POINTGOAL_SCENE_PRESET"] == "warehouse"
 
 
 def test_process_manager_includes_default_locomotion_config_when_not_overridden(monkeypatch: pytest.MonkeyPatch) -> None:

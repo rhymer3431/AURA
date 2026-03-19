@@ -97,6 +97,40 @@ function Get-LaunchArgValue {
     return $Resolved
 }
 
+function Remove-LaunchArgs {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [string[]]$InputArgs,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Names
+    )
+
+    $Filtered = New-Object System.Collections.Generic.List[string]
+    for ($Index = 0; $Index -lt $InputArgs.Length; $Index += 1) {
+        $LaunchArg = $InputArgs[$Index]
+        $Matched = $false
+        foreach ($Name in $Names) {
+            if ($LaunchArg -eq $Name) {
+                $Matched = $true
+                if (($Index + 1) -lt $InputArgs.Length) {
+                    $Index += 1
+                }
+                break
+            }
+            if ($LaunchArg.StartsWith("$Name=")) {
+                $Matched = $true
+                break
+            }
+        }
+        if (-not $Matched) {
+            $Filtered.Add($LaunchArg) | Out-Null
+        }
+    }
+
+    return @($Filtered)
+}
+
 function Resolve-ProjectPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -385,6 +419,7 @@ function Build-RuntimeLaunchArgs {
     $EffectiveNativeViewer = Get-LaunchArgValue -InputArgs $InputArgs -Names @("--native-viewer") -DefaultValue $NativeViewer
     $HasViewerPublish = Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--viewer-publish")
     $HasNoViewerPublish = Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--no-viewer-publish")
+    $ForwardedArgs = Remove-LaunchArgs -InputArgs $InputArgs -Names @("--scene-preset", "--scene")
     $EffectiveViewerPublish = $ViewerPublish
     if ($HasViewerPublish) { $EffectiveViewerPublish = "1" }
     if ($HasNoViewerPublish) { $EffectiveViewerPublish = "0" }
@@ -473,7 +508,7 @@ function Build-RuntimeLaunchArgs {
         $RuntimeArgs += @("--force-runtime-camera")
     }
 
-    return @($RuntimeArgs + $InputArgs)
+    return @($RuntimeArgs + $ForwardedArgs)
 }
 
 function Invoke-NavComponent {
