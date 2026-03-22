@@ -38,6 +38,18 @@ For a live backend during browser development:
 - set `VITE_AURA_API_BASE` to call a backend directly from the browser, or
 - set `AURA_DASHBOARD_PROXY_TARGET` before `npm run dev` if the backend is on a different host or port.
 
+## Project-Local Codex Skill
+
+This dashboard now vendors the upstream `Dammyjay93/interface-design` frontend skill as a repo-local Codex skill.
+
+- Vendored upstream snapshot: `dashboard/tools/interface-design/`
+- Pinned upstream commit: `8c407c1c42890010a9eb403a9f419b1eeadcfdad`
+- Codex project entrypoint: `.claude/skills/interface-design/SKILL.md`
+- Project design memory path: `dashboard/.interface-design/system.md`
+- Default audit/extract targets: `dashboard/src`, `dashboard/src/styles`, `dashboard/guidelines/Guidelines.md`
+- This integration is repo-local only. It does not install anything into `~/.codex/skills`.
+- Start a new Codex session or restart Codex after pulling these files so local skill discovery can reload.
+
 ## Notes
 
 - 브라우저 dev server 기본 포트는 `http://127.0.0.1:5173` 이지만, 해당 포트가 이미 사용 중이면 `npm run tauri:dev` 는 다음 사용 가능한 localhost 포트로 자동 이동합니다.
