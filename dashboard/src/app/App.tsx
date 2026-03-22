@@ -20,6 +20,9 @@ import {
 } from "./components/SystemStatusWidgets";
 import { ExecutionModesPanel } from "./components/ExecutionModesPanel";
 import { ArtifactsStoragePanel } from "./components/ArtifactsStoragePanel";
+import { DashboardSectionTabs } from "./components/DashboardSectionTabs";
+import { DashboardPageHero } from "./components/DashboardPageHero";
+import { DashboardActivityRail } from "./components/DashboardActivityRail";
 import {
   DEFAULT_DASHBOARD_PAGE,
   dashboardPageHash,
@@ -115,11 +118,11 @@ export default function App() {
       return (
         <div className="space-y-6">
           <StatCards />
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-            <div className="xl:col-span-8">
+          <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6">
+            <div className="2xl:col-span-8">
               <RobotViewer />
             </div>
-            <div className="xl:col-span-4 grid grid-cols-1 gap-6">
+            <div className="2xl:col-span-4 grid grid-cols-1 gap-6">
               <SensorsWidget />
               <MainControlServerWidget />
             </div>
@@ -139,7 +142,7 @@ export default function App() {
 
     if (activePage === "perception-memory") {
       return (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
           <PerceptionWidget />
           <MemoryWidget />
         </div>
@@ -148,11 +151,11 @@ export default function App() {
 
     if (activePage === "ipc-viewer") {
       return (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-          <div className="xl:col-span-8">
+        <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6">
+          <div className="2xl:col-span-8">
             <RobotViewer />
           </div>
-          <div className="xl:col-span-4 grid grid-cols-1 gap-6">
+          <div className="2xl:col-span-4 grid grid-cols-1 gap-6">
             <SensorsWidget />
             <IpcOrchestrationWidget />
           </div>
@@ -215,13 +218,22 @@ export default function App() {
             </div>
           </div>
 
-          {error !== "" && (
-            <div className="dashboard-panel mb-4 border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-4 py-3 text-[12px] text-[var(--tone-coral-fg)]">
-              {error}
-            </div>
-          )}
+          <DashboardSectionTabs activePage={activePage} onNavigate={navigateTo} />
 
-          {renderPageContent()}
+          <div className="dashboard-page-body">
+            <div className="dashboard-page-primary">
+              {error !== "" && (
+                <div className="dashboard-panel border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-4 py-3 text-[12px] text-[var(--tone-coral-fg)]">
+                  {error}
+                </div>
+              )}
+
+              <DashboardPageHero page={page} />
+              {renderPageContent()}
+            </div>
+
+            <DashboardActivityRail />
+          </div>
         </div>
       </main>
     </div>
