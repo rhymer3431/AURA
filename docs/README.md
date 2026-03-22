@@ -18,6 +18,8 @@
   - worker request/result contract, validation, recovery state machine
 - [architecture/MIGRATION_SUMMARY_A_TO_F.md](./architecture/MIGRATION_SUMMARY_A_TO_F.md)
   - A-F 단계별 변경 요약
+- [architecture/SYSTEM_DIAGRAM_STRUCTURE.md](./architecture/SYSTEM_DIAGRAM_STRUCTURE.md)
+  - 다이어그램 작성용 시스템 구조, 노드/엣지, control/observability 흐름
 
 문서 원칙:
 
