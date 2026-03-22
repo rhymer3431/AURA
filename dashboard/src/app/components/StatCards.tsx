@@ -53,17 +53,17 @@ export function StatCards() {
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {stats.map((item) => (
         <ConsoleMetricCard
           key={item.label}
           label={item.label}
           value={item.value}
           tone={item.tone}
-          className="transition-transform duration-150 hover:-translate-y-0.5"
+          className="transition-colors duration-150 hover:bg-[rgba(255,255,255,0.98)]"
           valueClassName="break-all"
           meta={(
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 border-t border-[rgba(17,23,28,0.06)] pt-3">
               <span className="truncate">{item.change}</span>
               {item.trend === "up" ? (
                 <TrendingUp className="size-3 shrink-0 text-[var(--text-secondary)]" />

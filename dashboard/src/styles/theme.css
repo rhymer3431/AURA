@@ -1,54 +1,54 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-size: 15px;
-  --font-ui: "IBM Plex Sans", sans-serif;
+  --font-size: 14px;
+  --font-ui: "Inter", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
-  --background: #f1ece4;
-  --foreground: #182125;
-  --card: rgba(255, 251, 245, 0.92);
-  --card-foreground: #182125;
-  --popover: #fdfaf4;
-  --popover-foreground: #182125;
-  --primary: #1f4550;
-  --primary-foreground: #f8fcfd;
-  --secondary: #e6ded4;
-  --secondary-foreground: #28353b;
-  --muted: #e5ddd2;
-  --muted-foreground: #6a6863;
-  --accent: #dcebed;
-  --accent-foreground: #16313a;
-  --destructive: #b9634b;
-  --destructive-foreground: #fdf7f4;
-  --border: rgba(24, 33, 37, 0.1);
-  --input: rgba(252, 248, 242, 0.9);
-  --input-background: rgba(247, 242, 235, 0.95);
-  --switch-background: #c4ccc8;
+  --background: #f5f5f2;
+  --foreground: #14171c;
+  --card: rgba(255, 255, 255, 0.88);
+  --card-foreground: #14171c;
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-foreground: #14171c;
+  --primary: #14171c;
+  --primary-foreground: #ffffff;
+  --secondary: rgba(17, 23, 28, 0.05);
+  --secondary-foreground: #1d232c;
+  --muted: rgba(17, 23, 28, 0.04);
+  --muted-foreground: rgba(20, 23, 28, 0.58);
+  --accent: rgba(79, 152, 168, 0.12);
+  --accent-foreground: #214b59;
+  --destructive: #bf654f;
+  --destructive-foreground: #fffaf7;
+  --border: rgba(17, 23, 28, 0.08);
+  --input: rgba(255, 255, 255, 0.9);
+  --input-background: rgba(255, 255, 255, 0.8);
+  --switch-background: #cfd4da;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: rgba(79, 152, 168, 0.35);
+  --ring: rgba(79, 152, 168, 0.28);
   --chart-1: #4f98a8;
   --chart-2: #3f7d63;
   --chart-3: #c68a38;
   --chart-4: #7d6fa0;
   --chart-5: #b9634b;
-  --radius: 1.125rem;
-  --sidebar: rgba(247, 242, 234, 0.92);
-  --sidebar-foreground: #182125;
-  --sidebar-primary: #1f4550;
-  --sidebar-primary-foreground: #f8fcfd;
-  --sidebar-accent: #ece5da;
-  --sidebar-accent-foreground: #24343a;
-  --sidebar-border: rgba(24, 33, 37, 0.08);
-  --sidebar-ring: rgba(79, 152, 168, 0.3);
-  --surface-0: rgba(255, 252, 246, 0.7);
-  --surface-1: rgba(255, 251, 245, 0.9);
-  --surface-2: rgba(250, 246, 239, 0.98);
-  --surface-inset: rgba(34, 42, 45, 0.04);
-  --surface-strong: rgba(255, 254, 250, 0.98);
-  --text-secondary: rgba(24, 33, 37, 0.72);
-  --text-tertiary: rgba(24, 33, 37, 0.48);
-  --text-faint: rgba(24, 33, 37, 0.32);
+  --radius: 1rem;
+  --sidebar: rgba(245, 245, 242, 0.92);
+  --sidebar-foreground: #14171c;
+  --sidebar-primary: #14171c;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: rgba(17, 23, 28, 0.05);
+  --sidebar-accent-foreground: #14171c;
+  --sidebar-border: rgba(17, 23, 28, 0.08);
+  --sidebar-ring: rgba(79, 152, 168, 0.24);
+  --surface-0: rgba(255, 255, 255, 0.38);
+  --surface-1: rgba(255, 255, 255, 0.74);
+  --surface-2: rgba(255, 255, 255, 0.92);
+  --surface-inset: rgba(17, 23, 28, 0.035);
+  --surface-strong: rgba(255, 255, 255, 0.96);
+  --text-secondary: rgba(20, 23, 28, 0.68);
+  --text-tertiary: rgba(20, 23, 28, 0.48);
+  --text-faint: rgba(20, 23, 28, 0.26);
   --signal-cyan: #4f98a8;
   --signal-emerald: #3f7d63;
   --signal-amber: #c68a38;
@@ -161,10 +161,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-ui);
-    background-image:
-      radial-gradient(circle at top right, rgba(79, 152, 168, 0.14), transparent 24%),
-      radial-gradient(circle at left center, rgba(125, 111, 160, 0.08), transparent 28%),
-      linear-gradient(180deg, #f5f0e9 0%, #f0ebe3 100%);
+    background-image: linear-gradient(180deg, #f8f8f6 0%, #f2f2ee 100%);
     background-attachment: fixed;
   }
 
@@ -229,36 +226,49 @@
 
 @layer components {
   .dashboard-shell {
-    @apply flex min-h-screen flex-col overflow-hidden lg:h-screen lg:flex-row;
+    @apply relative flex min-h-screen flex-col overflow-hidden lg:h-screen lg:flex-row;
     background: transparent;
   }
 
+  .dashboard-sidebar-backdrop {
+    @apply fixed inset-0 z-30 lg:hidden;
+    background: rgba(17, 23, 28, 0.18);
+    backdrop-filter: blur(8px);
+  }
+
   .dashboard-sidebar {
-    @apply flex flex-col w-full border-b lg:h-screen lg:border-b-0;
+    @apply fixed inset-y-0 left-0 z-40 flex h-screen max-w-[calc(100vw-24px)] flex-col border-r lg:static lg:h-screen;
+    width: min(280px, calc(100vw - 24px));
     background: var(--sidebar);
-    border-right: 0 solid transparent;
-    border-bottom: 1px solid var(--sidebar-border);
-    backdrop-filter: blur(16px);
+    border-right: 0.5px solid var(--sidebar-border);
+    backdrop-filter: blur(18px);
+    transform: translateX(-108%);
+    transition: transform 180ms ease, border-color 180ms ease;
+  }
+
+  .dashboard-sidebar[data-open="true"] {
+    transform: translateX(0);
   }
 
   @media (min-width: 1024px) {
     .dashboard-sidebar {
+      position: static;
       width: 272px;
       min-width: 272px;
-      border-right: 1px solid var(--sidebar-border);
-      border-bottom: 0 solid transparent;
+      max-width: none;
+      transform: none;
     }
   }
 
   .dashboard-main {
-    @apply flex-1 min-w-0 flex flex-col h-screen overflow-hidden;
-    background: linear-gradient(180deg, rgba(255, 252, 246, 0.32), rgba(255, 252, 246, 0.08));
+    @apply flex-1 min-w-0 flex flex-col min-h-screen lg:h-screen overflow-hidden;
+    background: transparent;
   }
 
   .dashboard-topbar {
-    @apply flex items-center justify-between px-4 py-4 shrink-0 lg:px-8 lg:py-5;
-    background: rgba(248, 243, 235, 0.76);
-    border-bottom: 1px solid rgba(24, 33, 37, 0.07);
+    @apply flex flex-wrap items-center justify-between gap-3 px-4 py-3 shrink-0 lg:px-8;
+    background: rgba(248, 248, 245, 0.78);
+    border-bottom: 0.5px solid rgba(17, 23, 28, 0.08);
     backdrop-filter: blur(18px);
   }
 
@@ -267,54 +277,54 @@
   }
 
   .dashboard-page-header {
-    @apply flex flex-col items-start justify-between gap-4 mb-6 mt-6 lg:flex-row lg:items-start lg:gap-6;
+    @apply flex flex-col items-start justify-between gap-4 mb-6 mt-5 pb-5 lg:flex-row lg:items-end lg:gap-6;
+    border-bottom: 0.5px solid rgba(17, 23, 28, 0.08);
   }
 
   .dashboard-panel {
-    @apply rounded-[26px] p-6;
-    background: var(--surface-1);
-    border: 1px solid rgba(24, 33, 37, 0.08);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    @apply rounded-[24px] p-5 lg:p-6;
+    background: var(--surface-2);
+    border: 0.5px solid rgba(17, 23, 28, 0.08);
   }
 
   .dashboard-panel-strong {
-    @apply rounded-[22px];
+    @apply rounded-[20px];
     background: var(--surface-strong);
-    border: 1px solid rgba(24, 33, 37, 0.09);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+    border: 0.5px solid rgba(17, 23, 28, 0.08);
   }
 
   .dashboard-inset {
-    @apply rounded-[18px];
+    @apply rounded-[16px];
     background: var(--surface-inset);
-    border: 1px solid rgba(24, 33, 37, 0.06);
+    border: 0.5px solid rgba(17, 23, 28, 0.06);
   }
 
   .dashboard-icon-shell {
-    @apply inline-flex items-center justify-center rounded-full;
-    width: 30px;
-    height: 30px;
-    background: rgba(79, 152, 168, 0.12);
-    color: #274f5a;
-    border: 1px solid rgba(79, 152, 168, 0.18);
+    @apply inline-flex items-center justify-center rounded-[12px];
+    width: 28px;
+    height: 28px;
+    background: rgba(17, 23, 28, 0.04);
+    color: var(--foreground);
+    border: 0.5px solid rgba(17, 23, 28, 0.08);
   }
 
   .dashboard-eyebrow {
-    @apply text-[11px] uppercase tracking-[0.18em];
-    font-family: var(--font-mono);
+    @apply text-[11px] uppercase tracking-[0.14em];
+    font-family: var(--font-ui);
+    font-weight: 500;
     color: var(--text-tertiary);
   }
 
   .dashboard-title {
-    @apply text-[15px] font-semibold;
+    @apply text-[14px] font-semibold;
     color: var(--foreground);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
   }
 
   .dashboard-subtitle {
     @apply text-[12px];
     color: var(--text-tertiary);
-    line-height: 1.45;
+    line-height: 1.55;
   }
 
   .dashboard-label {
@@ -338,9 +348,9 @@
   }
 
   .dashboard-value {
-    @apply text-[32px] font-semibold leading-none;
+    @apply text-[28px] font-semibold leading-none;
     color: var(--foreground);
-    letter-spacing: -0.05em;
+    letter-spacing: -0.06em;
   }
 
   .dashboard-mono {
@@ -349,37 +359,39 @@
   }
 
   .dashboard-kpi {
-    @apply rounded-[22px] px-5 py-4 min-h-[132px] relative overflow-hidden flex flex-col justify-between;
-    background: rgba(255, 251, 246, 0.95);
-    border: 1px solid rgba(24, 33, 37, 0.08);
+    @apply rounded-[20px] px-4 py-4 min-h-[118px] relative overflow-hidden flex flex-col justify-between;
+    background: rgba(255, 255, 255, 0.92);
+    border: 0.5px solid rgba(17, 23, 28, 0.08);
   }
 
   .dashboard-kpi::before {
     content: "";
     position: absolute;
-    inset: 12px auto 12px 10px;
-    width: 3px;
+    left: 14px;
+    top: 12px;
+    width: 34px;
+    height: 2px;
     border-radius: 999px;
     background: var(--kpi-tone, var(--signal-cyan));
-    opacity: 0.9;
+    opacity: 0.7;
   }
 
   .dashboard-pill {
-    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium border;
-    font-family: var(--font-mono);
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium border;
+    font-family: var(--font-ui);
     line-height: 1;
   }
 
   .dashboard-field {
-    @apply rounded-[18px] px-4 py-3;
-    background: rgba(247, 242, 235, 0.88);
-    border: 1px solid rgba(24, 33, 37, 0.06);
+    @apply rounded-[16px] px-4 py-3;
+    background: rgba(17, 23, 28, 0.035);
+    border: 0.5px solid rgba(17, 23, 28, 0.06);
   }
 
   .dashboard-input {
-    @apply w-full rounded-[18px] px-3 py-2.5 text-[13px];
+    @apply w-full rounded-[16px] px-3 py-2.5 text-[13px];
     background: var(--input-background);
-    border: 1px solid rgba(24, 33, 37, 0.1);
+    border: 0.5px solid rgba(17, 23, 28, 0.1);
     color: var(--foreground);
     transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
   }
@@ -393,23 +405,95 @@
 
   .dashboard-button-primary {
     @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium;
-    background: #203942;
-    color: #f6fbfc;
-    border: 1px solid rgba(32, 57, 66, 0.18);
+    background: var(--primary);
+    color: var(--primary-foreground);
+    border: 0.5px solid rgba(17, 23, 28, 0.14);
+    transition: background-color 150ms ease, transform 150ms ease, border-color 150ms ease;
+  }
+
+  .dashboard-button-primary:hover {
+    background: rgba(17, 23, 28, 0.92);
+  }
+
+  .dashboard-button-primary:active {
+    transform: translateY(0.5px);
   }
 
   .dashboard-button-secondary {
     @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium;
-    background: rgba(255, 250, 244, 0.9);
+    background: rgba(255, 255, 255, 0.78);
     color: var(--foreground);
-    border: 1px solid rgba(24, 33, 37, 0.1);
+    border: 0.5px solid rgba(17, 23, 28, 0.09);
+    transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+  }
+
+  .dashboard-button-secondary:hover {
+    background: rgba(255, 255, 255, 0.96);
+    border-color: rgba(17, 23, 28, 0.13);
+  }
+
+  .dashboard-button-secondary:active {
+    transform: translateY(0.5px);
   }
 
   .dashboard-button-accent {
     @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium;
     background: rgba(79, 152, 168, 0.14);
     color: #234e5b;
-    border: 1px solid rgba(79, 152, 168, 0.18);
+    border: 0.5px solid rgba(79, 152, 168, 0.18);
+    transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+  }
+
+  .dashboard-button-accent:hover {
+    background: rgba(79, 152, 168, 0.18);
+    border-color: rgba(79, 152, 168, 0.24);
+  }
+
+  .dashboard-button-accent:active {
+    transform: translateY(0.5px);
+  }
+
+  .dashboard-search-capsule {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-2 text-[12px];
+    min-width: 164px;
+    background: rgba(17, 23, 28, 0.04);
+    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    color: var(--text-secondary);
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+  }
+
+  .dashboard-search-capsule:hover {
+    background: rgba(17, 23, 28, 0.06);
+    border-color: rgba(17, 23, 28, 0.12);
+    color: var(--foreground);
+  }
+
+  .dashboard-search-shortcut {
+    @apply inline-flex items-center justify-center rounded-[8px] px-1.5 py-0.5 text-[10px];
+    min-width: 20px;
+    border: 0.5px solid rgba(17, 23, 28, 0.1);
+    color: var(--text-tertiary);
+    background: rgba(255, 255, 255, 0.68);
+  }
+
+  .dashboard-utility-button {
+    @apply inline-flex items-center justify-center rounded-full;
+    width: 32px;
+    height: 32px;
+    color: var(--text-secondary);
+    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    background: rgba(255, 255, 255, 0.7);
+    transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+  }
+
+  .dashboard-utility-button:hover {
+    background: rgba(255, 255, 255, 0.94);
+    border-color: rgba(17, 23, 28, 0.12);
+    color: var(--foreground);
+  }
+
+  .dashboard-utility-button:active {
+    transform: translateY(0.5px);
   }
 
   .dashboard-scroll::-webkit-scrollbar {

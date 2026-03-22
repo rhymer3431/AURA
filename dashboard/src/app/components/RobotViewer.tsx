@@ -166,7 +166,7 @@ export function RobotViewer() {
       <div className="mb-4 flex items-start justify-between gap-4">
         <ConsoleSectionTitle
           icon={Video}
-          eyebrow="vision stream"
+          eyebrow="vision feed"
           title="Live Robot View"
           description="RGB stream, detection overlays, trajectory trace, and active target markers"
         />
@@ -176,7 +176,7 @@ export function RobotViewer() {
             onClick={() => setShowOverlay((current) => !current)}
             className={`dashboard-button-secondary !rounded-full !px-3 !py-2 text-[11px] ${
               showOverlay
-                ? "border-[rgba(79,152,168,0.16)] bg-[rgba(79,152,168,0.12)] text-[var(--tone-cyan-fg)]"
+                ? "border-[rgba(79,152,168,0.16)] bg-[rgba(79,152,168,0.1)] text-[var(--tone-cyan-fg)]"
                 : "text-[var(--text-secondary)]"
             }`}
           >
@@ -201,7 +201,7 @@ export function RobotViewer() {
         </ConsoleBadge>
       </div>
 
-      <div className="relative w-full aspect-video overflow-hidden rounded-[22px] border border-[rgba(24,33,37,0.08)] bg-neutral-950">
+      <div className="relative w-full aspect-video overflow-hidden rounded-[20px] border border-[rgba(17,23,28,0.08)] bg-neutral-950">
         <video
           ref={viewer.rgbVideoRef}
           className="w-full h-full object-cover"

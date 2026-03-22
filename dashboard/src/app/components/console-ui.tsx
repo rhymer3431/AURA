@@ -143,8 +143,8 @@ export function ConsoleMetricCard({
       className={cn("dashboard-kpi", className)}
       style={{ "--kpi-tone": railToneVars[tone] } as React.CSSProperties}
     >
-      <div className="dashboard-label">{label}</div>
-      <div className={cn("dashboard-value mt-4", valueClassName)}>{value}</div>
+      <div className="dashboard-label pt-3">{label}</div>
+      <div className={cn("dashboard-value mt-3", valueClassName)}>{value}</div>
       {meta ? <div className="dashboard-micro mt-3">{meta}</div> : null}
     </div>
   );

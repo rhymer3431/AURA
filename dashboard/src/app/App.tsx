@@ -40,6 +40,7 @@ function currentPageFromLocation(): DashboardPageId {
 export default function App() {
   const { error, state } = useDashboard();
   const [activePage, setActivePage] = useState<DashboardPageId>(() => currentPageFromLocation());
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -60,9 +61,43 @@ export default function App() {
     return () => window.removeEventListener("hashchange", syncPageFromHash);
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const syncDesktopLayout = () => {
+      if (window.innerWidth >= 1024) {
+        setMobileSidebarOpen(false);
+      }
+    };
+
+    syncDesktopLayout();
+    window.addEventListener("resize", syncDesktopLayout);
+    return () => window.removeEventListener("resize", syncDesktopLayout);
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return undefined;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    if (mobileSidebarOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = previousOverflow;
+    }
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mobileSidebarOpen]);
+
   const page = dashboardPages[activePage];
 
   function navigateTo(pageId: DashboardPageId) {
+    setMobileSidebarOpen(false);
     if (typeof window === "undefined") {
       setActivePage(pageId);
       return;
@@ -152,15 +187,19 @@ export default function App() {
 
   return (
     <div className="dashboard-shell">
-      <Sidebar activePage={activePage} onNavigate={navigateTo} />
+      {mobileSidebarOpen ? <button type="button" aria-label="Close navigation" className="dashboard-sidebar-backdrop" onClick={() => setMobileSidebarOpen(false)} /> : null}
+      <Sidebar activePage={activePage} isMobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} onNavigate={navigateTo} />
       <main className="dashboard-main">
-        <TopBar page={page} />
+        <TopBar page={page} onToggleSidebar={() => setMobileSidebarOpen((current) => !current)} />
         <div className="dashboard-page dashboard-scroll">
           <div className="dashboard-page-header">
-            <div>
-              <div className="dashboard-eyebrow mb-2">{page.groupTitle}</div>
-              <h2 className="text-[24px] font-semibold tracking-[-0.04em] text-[var(--foreground)]">{page.label}</h2>
-              <p className="dashboard-subtitle max-w-3xl mt-2">{page.description}</p>
+            <div className="min-w-0">
+              <div className="dashboard-eyebrow">{page.groupTitle}</div>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <h2 className="text-[28px] font-medium tracking-[-0.06em] text-[var(--foreground)]">{page.label}</h2>
+                <span className="hidden h-4 w-px bg-[rgba(17,23,28,0.08)] lg:block" />
+                <p className="dashboard-subtitle max-w-2xl">{page.description}</p>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
