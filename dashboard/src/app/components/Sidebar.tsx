@@ -51,10 +51,10 @@ export function Sidebar({
                         : "text-[var(--text-secondary)] hover:bg-[rgba(var(--ink-rgb),0.025)]"
                     }`}
                   >
-                    <div
+                        <div
                       className={`flex size-7 items-center justify-center rounded-[10px] ${
                         activePage === item.id
-                          ? "bg-white text-[var(--foreground)]"
+                          ? "bg-[var(--surface-strong)] text-[var(--foreground)]"
                           : "bg-transparent text-[var(--text-tertiary)]"
                       }`}
                     >

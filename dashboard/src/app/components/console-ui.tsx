@@ -33,28 +33,28 @@ const railToneVars: Record<ConsoleTone, string> = {
 
 const metricToneVars: Record<ConsoleTone, { surface: string; border: string }> = {
   cyan: {
-    surface: "#E6F1FD",
-    border: "transparent",
+    surface: "var(--tone-cyan-bg)",
+    border: "var(--tone-cyan-border)",
   },
   emerald: {
-    surface: "#EEF8F1",
-    border: "transparent",
+    surface: "var(--tone-emerald-bg)",
+    border: "var(--tone-emerald-border)",
   },
   amber: {
-    surface: "#FAF1E2",
-    border: "transparent",
+    surface: "var(--tone-amber-bg)",
+    border: "var(--tone-amber-border)",
   },
   coral: {
-    surface: "#FBE9E4",
-    border: "transparent",
+    surface: "var(--tone-coral-bg)",
+    border: "var(--tone-coral-border)",
   },
   violet: {
-    surface: "#EDEEFC",
-    border: "transparent",
+    surface: "var(--tone-violet-bg)",
+    border: "var(--tone-violet-border)",
   },
   slate: {
-    surface: "#F3F4F6",
-    border: "transparent",
+    surface: "var(--tone-slate-bg)",
+    border: "var(--tone-slate-border)",
   },
 };
 

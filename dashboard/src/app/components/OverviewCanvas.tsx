@@ -32,7 +32,7 @@ const statusDotClass: Record<string, string> = {
   green: "bg-[var(--signal-emerald)]",
   amber: "bg-[var(--signal-amber)]",
   red: "bg-[var(--signal-coral)]",
-  slate: "bg-[rgba(0,0,0,0.16)]",
+  slate: "bg-[var(--signal-slate)]",
 };
 
 function buildTrendSeries(series: Array<{ t: number; v: number }>, targetLength: number) {
@@ -114,54 +114,54 @@ export function OverviewCanvas() {
               className="mb-4"
             />
 
-            <div className="h-[248px] rounded-[16px] border border-[rgba(var(--ink-rgb),0.06)] bg-white/72 px-2 py-2">
+            <div className="h-[248px] rounded-[16px] border border-[rgba(var(--ink-rgb),0.06)] bg-[var(--surface-strong)] px-2 py-2">
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                 <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
-                  <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false} />
+                  <CartesianGrid stroke="rgba(var(--ink-rgb),0.06)" vertical={false} />
                   <XAxis
                     dataKey="label"
                     tickLine={false}
                     axisLine={false}
-                    tick={{ fill: "rgba(0,0,0,0.4)", fontSize: 11 }}
+                    tick={{ fill: "var(--text-tertiary)", fontSize: 11 }}
                   />
                   <YAxis
                     tickLine={false}
                     axisLine={false}
-                    tick={{ fill: "rgba(0,0,0,0.4)", fontSize: 11 }}
+                    tick={{ fill: "var(--text-tertiary)", fontSize: 11 }}
                     width={36}
                   />
                   <Tooltip
                     contentStyle={{
-                      border: "none",
+                      border: "1px solid rgba(var(--ink-rgb),0.08)",
                       borderRadius: "12px",
-                      background: "rgba(255,255,255,0.96)",
-                      boxShadow: "0 8px 20px rgba(0,0,0,0.05)",
+                      background: "var(--surface-strong)",
+                      boxShadow: "0 12px 24px rgba(var(--ink-rgb),0.08)",
                     }}
-                    labelStyle={{ color: "rgba(0,0,0,0.4)", fontSize: 11 }}
+                    labelStyle={{ color: "var(--text-tertiary)", fontSize: 11 }}
                   />
                   <Line
                     type="monotone"
                     dataKey="goalDistance"
-                    stroke="#000000"
+                    stroke="var(--chart-1)"
                     strokeWidth={1.8}
                     dot={false}
-                    activeDot={{ r: 4, fill: "#000000" }}
+                    activeDot={{ r: 4, fill: "var(--chart-1)" }}
                   />
                   <Line
                     type="monotone"
                     dataKey="navLatency"
-                    stroke="#7BADE8"
+                    stroke="var(--chart-2)"
                     strokeWidth={1.8}
                     dot={false}
-                    activeDot={{ r: 4, fill: "#7BADE8" }}
+                    activeDot={{ r: 4, fill: "var(--chart-2)" }}
                   />
                   <Line
                     type="monotone"
                     dataKey="s2Latency"
-                    stroke="#B6A4EB"
+                    stroke="var(--chart-3)"
                     strokeWidth={1.8}
                     dot={false}
-                    activeDot={{ r: 4, fill: "#B6A4EB" }}
+                    activeDot={{ r: 4, fill: "var(--chart-3)" }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -198,11 +198,11 @@ export function OverviewCanvas() {
                 <div className="dashboard-eyebrow mb-1">Goal dist.</div>
                 <div className="text-[18px] font-semibold text-[var(--foreground)]">{goalDistance}</div>
               </div>
-              <div className="dashboard-field bg-white">
+              <div className="dashboard-field bg-[var(--surface-strong)]">
                 <div className="dashboard-eyebrow mb-1">Plan latency</div>
                 <div className="text-[18px] font-semibold text-[var(--foreground)]">{planLatency}</div>
               </div>
-              <div className="dashboard-field bg-white">
+              <div className="dashboard-field bg-[var(--surface-strong)]">
                 <div className="dashboard-eyebrow mb-1">Detections</div>
                 <div className="text-[18px] font-semibold text-[var(--foreground)]">
                   {detectionCount}
@@ -213,7 +213,7 @@ export function OverviewCanvas() {
               </div>
             </div>
 
-            <div className="mt-3 rounded-[16px] border border-[rgba(var(--ink-rgb),0.05)] bg-white px-3.5 py-3">
+            <div className="mt-3 rounded-[16px] border border-[rgba(var(--ink-rgb),0.05)] bg-[var(--surface-strong)] px-3.5 py-3">
               <div className="dashboard-eyebrow mb-2">Current instruction</div>
               <p className="text-[13px] leading-5 text-[var(--text-secondary)]">{instruction}</p>
             </div>
@@ -222,7 +222,7 @@ export function OverviewCanvas() {
               {statusRows.map((item, index) => (
                 <motion.div
                   key={item.name}
-                  className="flex items-start justify-between gap-3 rounded-[16px] border border-[rgba(var(--ink-rgb),0.05)] bg-white px-3.5 py-2.5"
+                  className="flex items-start justify-between gap-3 rounded-[16px] border border-[rgba(var(--ink-rgb),0.05)] bg-[var(--surface-strong)] px-3.5 py-2.5"
                   initial={{ opacity: 0, x: 14 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.28, delay: 0.12 + index * 0.04 }}

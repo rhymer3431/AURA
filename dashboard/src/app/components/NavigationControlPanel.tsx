@@ -110,11 +110,11 @@ export function NavigationControlPanel() {
           <div className="h-[108px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={history.stale}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(123,102,79,0.12)" vertical={false} />
-                <XAxis dataKey="t" tick={{ fontSize: 10, fill: "rgba(123,102,79,0.48)" }} axisLine={false} tickLine={false} tickMargin={5} />
-                <YAxis tick={{ fontSize: 10, fill: "rgba(123,102,79,0.48)" }} axisLine={false} tickLine={false} tickMargin={5} />
-                <Tooltip contentStyle={{ background: "rgba(255,251,246,0.98)", border: "1px solid rgba(123,102,79,0.12)", borderRadius: 8, fontSize: 11 }} />
-                <Line type="monotone" dataKey="v" stroke="#c58d4a" strokeWidth={2} dot={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(var(--ink-rgb),0.08)" vertical={false} />
+                <XAxis dataKey="t" tick={{ fontSize: 10, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <Tooltip contentStyle={{ background: "var(--surface-strong)", border: "1px solid rgba(var(--ink-rgb),0.08)", borderRadius: 8, fontSize: 11 }} />
+                <Line type="monotone" dataKey="v" stroke="var(--chart-4)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -124,11 +124,11 @@ export function NavigationControlPanel() {
           <div className="h-[108px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={history.goalDistance}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(123,102,79,0.12)" vertical={false} />
-                <XAxis dataKey="t" tick={{ fontSize: 10, fill: "rgba(123,102,79,0.48)" }} axisLine={false} tickLine={false} tickMargin={5} />
-                <YAxis tick={{ fontSize: 10, fill: "rgba(123,102,79,0.48)" }} axisLine={false} tickLine={false} tickMargin={5} />
-                <Tooltip contentStyle={{ background: "rgba(255,251,246,0.98)", border: "1px solid rgba(123,102,79,0.12)", borderRadius: 8, fontSize: 11 }} />
-                <Line type="monotone" dataKey="v" stroke="#7699ae" strokeWidth={2} dot={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(var(--ink-rgb),0.08)" vertical={false} />
+                <XAxis dataKey="t" tick={{ fontSize: 10, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <YAxis tick={{ fontSize: 10, fill: "var(--text-tertiary)" }} axisLine={false} tickLine={false} tickMargin={5} />
+                <Tooltip contentStyle={{ background: "var(--surface-strong)", border: "1px solid rgba(var(--ink-rgb),0.08)", borderRadius: 8, fontSize: 11 }} />
+                <Line type="monotone" dataKey="v" stroke="var(--chart-2)" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>

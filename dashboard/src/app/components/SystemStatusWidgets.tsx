@@ -406,12 +406,12 @@ export function LogsWidget() {
         {logs.map((log, index) => {
           const level = stringValue(log.level || log.stream, "info");
           return (
-            <div key={`${log.source}-${index}`} className="flex gap-2 px-2 py-1.5 transition-colors hover:bg-[rgba(123,102,79,0.05)] rounded-xl">
+            <div key={`${log.source}-${index}`} className="flex gap-2 rounded-xl px-2 py-1.5 transition-colors hover:bg-[rgba(var(--ink-rgb),0.04)]">
               <span className="text-[var(--text-faint)] w-[70px] shrink-0">{log.timestampNs ? String(log.timestampNs).slice(-8) : log.stream}</span>
-              <span className={`w-[80px] shrink-0 font-semibold ${level === "error" || level === "stderr" ? "text-red-500" : level === "warn" || level === "warning" ? "text-amber-500" : "text-[var(--text-secondary)]"}`}>
+              <span className={`w-[80px] shrink-0 font-semibold ${level === "error" || level === "stderr" ? "text-[var(--tone-coral-fg)]" : level === "warn" || level === "warning" ? "text-[var(--tone-amber-fg)]" : "text-[var(--text-secondary)]"}`}>
                 {log.source}
               </span>
-              <span className={`flex-1 truncate ${level === "error" || level === "stderr" ? "text-red-600" : level === "warn" || level === "warning" ? "text-amber-600" : "text-[var(--foreground)]"}`}>
+              <span className={`flex-1 truncate ${level === "error" || level === "stderr" ? "text-[var(--signal-coral)]" : level === "warn" || level === "warning" ? "text-[var(--signal-amber)]" : "text-[var(--foreground)]"}`}>
                 {log.message}
               </span>
             </div>

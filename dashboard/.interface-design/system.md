@@ -3,7 +3,7 @@
 ## Intent
 - Human: 로봇 런타임을 모니터링하고 장애 징후를 빠르게 판독해야 하는 운영자/개발자
 - Primary job: 현재 세션 상태, gateway/telemetry, planner, memory, diagnostics를 한 화면에서 빠르게 스캔
-- Feel: quiet SnowUI settings workspace translated into an operations console, calm and paper-light, organized rather than flashy
+- Feel: quiet SnowUI settings workspace translated into an operations console, calm and minimal, organized rather than flashy
 
 ## Domain
 - control room
@@ -17,14 +17,14 @@
 - system checklist
 
 ## Color World
-- warm parchment canvas
-- oat and ivory console shells
-- espresso ink and hairline dividers
-- telemetry cyan LEDs
-- actuator green status lamps
-- caution amber indicators
-- fault coral annotations
-- quiet charcoal action pills
+- chalk and porcelain canvas
+- fog and stone console shells
+- graphite ink and hairline dividers
+- muted steel telemetry accents
+- soft sage status lamps
+- restrained sand cautions
+- quiet clay fault annotations
+- charcoal action pills
 
 ## Signature
 - SnowUI-style triptych workbench compressed for operations: tight left navigation, dense central task surface, and a slim right support rail that stays readable without inflating the shell
@@ -33,7 +33,7 @@
 - Default template admin shell -> compact SnowUI-derived header and sidebar framing
 - Loud colored UI accents -> neutral shell with semantic color reserved for runtime states
 - Large soft dashboard cards -> organized settings-style work surface with larger white blocks and quieter internal grouping
-- Generic body typography -> `Inter` for UI with `IBM Plex Mono` for machine-readable data
+- Generic body typography -> `NanumSquareRound` for UI with `IBM Plex Mono` for machine-readable data
 
 ## Tokens
 - Base spacing: 4px
@@ -49,7 +49,7 @@
   - No heavy shadows in standard dashboard flow
   - Inset regions use `rgba(0, 0, 0, 0.04)` to `rgba(0, 0, 0, 0.06)` style fills instead of shadow
 - Typography:
-  - UI: Inter
+  - UI: NanumSquareRound
   - Data: IBM Plex Mono
   - Core sizes: 12px, 14px, 16px, 24px
   - Default weight: 400
@@ -58,12 +58,13 @@
   - Quiet border: rgba(24, 33, 37, 0.08)
   - Semantic emphasis only when state matters
 - Surface language:
-  - Canvas: warm parchment, not cool gray and not pure white
-  - Panels: ivory and pale oat surfaces with clearer warmth separation
-  - Utility fills: soft espresso alpha, not neutral black
+  - Canvas: soft chalk, not pure white
+  - Panels: porcelain and fog surfaces with subtle separation
+  - Utility fills: graphite alpha, not bright brand tints
 - Color usage:
   - Black/graphite is valid for primary action emphasis
-  - Telemetry cyan, emerald, amber, coral, violet are status colors first, decoration second
+  - Semantic colors stay desaturated and low-contrast first, decorative only as a last resort
+  - Telemetry cyan, emerald, amber, coral, violet remain available as status families, but each tone should stay muted and minimal
 
 ## Reusable Patterns
 

@@ -7,6 +7,14 @@ import { asArray, asRecord, formatMs, numberValue, stringValue } from "../select
 import { buildApiUrl } from "../network";
 import { ConsoleBadge, ConsolePanel, ConsoleSectionTitle } from "./console-ui";
 
+function cssVar(name: string, fallback: string) {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+  const value = window.getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value === "" ? fallback : value;
+}
+
 function drawOverlay(
   canvas: HTMLCanvasElement,
   snapshot: Record<string, unknown> | null,
@@ -29,12 +37,19 @@ function drawOverlay(
   }
   context.clearRect(0, 0, width, height);
 
+  const uiFont = cssVar("--font-ui", "sans-serif");
+  const monoFont = cssVar("--font-mono", "monospace");
+  const detectionColor = cssVar("--signal-emerald", "#7d8f7d");
+  const trajectoryColor = cssVar("--signal-cyan", "#82939a");
+  const navGoalColor = cssVar("--signal-coral", "#a2776c");
+  const systemGoalColor = cssVar("--signal-amber", "#a18a69");
+
   const detections = asArray<Record<string, unknown>>(telemetry?.detections);
   if (detections.length > 0) {
     context.lineWidth = 2;
-    context.strokeStyle = "#10b981";
-    context.fillStyle = "#10b981";
-    context.font = "12px sans-serif";
+    context.strokeStyle = detectionColor;
+    context.fillStyle = detectionColor;
+    context.font = `12px ${uiFont}`;
     detections.forEach((item) => {
       const bbox = asArray<number>(item.bbox_xyxy);
       if (bbox.length !== 4) {
@@ -59,7 +74,7 @@ function drawOverlay(
   if (trajectory.length > 1) {
     context.beginPath();
     context.lineWidth = 2;
-    context.strokeStyle = "#38bdf8";
+    context.strokeStyle = trajectoryColor;
     trajectory.forEach((point, index) => {
       if (!Array.isArray(point) || point.length !== 2) {
         return;
@@ -80,7 +95,7 @@ function drawOverlay(
   if (navGoalPixel.length === 2) {
     const x = (Number(navGoalPixel[0]) / sourceWidth) * width;
     const y = (Number(navGoalPixel[1]) / sourceHeight) * height;
-    context.strokeStyle = "#f97316";
+    context.strokeStyle = navGoalColor;
     context.beginPath();
     context.arc(x, y, 8, 0, Math.PI * 2);
     context.stroke();
@@ -100,9 +115,9 @@ function drawOverlay(
     const y = (Number(system2PixelGoal[1]) / sourceHeight) * height;
     context.save();
     context.lineWidth = 2;
-    context.strokeStyle = "#facc15";
-    context.fillStyle = "#facc15";
-    context.font = "11px monospace";
+    context.strokeStyle = systemGoalColor;
+    context.fillStyle = systemGoalColor;
+    context.font = `11px ${monoFont}`;
     context.beginPath();
     context.arc(x, y, 10, 0, Math.PI * 2);
     context.stroke();
@@ -176,7 +191,7 @@ export function RobotViewer() {
             onClick={() => setShowOverlay((current) => !current)}
             className={`dashboard-button-secondary !rounded-full !px-3 !py-2 text-[11px] ${
               showOverlay
-                ? "border-[rgba(118,153,174,0.18)] bg-[rgba(118,153,174,0.12)] text-[var(--tone-cyan-fg)]"
+                ? "border-[var(--tone-cyan-border)] bg-[var(--tone-cyan-bg)] text-[var(--tone-cyan-fg)]"
                 : "text-[var(--text-secondary)]"
             }`}
           >
@@ -198,7 +213,7 @@ export function RobotViewer() {
         </ConsoleBadge>
       </div>
 
-      <div className="relative w-full aspect-video overflow-hidden rounded-[18px] border border-[rgba(var(--ink-rgb),0.08)] bg-neutral-950">
+      <div className="relative w-full aspect-video overflow-hidden rounded-[18px] border border-[rgba(var(--ink-rgb),0.08)] bg-[var(--surface-0)]">
         <video
           ref={viewer.rgbVideoRef}
           className="w-full h-full object-cover"
@@ -210,31 +225,31 @@ export function RobotViewer() {
 
         <div className="pointer-events-none absolute left-0 top-0 flex w-full items-start justify-between p-2.5">
           <div className="flex flex-col gap-1">
-            <div className="dashboard-mono rounded-full bg-black/45 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur-sm">
+            <div className="dashboard-mono rounded-full bg-[rgba(var(--ink-rgb),0.58)] px-2.5 py-1 text-[10px] text-[rgba(var(--paper-rgb),0.82)] backdrop-blur-sm">
               SRC: {frameSource}
             </div>
-            <div className="dashboard-mono rounded-full bg-black/45 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur-sm">
+            <div className="dashboard-mono rounded-full bg-[rgba(var(--ink-rgb),0.58)] px-2.5 py-1 text-[10px] text-[rgba(var(--paper-rgb),0.82)] backdrop-blur-sm">
               RES: {numberValue(image.width) ?? 0}x{numberValue(image.height) ?? 0} | TRACKS: {trackRoles.join(",") || "none"}
             </div>
           </div>
-          <div className="dashboard-mono flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur-sm">
-            <SignalHigh className="size-3 text-emerald-400" />
+          <div className="dashboard-mono flex items-center gap-1.5 rounded-full bg-[rgba(var(--ink-rgb),0.58)] px-2.5 py-1 text-[10px] text-[rgba(var(--paper-rgb),0.82)] backdrop-blur-sm">
+            <SignalHigh className="size-3 text-[var(--signal-emerald)]" />
             frame age {formatMs(state?.transport.frameAgeMs, "n/a")}
           </div>
         </div>
 
         {!viewerEnabled && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/45 text-white text-[13px]">
+          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(var(--ink-rgb),0.52)] text-[rgba(var(--paper-rgb),0.9)] text-[13px]">
             viewer publish disabled
           </div>
         )}
         {viewerEnabled && waitingForFrame && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/35 text-white text-[13px]">
+          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(var(--ink-rgb),0.42)] text-[rgba(var(--paper-rgb),0.9)] text-[13px]">
             waiting for frame
           </div>
         )}
         {viewer.error !== "" && (
-          <div className="absolute left-3 right-3 bottom-3 rounded-lg bg-red-500/90 px-3 py-2 text-[11px] text-white">
+          <div className="absolute right-3 bottom-3 left-3 rounded-lg border border-[var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-3 py-2 text-[11px] text-[var(--tone-coral-fg)]">
             {viewer.error}
           </div>
         )}
