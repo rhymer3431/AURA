@@ -1,3 +1,4 @@
+import { motion } from "motion/react";
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 import { useDashboard } from "../state";
@@ -67,25 +68,32 @@ export function StatCards() {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-      {stats.map((item) => (
-        <ConsoleMetricCard
+      {stats.map((item, index) => (
+        <motion.div
           key={item.label}
-          label={item.label}
-          value={item.value}
-          tone={item.tone}
-          className="transition-transform duration-150 hover:-translate-y-0.5"
-          valueClassName="break-all"
-          meta={(
-            <div className="flex items-center justify-between gap-3 border-t border-[rgba(var(--ink-rgb),0.07)] pt-3">
-              <span className="truncate">{item.change}</span>
-              {item.trend === "up" ? (
-                <TrendingUp className="size-3 shrink-0 text-[var(--text-secondary)]" />
-              ) : (
-                <TrendingDown className="size-3 shrink-0 text-[var(--text-secondary)]" />
-              )}
-            </div>
-          )}
-        />
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.34, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
+          whileHover={{ y: -4 }}
+        >
+          <ConsoleMetricCard
+            label={item.label}
+            value={item.value}
+            tone={item.tone}
+            className="h-full"
+            valueClassName="break-all"
+            meta={(
+              <div className="flex items-center justify-between gap-3 pt-4 text-[12px]">
+                <span className="truncate text-[var(--text-tertiary)]">{item.change}</span>
+                {item.trend === "up" ? (
+                  <TrendingUp className="size-3.5 shrink-0 text-[var(--foreground)]" />
+                ) : (
+                  <TrendingDown className="size-3.5 shrink-0 text-[var(--foreground)]" />
+                )}
+              </div>
+            )}
+          />
+        </motion.div>
       ))}
     </div>
   );

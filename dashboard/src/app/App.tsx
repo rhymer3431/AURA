@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
-import { RefreshCw } from "lucide-react";
+import { motion } from "motion/react";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
-import { StatCards } from "./components/StatCards";
-import { PipelineFlow } from "./components/PipelineFlow";
 import { NavigationControlPanel } from "./components/NavigationControlPanel";
 import { OccupancyMapPanel } from "./components/OccupancyMapPanel";
 import { ExternalServicesPanel } from "./components/ExternalServicesPanel";
@@ -20,6 +18,7 @@ import {
 } from "./components/SystemStatusWidgets";
 import { ExecutionModesPanel } from "./components/ExecutionModesPanel";
 import { ArtifactsStoragePanel } from "./components/ArtifactsStoragePanel";
+import { OverviewCanvas } from "./components/OverviewCanvas";
 import {
   DEFAULT_DASHBOARD_PAGE,
   dashboardPageHash,
@@ -27,8 +26,10 @@ import {
   parseDashboardPageId,
   type DashboardPageId,
 } from "./navigation";
+import { asRecord } from "./selectors";
 import { useDashboard } from "./state";
 import { ConsoleBadge } from "./components/console-ui";
+import { RightRail } from "./components/RightRail";
 
 function currentPageFromLocation(): DashboardPageId {
   if (typeof window === "undefined") {
@@ -41,6 +42,8 @@ export default function App() {
   const { error, refresh, state } = useDashboard();
   const [activePage, setActivePage] = useState<DashboardPageId>(() => currentPageFromLocation());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const runtime = asRecord(state?.runtime);
+  const runtimeModes = asRecord(runtime.modes);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -112,26 +115,7 @@ export default function App() {
 
   function renderPageContent() {
     if (activePage === "pipeline-overview") {
-      return (
-        <div className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-[22px] font-medium tracking-[-0.05em] text-[var(--foreground)]">Overview</h3>
-            </div>
-            <StatCards />
-          </div>
-          <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6">
-            <div className="2xl:col-span-8">
-              <RobotViewer />
-            </div>
-            <div className="2xl:col-span-4 grid grid-cols-1 gap-6">
-              <ProcessesWidget />
-              <SensorsWidget />
-            </div>
-          </div>
-          <PipelineFlow />
-        </div>
-      );
+      return <OverviewCanvas />;
     }
 
     if (activePage === "planner-control") {
@@ -192,33 +176,52 @@ export default function App() {
 
   return (
     <div className="dashboard-shell">
-      {mobileSidebarOpen ? <button type="button" aria-label="Close navigation" className="dashboard-sidebar-backdrop" onClick={() => setMobileSidebarOpen(false)} /> : null}
+      {mobileSidebarOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="dashboard-sidebar-backdrop"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      ) : null}
       <Sidebar activePage={activePage} isMobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} onNavigate={navigateTo} />
       <main className="dashboard-main">
-        <TopBar page={page} onToggleSidebar={() => setMobileSidebarOpen((current) => !current)} />
+        <TopBar
+          page={page}
+          onToggleSidebar={() => setMobileSidebarOpen((current) => !current)}
+          onRefresh={() => void refresh()}
+        />
         <div className="dashboard-page dashboard-scroll">
           <div className="dashboard-page-header">
-            <div className="min-w-0">
+            <motion.div
+              className="min-w-0"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+            >
               <div className="dashboard-eyebrow">{page.groupTitle}</div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                <h2 className="text-[28px] font-medium tracking-[-0.06em] text-[var(--foreground)]">{page.label}</h2>
-                <span className="hidden h-4 w-px bg-[rgba(var(--ink-rgb),0.08)] lg:block" />
-                <p className="dashboard-subtitle max-w-2xl">{page.description}</p>
-              </div>
-            </div>
+              <h1 className="dashboard-page-title mt-2">{page.label}</h1>
+              <p className="dashboard-page-caption mt-2 max-w-2xl">{page.description}</p>
+            </motion.div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" className="dashboard-button-secondary" onClick={() => void refresh()}>
-                <RefreshCw className="size-4" />
-                Refresh
-              </button>
+            <motion.div
+              className="flex flex-wrap items-center gap-2"
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
+            >
               <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
                 {state?.session.active ? "session live" : "session idle"}
               </ConsoleBadge>
               <ConsoleBadge tone="cyan" dot={false}>
-                mode {String(state?.runtime.executionMode ?? state?.runtime.modes?.executionMode ?? "IDLE")}
+                mode {String(runtime.executionMode ?? runtimeModes.executionMode ?? "IDLE")}
               </ConsoleBadge>
-            </div>
+              {state?.session.config?.scenePreset ? (
+                <ConsoleBadge tone="violet" dot={false}>
+                  scene {state.session.config.scenePreset}
+                </ConsoleBadge>
+              ) : null}
+            </motion.div>
           </div>
 
           <div className="dashboard-page-body">
@@ -229,9 +232,11 @@ export default function App() {
             )}
 
             {renderPageContent()}
+            <RightRail mobile className="xl:hidden" />
           </div>
         </div>
       </main>
+      <RightRail className="hidden xl:flex" />
     </div>
   );
 }

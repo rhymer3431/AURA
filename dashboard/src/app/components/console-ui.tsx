@@ -33,28 +33,28 @@ const railToneVars: Record<ConsoleTone, string> = {
 
 const metricToneVars: Record<ConsoleTone, { surface: string; border: string }> = {
   cyan: {
-    surface: "linear-gradient(180deg, rgba(224, 238, 252, 0.94) 0%, rgba(216, 232, 248, 0.84) 100%)",
-    border: "rgba(110, 159, 214, 0.16)",
+    surface: "#E6F1FD",
+    border: "transparent",
   },
   emerald: {
-    surface: "linear-gradient(180deg, rgba(228, 247, 238, 0.96) 0%, rgba(215, 240, 227, 0.86) 100%)",
-    border: "rgba(39, 179, 131, 0.16)",
+    surface: "#EEF8F1",
+    border: "transparent",
   },
   amber: {
-    surface: "linear-gradient(180deg, rgba(252, 240, 217, 0.96) 0%, rgba(247, 231, 201, 0.88) 100%)",
-    border: "rgba(215, 156, 63, 0.16)",
+    surface: "#FAF1E2",
+    border: "transparent",
   },
   coral: {
-    surface: "linear-gradient(180deg, rgba(252, 228, 222, 0.96) 0%, rgba(247, 217, 208, 0.88) 100%)",
-    border: "rgba(212, 107, 77, 0.16)",
+    surface: "#FBE9E4",
+    border: "transparent",
   },
   violet: {
-    surface: "linear-gradient(180deg, rgba(239, 234, 252, 0.96) 0%, rgba(229, 222, 247, 0.88) 100%)",
-    border: "rgba(176, 162, 233, 0.18)",
+    surface: "#EDEEFC",
+    border: "transparent",
   },
   slate: {
-    surface: "linear-gradient(180deg, rgba(241, 243, 248, 0.98) 0%, rgba(231, 236, 245, 0.9) 100%)",
-    border: "rgba(141, 150, 170, 0.16)",
+    surface: "#F3F4F6",
+    border: "transparent",
   },
 };
 
