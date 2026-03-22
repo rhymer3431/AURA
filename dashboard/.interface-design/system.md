@@ -17,13 +17,13 @@
 - system checklist
 
 ## Color World
-- chalk and porcelain canvas
-- fog and stone console shells
-- graphite ink and hairline dividers
-- muted steel telemetry accents
-- soft sage status lamps
-- restrained sand cautions
-- quiet clay fault annotations
+- clean off-white canvas
+- frost and cloud working surfaces
+- graphite ink and quiet gray hairlines
+- mist blue telemetry accents
+- pale lilac diagnostic cards
+- soft mint status lamps
+- muted coral fault annotations
 - charcoal action pills
 
 ## Signature
