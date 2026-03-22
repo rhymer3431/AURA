@@ -148,6 +148,7 @@
 - No new random hex values inside components when a token or pattern already exists
 
 ## Reference
+- External reference: SnowUI design-system board for variables, colors, spacing, text styles, and component taxonomy
 - External reference: SnowUI dashboard canvas in the linked Figma file
 - Additional visual reference: the provided SnowUI settings-layout screenshot with left nav, tab band, centered settings surface, and right support rail
 - Rule: borrow structure, density, and restraint from SnowUI; keep AURA's telemetry semantics and operator-console purpose

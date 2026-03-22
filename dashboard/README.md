@@ -46,6 +46,7 @@ This dashboard now vendors the upstream `Dammyjay93/interface-design` frontend s
 - Pinned upstream commit: `8c407c1c42890010a9eb403a9f419b1eeadcfdad`
 - Codex project entrypoint: `.claude/skills/interface-design/SKILL.md`
 - Project design memory path: `dashboard/.interface-design/system.md`
+- Added SnowUI design-system reference: `.claude/skills/interface-design/references/snowui-design-system.md`
 - Default audit/extract targets: `dashboard/src`, `dashboard/src/styles`, `dashboard/guidelines/Guidelines.md`
 - This integration is repo-local only. It does not install anything into `~/.codex/skills`.
 - Start a new Codex session or restart Codex after pulling these files so local skill discovery can reload.

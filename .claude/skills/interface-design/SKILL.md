@@ -12,8 +12,9 @@ Before doing dashboard UI work with this skill, read these files in order:
 1. `dashboard/tools/interface-design/.claude/skills/interface-design/SKILL.md`
 2. `dashboard/tools/interface-design/.claude/skills/interface-design/references/principles.md`
 3. `dashboard/tools/interface-design/.claude/skills/interface-design/references/validation.md`
-4. `dashboard/.interface-design/system.md`
-5. `.claude/skills/interface-design/references/snowui-dashboard.md`
+4. `.claude/skills/interface-design/references/snowui-design-system.md`
+5. `dashboard/.interface-design/system.md`
+6. `.claude/skills/interface-design/references/snowui-dashboard.md`
 
 Load extra references only when needed:
 
@@ -33,6 +34,8 @@ Apply the upstream guidance with these repository-specific overrides:
 
 - Scope is limited to `dashboard/` unless the user explicitly expands it.
 - Treat upstream references to `.interface-design/system.md` as `dashboard/.interface-design/system.md`.
+- Treat `.claude/skills/interface-design/references/snowui-design-system.md` as the canonical extracted reference for the SnowUI design-system board:
+  - `https://www.figma.com/design/WaLIQwZJ1YeuNccnqqiiel/SnowUI-Design-System--Community-?node-id=60755-3905`
 - Treat `.claude/skills/interface-design/references/snowui-dashboard.md` as the canonical extracted reference for the SnowUI dashboard Figma file:
   - `https://www.figma.com/design/jWo6r4s6gxj5X1ffae11LA/SnowUI-Design-System--Community-?node-id=73957-26057`
 - Default audit/extract targets are:
@@ -40,7 +43,8 @@ Apply the upstream guidance with these repository-specific overrides:
   - `dashboard/src/styles`
   - `dashboard/guidelines/Guidelines.md`
 - Preserve the existing dashboard/Tauri product context. Do not drift into marketing-site patterns.
-- Use the SnowUI reference to refine hierarchy, spacing, border weight, header/sidebar structure, and control density.
+- Use the SnowUI design-system board to refine tokens, variable reuse, typography scale, and component taxonomy.
+- Use the SnowUI dashboard reference to refine hierarchy, spacing, border weight, header/sidebar structure, and control density.
 - Do not copy SnowUI blindly. Keep AURA's runtime-ops character, telemetry semantics, and diagnostic density.
 
 ## Command Mapping
