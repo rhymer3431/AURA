@@ -61,7 +61,7 @@ function ModuleCard({
           <BarChart data={latencyData.length > 0 ? latencyData : [{ t: 0, v: Number(node.latencyMs ?? 0) || 0 }]}>
             <Bar dataKey="v" fill={barColor} radius={[2, 2, 0, 0]} />
             <Tooltip
-              contentStyle={{ background: "#fff", border: "1px solid rgba(0,0,0,0.1)", borderRadius: 8, fontSize: 10 }}
+              contentStyle={{ background: "rgba(255,251,246,0.98)", border: "1px solid rgba(123,102,79,0.12)", borderRadius: 8, fontSize: 10 }}
               labelStyle={{ display: "none" }}
               formatter={(value: number) => [`${value}ms`, "Latency"]}
             />
@@ -76,14 +76,14 @@ function ModuleCard({
 export function ExternalServicesPanel() {
   const { history, state } = useDashboard();
   const cards: Array<{ node: ArchitectureNode; color: string; latencyData: { t: number; v: number }[] }> = [
-    { node: architectureNode(state, "mainControlServer"), color: "#BFDDF6", latencyData: [] },
-    { node: architectureNode(state, "gateway"), color: "#A8C5DA", latencyData: [] },
-    { node: architectureModule(state, "s2"), color: "#C6C7F8", latencyData: history.s2Latency },
-    { node: architectureModule(state, "nav"), color: "#A7E6D7", latencyData: history.navLatency },
-    { node: architectureModule(state, "perception"), color: "#F8D6A3", latencyData: [] },
-    { node: architectureModule(state, "memory"), color: "#E8D1FF", latencyData: [] },
-    { node: architectureModule(state, "locomotion"), color: "#FFC9B8", latencyData: [] },
-    { node: architectureModule(state, "telemetry"), color: "#D4E7F7", latencyData: [] },
+    { node: architectureNode(state, "mainControlServer"), color: "#C6D7E3", latencyData: [] },
+    { node: architectureNode(state, "gateway"), color: "#B9CCDA", latencyData: [] },
+    { node: architectureModule(state, "s2"), color: "#D4D1EC", latencyData: history.s2Latency },
+    { node: architectureModule(state, "nav"), color: "#BED7C5", latencyData: history.navLatency },
+    { node: architectureModule(state, "perception"), color: "#E8CCA2", latencyData: [] },
+    { node: architectureModule(state, "memory"), color: "#DED1E9", latencyData: [] },
+    { node: architectureModule(state, "locomotion"), color: "#E9C2B2", latencyData: [] },
+    { node: architectureModule(state, "telemetry"), color: "#D3E0E8", latencyData: [] },
   ];
 
   return (

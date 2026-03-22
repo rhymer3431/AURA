@@ -137,9 +137,9 @@ export function SensorsWidget() {
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
-        <ConsoleInfoRow label="Gateway" value={<span className="truncate rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{gateway.summary || "idle"}</span>} />
+        <ConsoleInfoRow label="Gateway" value={<span className="truncate rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{gateway.summary || "idle"}</span>} />
         <ConsoleInfoRow label="Frame Freshness" value={formatMs(state?.transport.frameAgeMs, "n/a")} valueClassName="text-[var(--signal-emerald)] font-medium" />
-        <ConsoleInfoRow label="Frame Source" value={<span className="truncate rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{stringValue(sensors.source, "n/a")}</span>} />
+        <ConsoleInfoRow label="Frame Source" value={<span className="truncate rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{stringValue(sensors.source, "n/a")}</span>} />
         <ConsoleInfoRow label="Frame ID" value={String(sensors.frameId ?? "n/a")} />
       </div>
     </ConsolePanel>
@@ -178,8 +178,8 @@ export function PerceptionWidget() {
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
-        <ConsoleInfoRow label="Module Detail" value={<span className="rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{module.detail || "n/a"}</span>} />
-        <ConsoleInfoRow label="Selected Reason" value={<span className="rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{stringValue(perception.detectorSelectedReason, "n/a")}</span>} />
+        <ConsoleInfoRow label="Module Detail" value={<span className="rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{module.detail || "n/a"}</span>} />
+        <ConsoleInfoRow label="Selected Reason" value={<span className="rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{stringValue(perception.detectorSelectedReason, "n/a")}</span>} />
         <div className="flex justify-between items-center"><span className="dashboard-meta">Capability Status</span><Chip color={stringValue(capability.status) === "ready" ? "green" : "amber"}>{stringValue(capability.status, "unknown")}</Chip></div>
       </div>
     </ConsolePanel>
@@ -312,7 +312,7 @@ export function IpcOrchestrationWidget() {
         </div>
       </div>
 
-      <div className="h-px bg-[rgba(24,33,37,0.06)] w-full"></div>
+      <div className="h-px bg-[rgba(var(--ink-rgb),0.06)] w-full"></div>
 
       <div>
         <SectionHeader icon={Layers} title="Gateway State Mirror" />
@@ -389,7 +389,7 @@ export function LogsWidget() {
       </div>
 
       {logsError !== "" && (
-        <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+        <div className="mb-3 rounded-xl border border-[var(--tone-amber-border)] bg-[var(--tone-amber-bg)] px-3 py-2 text-[11px] text-[var(--tone-amber-fg)]">
           log refresh degraded: {logsError}
         </div>
       )}
@@ -401,7 +401,7 @@ export function LogsWidget() {
         {logs.map((log, index) => {
           const level = stringValue(log.level || log.stream, "info");
           return (
-            <div key={`${log.source}-${index}`} className="flex gap-2 py-1.5 hover:bg-[rgba(24,33,37,0.04)] px-2 rounded-xl transition-colors">
+            <div key={`${log.source}-${index}`} className="flex gap-2 px-2 py-1.5 transition-colors hover:bg-[rgba(123,102,79,0.05)] rounded-xl">
               <span className="text-[var(--text-faint)] w-[70px] shrink-0">{log.timestampNs ? String(log.timestampNs).slice(-8) : log.stream}</span>
               <span className={`w-[80px] shrink-0 font-semibold ${level === "error" || level === "stderr" ? "text-red-500" : level === "warn" || level === "warning" ? "text-amber-500" : "text-[var(--text-secondary)]"}`}>
                 {log.source}

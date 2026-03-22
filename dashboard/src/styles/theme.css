@@ -1,78 +1,80 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --ink-rgb: 46, 37, 31;
+  --paper-rgb: 255, 250, 243;
   --font-size: 14px;
   --font-ui: "Inter", sans-serif;
   --font-mono: "IBM Plex Mono", monospace;
-  --background: #f7f6f3;
-  --foreground: #14171c;
-  --card: rgba(255, 255, 255, 0.88);
-  --card-foreground: #14171c;
-  --popover: rgba(255, 255, 255, 0.98);
-  --popover-foreground: #14171c;
-  --primary: #14171c;
+  --background: #eee5d9;
+  --foreground: #231d19;
+  --card: rgba(255, 250, 243, 0.9);
+  --card-foreground: #231d19;
+  --popover: rgba(255, 251, 246, 0.98);
+  --popover-foreground: #231d19;
+  --primary: #2a211c;
   --primary-foreground: #ffffff;
-  --secondary: rgba(17, 23, 28, 0.05);
-  --secondary-foreground: #1d232c;
-  --muted: rgba(17, 23, 28, 0.04);
-  --muted-foreground: rgba(20, 23, 28, 0.58);
-  --accent: rgba(79, 152, 168, 0.12);
-  --accent-foreground: #214b59;
-  --destructive: #bf654f;
+  --secondary: rgba(104, 83, 61, 0.06);
+  --secondary-foreground: #342a23;
+  --muted: rgba(104, 83, 61, 0.05);
+  --muted-foreground: rgba(47, 39, 33, 0.58);
+  --accent: rgba(124, 152, 172, 0.18);
+  --accent-foreground: #3b5b6d;
+  --destructive: #bf7057;
   --destructive-foreground: #fffaf7;
-  --border: rgba(17, 23, 28, 0.08);
-  --input: rgba(255, 255, 255, 0.9);
-  --input-background: rgba(255, 255, 255, 0.8);
-  --switch-background: #cfd4da;
+  --border: rgba(72, 57, 43, 0.1);
+  --input: rgba(255, 250, 243, 0.94);
+  --input-background: rgba(255, 249, 241, 0.9);
+  --switch-background: #d5cbc0;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: rgba(79, 152, 168, 0.28);
-  --chart-1: #4f98a8;
-  --chart-2: #3f7d63;
-  --chart-3: #c68a38;
-  --chart-4: #7d6fa0;
-  --chart-5: #b9634b;
+  --ring: rgba(124, 152, 172, 0.24);
+  --chart-1: #7e9db1;
+  --chart-2: #6c8b72;
+  --chart-3: #c58d4a;
+  --chart-4: #9083ab;
+  --chart-5: #c3785f;
   --radius: 1rem;
-  --sidebar: rgba(250, 249, 246, 0.92);
-  --sidebar-foreground: #14171c;
-  --sidebar-primary: #14171c;
+  --sidebar: rgba(244, 236, 227, 0.95);
+  --sidebar-foreground: #231d19;
+  --sidebar-primary: #2a211c;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(17, 23, 28, 0.05);
-  --sidebar-accent-foreground: #14171c;
-  --sidebar-border: rgba(17, 23, 28, 0.08);
-  --sidebar-ring: rgba(79, 152, 168, 0.24);
-  --surface-0: rgba(255, 255, 255, 0.44);
-  --surface-1: rgba(255, 255, 255, 0.82);
-  --surface-2: rgba(255, 255, 255, 0.97);
-  --surface-inset: rgba(17, 23, 28, 0.035);
-  --surface-strong: rgba(255, 255, 255, 0.96);
-  --text-secondary: rgba(20, 23, 28, 0.68);
-  --text-tertiary: rgba(20, 23, 28, 0.48);
-  --text-faint: rgba(20, 23, 28, 0.26);
-  --signal-cyan: #4f98a8;
-  --signal-emerald: #3f7d63;
-  --signal-amber: #c68a38;
-  --signal-coral: #b9634b;
-  --signal-violet: #7d6fa0;
-  --signal-slate: #7d847f;
-  --tone-cyan-bg: rgba(79, 152, 168, 0.12);
-  --tone-cyan-border: rgba(79, 152, 168, 0.24);
-  --tone-cyan-fg: #235567;
-  --tone-emerald-bg: rgba(63, 125, 99, 0.12);
-  --tone-emerald-border: rgba(63, 125, 99, 0.24);
-  --tone-emerald-fg: #255641;
-  --tone-amber-bg: rgba(198, 138, 56, 0.13);
-  --tone-amber-border: rgba(198, 138, 56, 0.24);
-  --tone-amber-fg: #785426;
-  --tone-coral-bg: rgba(185, 99, 75, 0.13);
-  --tone-coral-border: rgba(185, 99, 75, 0.24);
-  --tone-coral-fg: #7e4132;
-  --tone-violet-bg: rgba(125, 111, 160, 0.13);
-  --tone-violet-border: rgba(125, 111, 160, 0.22);
-  --tone-violet-fg: #5c5179;
-  --tone-slate-bg: rgba(125, 132, 127, 0.12);
-  --tone-slate-border: rgba(125, 132, 127, 0.2);
-  --tone-slate-fg: #58605c;
+  --sidebar-accent: rgba(104, 83, 61, 0.055);
+  --sidebar-accent-foreground: #231d19;
+  --sidebar-border: rgba(72, 57, 43, 0.1);
+  --sidebar-ring: rgba(124, 152, 172, 0.22);
+  --surface-0: rgba(255, 247, 237, 0.56);
+  --surface-1: rgba(255, 248, 240, 0.86);
+  --surface-2: rgba(255, 251, 246, 0.97);
+  --surface-inset: rgba(98, 79, 58, 0.055);
+  --surface-strong: rgba(255, 252, 248, 0.98);
+  --text-secondary: rgba(46, 37, 31, 0.68);
+  --text-tertiary: rgba(46, 37, 31, 0.48);
+  --text-faint: rgba(46, 37, 31, 0.26);
+  --signal-cyan: #7699ae;
+  --signal-emerald: #6b876f;
+  --signal-amber: #c58d4a;
+  --signal-coral: #c3785f;
+  --signal-violet: #8f82aa;
+  --signal-slate: #958e85;
+  --tone-cyan-bg: rgba(118, 153, 174, 0.13);
+  --tone-cyan-border: rgba(118, 153, 174, 0.25);
+  --tone-cyan-fg: #466379;
+  --tone-emerald-bg: rgba(107, 135, 111, 0.13);
+  --tone-emerald-border: rgba(107, 135, 111, 0.24);
+  --tone-emerald-fg: #47614b;
+  --tone-amber-bg: rgba(197, 141, 74, 0.14);
+  --tone-amber-border: rgba(197, 141, 74, 0.24);
+  --tone-amber-fg: #7f5931;
+  --tone-coral-bg: rgba(195, 120, 95, 0.14);
+  --tone-coral-border: rgba(195, 120, 95, 0.24);
+  --tone-coral-fg: #85513f;
+  --tone-violet-bg: rgba(143, 130, 170, 0.13);
+  --tone-violet-border: rgba(143, 130, 170, 0.22);
+  --tone-violet-fg: #695f82;
+  --tone-slate-bg: rgba(149, 142, 133, 0.13);
+  --tone-slate-border: rgba(149, 142, 133, 0.2);
+  --tone-slate-fg: #6b635c;
 }
 
 .dark {
@@ -161,7 +163,7 @@
   body {
     @apply bg-background text-foreground;
     font-family: var(--font-ui);
-    background-image: linear-gradient(180deg, #faf9f6 0%, #f4f3ef 100%);
+    background-image: linear-gradient(180deg, #f3ece2 0%, #e8ddd0 100%);
     background-attachment: fixed;
   }
 
@@ -232,7 +234,7 @@
 
   .dashboard-sidebar-backdrop {
     @apply fixed inset-0 z-30 lg:hidden;
-    background: rgba(17, 23, 28, 0.18);
+    background: rgba(var(--ink-rgb), 0.16);
     backdrop-filter: blur(8px);
   }
 
@@ -267,8 +269,8 @@
 
   .dashboard-topbar {
     @apply flex flex-wrap items-center justify-between gap-3 px-4 py-3 shrink-0 lg:px-8;
-    background: rgba(248, 248, 245, 0.78);
-    border-bottom: 0.5px solid rgba(17, 23, 28, 0.08);
+    background: rgba(247, 240, 231, 0.82);
+    border-bottom: 0.5px solid rgba(var(--ink-rgb), 0.08);
     backdrop-filter: blur(18px);
   }
 
@@ -278,7 +280,7 @@
 
   .dashboard-page-header {
     @apply flex flex-col items-start justify-between gap-4 mb-6 mt-5 pb-5 lg:flex-row lg:items-end lg:gap-6;
-    border-bottom: 0.5px solid rgba(17, 23, 28, 0.08);
+    border-bottom: 0.5px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .dashboard-page-body {
@@ -313,21 +315,21 @@
   }
 
   .dashboard-section-tab[data-active="true"] {
-    border-color: rgba(17, 23, 28, 0.88);
+    border-color: rgba(var(--ink-rgb), 0.88);
   }
 
   .dashboard-page-hero {
     @apply rounded-[28px] p-5 lg:p-6;
-    background: rgba(255, 255, 255, 0.96);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    background: rgba(255, 250, 244, 0.98);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .dashboard-page-hero-icon {
     @apply inline-flex shrink-0 items-center justify-center rounded-[22px];
     width: 64px;
     height: 64px;
-    background: rgba(17, 23, 28, 0.04);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    background: rgba(115, 92, 67, 0.06);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
     color: var(--foreground);
   }
 
@@ -337,8 +339,8 @@
 
   .dashboard-summary-field {
     @apply rounded-[20px] px-4 py-4;
-    background: rgba(17, 23, 28, 0.028);
-    border: 0.5px solid rgba(17, 23, 28, 0.06);
+    background: rgba(140, 113, 82, 0.055);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.06);
   }
 
   .dashboard-activity-rail {
@@ -359,17 +361,17 @@
 
   .dashboard-activity-item {
     @apply flex items-start gap-3 rounded-[18px] px-3 py-3;
-    background: rgba(17, 23, 28, 0.024);
-    border: 0.5px solid rgba(17, 23, 28, 0.06);
+    background: rgba(140, 113, 82, 0.045);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.06);
   }
 
   .dashboard-activity-icon {
     @apply inline-flex shrink-0 items-center justify-center rounded-[12px];
     width: 32px;
     height: 32px;
-    background: rgba(17, 23, 28, 0.04);
+    background: rgba(115, 92, 67, 0.06);
     color: var(--foreground);
-    border: 0.5px solid rgba(17, 23, 28, 0.06);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.06);
   }
 
   .dashboard-activity-meta {
@@ -381,28 +383,28 @@
   .dashboard-panel {
     @apply rounded-[24px] p-5 lg:p-6;
     background: var(--surface-2);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .dashboard-panel-strong {
     @apply rounded-[20px];
     background: var(--surface-strong);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .dashboard-inset {
     @apply rounded-[16px];
     background: var(--surface-inset);
-    border: 0.5px solid rgba(17, 23, 28, 0.06);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.06);
   }
 
   .dashboard-icon-shell {
     @apply inline-flex items-center justify-center rounded-[12px];
     width: 28px;
     height: 28px;
-    background: rgba(17, 23, 28, 0.04);
+    background: rgba(115, 92, 67, 0.06);
     color: var(--foreground);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .dashboard-eyebrow {
@@ -457,8 +459,8 @@
 
   .dashboard-kpi {
     @apply rounded-[20px] px-4 py-4 min-h-[118px] relative overflow-hidden flex flex-col justify-between;
-    background: rgba(255, 255, 255, 0.92);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    background: rgba(255, 250, 244, 0.94);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
   }
 
   .dashboard-kpi::before {
@@ -481,35 +483,35 @@
 
   .dashboard-field {
     @apply rounded-[16px] px-4 py-3;
-    background: rgba(17, 23, 28, 0.035);
-    border: 0.5px solid rgba(17, 23, 28, 0.06);
+    background: rgba(140, 113, 82, 0.05);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.06);
   }
 
   .dashboard-input {
     @apply w-full rounded-[16px] px-3 py-2.5 text-[13px];
     background: var(--input-background);
-    border: 0.5px solid rgba(17, 23, 28, 0.1);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.1);
     color: var(--foreground);
     transition: border-color 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
   }
 
   .dashboard-input:focus {
     outline: none;
-    border-color: rgba(79, 152, 168, 0.35);
-    box-shadow: 0 0 0 3px rgba(79, 152, 168, 0.12);
-    background: rgba(252, 249, 244, 1);
+    border-color: rgba(124, 152, 172, 0.35);
+    box-shadow: 0 0 0 3px rgba(124, 152, 172, 0.12);
+    background: rgba(255, 251, 246, 1);
   }
 
   .dashboard-button-primary {
     @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium;
     background: var(--primary);
     color: var(--primary-foreground);
-    border: 0.5px solid rgba(17, 23, 28, 0.14);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.14);
     transition: background-color 150ms ease, transform 150ms ease, border-color 150ms ease;
   }
 
   .dashboard-button-primary:hover {
-    background: rgba(17, 23, 28, 0.92);
+    background: rgba(34, 27, 22, 0.92);
   }
 
   .dashboard-button-primary:active {
@@ -518,15 +520,15 @@
 
   .dashboard-button-secondary {
     @apply inline-flex items-center gap-2 rounded-full px-4 py-2 text-[13px] font-medium;
-    background: rgba(255, 255, 255, 0.78);
+    background: rgba(255, 248, 240, 0.82);
     color: var(--foreground);
-    border: 0.5px solid rgba(17, 23, 28, 0.09);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.09);
     transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
   }
 
   .dashboard-button-secondary:hover {
-    background: rgba(255, 255, 255, 0.96);
-    border-color: rgba(17, 23, 28, 0.13);
+    background: rgba(255, 251, 246, 0.98);
+    border-color: rgba(var(--ink-rgb), 0.13);
   }
 
   .dashboard-button-secondary:active {
@@ -553,24 +555,24 @@
   .dashboard-search-capsule {
     @apply inline-flex items-center gap-2 rounded-full px-3 py-2 text-[12px];
     min-width: 164px;
-    background: rgba(17, 23, 28, 0.04);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
+    background: rgba(123, 102, 79, 0.06);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
     color: var(--text-secondary);
     transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
   }
 
   .dashboard-search-capsule:hover {
-    background: rgba(17, 23, 28, 0.06);
-    border-color: rgba(17, 23, 28, 0.12);
+    background: rgba(123, 102, 79, 0.08);
+    border-color: rgba(var(--ink-rgb), 0.12);
     color: var(--foreground);
   }
 
   .dashboard-search-shortcut {
     @apply inline-flex items-center justify-center rounded-[8px] px-1.5 py-0.5 text-[10px];
     min-width: 20px;
-    border: 0.5px solid rgba(17, 23, 28, 0.1);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.1);
     color: var(--text-tertiary);
-    background: rgba(255, 255, 255, 0.68);
+    background: rgba(255, 251, 246, 0.72);
   }
 
   .dashboard-utility-button {
@@ -578,14 +580,14 @@
     width: 32px;
     height: 32px;
     color: var(--text-secondary);
-    border: 0.5px solid rgba(17, 23, 28, 0.08);
-    background: rgba(255, 255, 255, 0.7);
+    border: 0.5px solid rgba(var(--ink-rgb), 0.08);
+    background: rgba(255, 248, 240, 0.76);
     transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
   }
 
   .dashboard-utility-button:hover {
-    background: rgba(255, 255, 255, 0.94);
-    border-color: rgba(17, 23, 28, 0.12);
+    background: rgba(255, 251, 246, 0.96);
+    border-color: rgba(var(--ink-rgb), 0.12);
     color: var(--foreground);
   }
 

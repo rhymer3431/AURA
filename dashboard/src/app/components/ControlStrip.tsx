@@ -116,7 +116,7 @@ export function ControlStrip() {
         </div>
 
         {!isLocomotionConfigValid && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
+          <div className="rounded-xl border border-[var(--tone-amber-border)] bg-[var(--tone-amber-bg)] px-3 py-2 text-[12px] text-[var(--tone-amber-fg)]">
             {"locomotion config는 `action scale > 0`, `cmd max vx/vy >= 0`, `cmd max wz > 0` 이어야 합니다."}
           </div>
         )}

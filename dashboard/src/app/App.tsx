@@ -200,7 +200,7 @@ export default function App() {
               <div className="dashboard-eyebrow">{page.groupTitle}</div>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                 <h2 className="text-[28px] font-medium tracking-[-0.06em] text-[var(--foreground)]">{page.label}</h2>
-                <span className="hidden h-4 w-px bg-[rgba(17,23,28,0.08)] lg:block" />
+                <span className="hidden h-4 w-px bg-[rgba(var(--ink-rgb),0.08)] lg:block" />
                 <p className="dashboard-subtitle max-w-2xl">{page.description}</p>
               </div>
             </div>

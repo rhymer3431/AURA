@@ -17,13 +17,14 @@
 - system checklist
 
 ## Color World
-- soft porcelain console shells
-- graphite ink and hairline dividers
+- warm parchment canvas
+- oat and ivory console shells
+- espresso ink and hairline dividers
 - telemetry cyan LEDs
 - actuator green status lamps
 - caution amber indicators
 - fault coral annotations
-- quiet black action pills
+- quiet charcoal action pills
 
 ## Signature
 - SnowUI-style triptych workbench: calm left navigation, centered task surface with section tabs and intro card, slim right support rail for live runtime context
@@ -57,9 +58,9 @@
   - Quiet border: rgba(24, 33, 37, 0.08)
   - Semantic emphasis only when state matters
 - Surface language:
-  - Canvas: light neutral, not pure white
-  - Panels: near-white or pale porcelain
-  - Utility fills: soft graphite alpha
+  - Canvas: warm parchment, not cool gray and not pure white
+  - Panels: ivory and pale oat surfaces with clearer warmth separation
+  - Utility fills: soft espresso alpha, not neutral black
 - Color usage:
   - Black/graphite is valid for primary action emphasis
   - Telemetry cyan, emerald, amber, coral, violet are status colors first, decoration second

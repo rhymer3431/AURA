@@ -60,10 +60,10 @@ export function StatCards() {
           label={item.label}
           value={item.value}
           tone={item.tone}
-          className="transition-colors duration-150 hover:bg-[rgba(255,255,255,0.98)]"
+          className="transition-colors duration-150 hover:bg-[rgba(var(--paper-rgb),0.98)]"
           valueClassName="break-all"
           meta={(
-            <div className="flex items-center justify-between gap-3 border-t border-[rgba(17,23,28,0.06)] pt-3">
+            <div className="flex items-center justify-between gap-3 border-t border-[rgba(var(--ink-rgb),0.06)] pt-3">
               <span className="truncate">{item.change}</span>
               {item.trend === "up" ? (
                 <TrendingUp className="size-3 shrink-0 text-[var(--text-secondary)]" />
