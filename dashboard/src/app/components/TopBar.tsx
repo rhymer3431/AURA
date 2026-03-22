@@ -28,7 +28,7 @@ export function TopBar({
           <SidebarIcon className="size-[18px]" />
         </button>
         <button type="button" className="dashboard-utility-button">
-          <Star className="size-[18px]" />
+          <Star className="size-[16px]" />
         </button>
         <div className="flex min-w-0 items-center gap-2 text-[13px]">
           <span className="truncate text-[12px] text-[var(--text-secondary)]">{page.groupTitle}</span>
@@ -44,13 +44,13 @@ export function TopBar({
           <span className="dashboard-search-shortcut">/</span>
         </button>
         <button type="button" className="dashboard-utility-button">
-          <Sun className="size-[16px]" />
+          <Sun className="size-[15px]" />
         </button>
         <button type="button" className="dashboard-utility-button">
-          <History className="size-[16px]" />
+          <History className="size-[15px]" />
         </button>
         <button type="button" className="dashboard-utility-button">
-          <Bell className="size-[16px]" />
+          <Bell className="size-[15px]" />
         </button>
         <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
           <Radio className="size-3" />

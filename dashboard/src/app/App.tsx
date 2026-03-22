@@ -10,7 +10,6 @@ import { ExternalServicesPanel } from "./components/ExternalServicesPanel";
 import { RobotViewer } from "./components/RobotViewer";
 import { ControlStrip } from "./components/ControlStrip";
 import {
-  MainControlServerWidget,
   ProcessesWidget,
   SensorsWidget,
   PerceptionWidget,
@@ -117,14 +116,19 @@ export default function App() {
     if (activePage === "pipeline-overview") {
       return (
         <div className="space-y-6">
-          <StatCards />
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-[22px] font-medium tracking-[-0.05em] text-[var(--foreground)]">Overview</h3>
+            </div>
+            <StatCards />
+          </div>
           <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6">
             <div className="2xl:col-span-8">
               <RobotViewer />
             </div>
             <div className="2xl:col-span-4 grid grid-cols-1 gap-6">
+              <ProcessesWidget />
               <SensorsWidget />
-              <MainControlServerWidget />
             </div>
           </div>
           <PipelineFlow />
@@ -228,7 +232,7 @@ export default function App() {
                 </div>
               )}
 
-              <DashboardPageHero page={page} />
+              {activePage === "pipeline-overview" ? null : <DashboardPageHero page={page} />}
               {renderPageContent()}
             </div>
 

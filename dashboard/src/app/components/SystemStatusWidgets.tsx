@@ -77,9 +77,9 @@ export function ProcessesWidget() {
     <ConsolePanel>
       <ConsoleSectionTitle
         icon={Box}
-        eyebrow="process mirror"
-        title="Implementation Diagnostics"
-        description="raw process state, pid, and supervisor mirror"
+        eyebrow="runtime layout"
+        title="프로세스 구성"
+        description="runtime process mirror, pid, and supervisor state"
         className="mb-4"
       />
       <div className="space-y-2.5">
@@ -121,7 +121,7 @@ export function SensorsWidget() {
   return (
     <ConsolePanel>
       <div className="flex items-center justify-between mb-3">
-        <SectionHeader icon={MonitorSmartphone} title="Robot Gateway" />
+        <SectionHeader icon={MonitorSmartphone} title="센서 입력 상태" />
         <Chip color={toneForStatus(gateway.status)}>{statusLabel(gateway.status)}</Chip>
       </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -137,9 +137,14 @@ export function SensorsWidget() {
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
-        <ConsoleInfoRow label="Gateway" value={<span className="truncate rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{gateway.summary || "idle"}</span>} />
+        <ConsoleInfoRow label="Gateway" value={<span className="truncate rounded-full bg-[rgba(var(--ink-rgb),0.05)] px-2 py-0.5">{gateway.summary || "idle"}</span>} />
         <ConsoleInfoRow label="Frame Freshness" value={formatMs(state?.transport.frameAgeMs, "n/a")} valueClassName="text-[var(--signal-emerald)] font-medium" />
-        <ConsoleInfoRow label="Frame Source" value={<span className="truncate rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{stringValue(sensors.source, "n/a")}</span>} />
+        <ConsoleInfoRow
+          label="Sensor Init"
+          value={booleanValue(sensors.rgbAvailable) && booleanValue(sensors.depthAvailable) && booleanValue(sensors.poseAvailable) ? "ready" : "pending"}
+          valueClassName="font-medium text-[var(--foreground)]"
+        />
+        <ConsoleInfoRow label="Frame Source" value={<span className="truncate rounded-full bg-[rgba(var(--ink-rgb),0.05)] px-2 py-0.5">{stringValue(sensors.source, "n/a")}</span>} />
         <ConsoleInfoRow label="Frame ID" value={String(sensors.frameId ?? "n/a")} />
       </div>
     </ConsolePanel>
@@ -178,8 +183,8 @@ export function PerceptionWidget() {
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
-        <ConsoleInfoRow label="Module Detail" value={<span className="rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{module.detail || "n/a"}</span>} />
-        <ConsoleInfoRow label="Selected Reason" value={<span className="rounded-full bg-[rgba(123,102,79,0.08)] px-2 py-0.5">{stringValue(perception.detectorSelectedReason, "n/a")}</span>} />
+        <ConsoleInfoRow label="Module Detail" value={<span className="rounded-full bg-[rgba(var(--ink-rgb),0.05)] px-2 py-0.5">{module.detail || "n/a"}</span>} />
+        <ConsoleInfoRow label="Selected Reason" value={<span className="rounded-full bg-[rgba(var(--ink-rgb),0.05)] px-2 py-0.5">{stringValue(perception.detectorSelectedReason, "n/a")}</span>} />
         <div className="flex justify-between items-center"><span className="dashboard-meta">Capability Status</span><Chip color={stringValue(capability.status) === "ready" ? "green" : "amber"}>{stringValue(capability.status, "unknown")}</Chip></div>
       </div>
     </ConsolePanel>

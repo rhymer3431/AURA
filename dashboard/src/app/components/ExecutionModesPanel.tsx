@@ -44,7 +44,7 @@ export function ExecutionModesPanel() {
       <ConsoleSectionTitle
         icon={SlidersHorizontal}
         eyebrow="profile compare"
-        title="Runtime Modes"
+        title="Execution Modes"
         description="draft runtime profile과 현재 활성 세션 설정을 분리해서 보여줍니다."
       />
 

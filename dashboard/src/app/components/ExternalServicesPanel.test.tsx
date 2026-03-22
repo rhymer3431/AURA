@@ -79,7 +79,7 @@ describe("ExternalServicesPanel", () => {
   it("renders module-centric health cards and hides legacy service names", () => {
     render(<ExternalServicesPanel />);
 
-    expect(screen.getByText("Module Health")).toBeInTheDocument();
+    expect(screen.getByText("External Services")).toBeInTheDocument();
     expect(screen.getByText("Main Control Server")).toBeInTheDocument();
     expect(screen.getByText("Robot Gateway")).toBeInTheDocument();
     expect(screen.getByText("S2")).toBeInTheDocument();

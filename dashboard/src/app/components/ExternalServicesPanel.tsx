@@ -91,7 +91,7 @@ export function ExternalServicesPanel() {
       <ConsoleSectionTitle
         icon={Layers3}
         eyebrow="health matrix"
-        title="Module Health"
+        title="External Services"
         description="robot gateway, main control server, and runtime modules arranged on one health surface"
         className="mb-4"
       />

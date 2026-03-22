@@ -43,8 +43,8 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "pipeline-overview",
-        label: "Runtime Overview",
-        description: "Gateway, Main Control Server, 그리고 핵심 모듈 상태를 한눈에 봅니다.",
+        label: "Pipeline Overview",
+        description: "운영 파이프라인 핵심 신호와 라이브 비전, 프로세스 구성을 한 화면에서 확인합니다.",
         groupTitle: "Dashboards",
         icon: LayoutDashboard,
       },
@@ -76,15 +76,15 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "ipc-viewer",
-        label: "Gateway & Telemetry",
+        label: "IPC & Viewer",
         description: "WebRTC 뷰어, gateway ingress, telemetry mirror 상태를 전용 페이지에서 확인합니다.",
         groupTitle: "Monitoring",
         icon: Eye,
       },
       {
         id: "external-services",
-        label: "Module Health",
-        description: "Main Control Server와 각 모듈의 health를 보고, raw process diagnostics는 보조로 확인합니다.",
+        label: "External Services",
+        description: "외부 서비스와 주요 모듈의 health, latency mirror를 한 번에 봅니다.",
         groupTitle: "Monitoring",
         icon: Radio,
       },
@@ -102,14 +102,14 @@ export const dashboardNavSections: DashboardNavSection[] = [
     items: [
       {
         id: "execution-modes",
-        label: "Runtime Modes",
+        label: "Execution Modes",
         description: "runtime entry mode와 현재 세션 설정을 별도 화면에서 비교합니다.",
         groupTitle: "Configuration",
         icon: Bot,
       },
       {
         id: "artifacts-storage",
-        label: "Artifacts & Diagnostics",
+        label: "Artifacts & Storage",
         description: "runtime artifacts, endpoints, raw process logs 같은 구현 진단 정보를 모아 봅니다.",
         groupTitle: "Configuration",
         icon: Settings,

@@ -30,7 +30,7 @@ export function ArtifactsStoragePanel() {
       <ConsoleSectionTitle
         icon={HardDrive}
         eyebrow="artifact mirror"
-        title="Artifacts & Diagnostics"
+        title="Artifacts & Storage"
         description="runtime artifact, memory footprint, transport endpoint, and implementation log path를 한 곳에 모았습니다."
       />
 

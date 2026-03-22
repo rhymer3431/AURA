@@ -16,17 +16,17 @@ export function Sidebar({
   return (
     <aside className="dashboard-sidebar" data-open={isMobileOpen ? "true" : "false"}>
       <div className="relative px-4 pb-3 pt-4 lg:px-5 lg:pb-4 lg:pt-5">
-        <div className="flex items-center justify-between rounded-[20px] border border-[rgba(var(--ink-rgb),0.08)] bg-[rgba(var(--paper-rgb),0.72)] px-3 py-3">
+        <div className="flex items-center justify-between rounded-[22px] border border-[rgba(var(--ink-rgb),0.06)] bg-[rgba(var(--paper-rgb),0.92)] px-3 py-3 shadow-[0_12px_32px_rgba(15,23,42,0.04)]">
           <div className="flex items-center gap-3">
-            <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-[rgba(var(--ink-rgb),0.08)] bg-[rgba(var(--ink-rgb),0.96)] text-white">
+            <div className="inline-flex size-8 shrink-0 items-center justify-center rounded-[12px] border border-[rgba(237,162,87,0.18)] bg-[linear-gradient(135deg,#f4b36e_0%,#e28d4b_100%)] text-white shadow-[0_10px_24px_rgba(226,141,75,0.28)]">
               <Bot className="size-4" />
             </div>
             <div>
-              <div className="text-[15px] font-medium tracking-[-0.04em] text-[var(--foreground)]">AURA</div>
+              <div className="text-[15px] font-medium tracking-[-0.04em] text-[var(--foreground)]">AURA Sys</div>
               <div className="text-[11px] text-[var(--text-tertiary)]">runtime operations</div>
             </div>
           </div>
-          <div className="inline-flex items-center gap-1 rounded-full border border-[rgba(var(--ink-rgb),0.08)] bg-[rgba(123,102,79,0.06)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)]">
+          <div className="inline-flex items-center gap-1 rounded-full border border-[rgba(var(--ink-rgb),0.06)] bg-[rgba(var(--ink-rgb),0.035)] px-2.5 py-1 text-[11px] text-[var(--text-secondary)]">
             <Radio className="size-3 text-[var(--signal-cyan)]" />
             ops
           </div>
@@ -53,14 +53,14 @@ export function Sidebar({
                     aria-current={activePage === item.id ? "page" : undefined}
                     className={`relative flex w-full items-center gap-3 rounded-[16px] px-3 py-2.5 text-left transition-colors ${
                       activePage === item.id
-                        ? "border border-[rgba(var(--ink-rgb),0.06)] bg-[rgba(123,102,79,0.08)] text-[var(--foreground)]"
-                        : "text-[var(--text-secondary)] hover:bg-[rgba(123,102,79,0.04)]"
+                        ? "border border-[rgba(var(--ink-rgb),0.06)] bg-[rgba(var(--ink-rgb),0.04)] text-[var(--foreground)] shadow-[0_10px_24px_rgba(15,23,42,0.04)]"
+                        : "text-[var(--text-secondary)] hover:bg-[rgba(var(--ink-rgb),0.03)]"
                     }`}
                   >
                     <div
                       className={`flex size-8 items-center justify-center rounded-[12px] ${
                         activePage === item.id
-                          ? "bg-[rgba(123,102,79,0.12)] text-[var(--foreground)]"
+                          ? "bg-[rgba(var(--ink-rgb),0.05)] text-[var(--foreground)]"
                           : "bg-transparent text-[var(--text-tertiary)]"
                       }`}
                     >
@@ -77,13 +77,13 @@ export function Sidebar({
         </div>
       </nav>
 
-      <div className="mt-auto hidden border-t border-[rgba(var(--ink-rgb),0.06)] p-5 lg:block">
-        <div className="rounded-[18px] border border-[rgba(var(--ink-rgb),0.08)] bg-[rgba(var(--paper-rgb),0.76)] px-4 py-3">
+      <div className="mt-auto hidden border-t border-[rgba(var(--ink-rgb),0.05)] p-5 lg:block">
+        <div className="rounded-[18px] border border-[rgba(var(--ink-rgb),0.06)] bg-[rgba(var(--paper-rgb),0.9)] px-4 py-3">
           <div className="dashboard-eyebrow mb-2">Operator</div>
           <div className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
             <Bot className="size-4 text-[var(--foreground)]" />
             <span>diagnostic workspace</span>
-            <span className="ml-auto dashboard-micro">AURA</span>
+            <span className="ml-auto dashboard-micro">sys</span>
           </div>
         </div>
       </div>
