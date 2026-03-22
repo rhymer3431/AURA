@@ -72,3 +72,13 @@ SnowUI is the reference, not the product identity. Keep these AURA-specific cons
 - Reduce visual weight before adding new decoration
 - Prefer pills, dividers, and soft inset fills over card stacks and loud badges
 - When in doubt, make hierarchy clearer by spacing and border logic first, color second
+
+## Layout Translation For This Repo
+
+- Make `1`, `2`, and `3` column compositions easy to build from the same shell primitives.
+- Prefer card and grid structures that can collapse, stack, or rebalance without rewriting component styling.
+- Keep the main work surface primary; use the support rail as awareness space for recent activity, alerts, context, or secondary controls.
+- Preserve room for denser and looser modes so the dashboard can adapt between operator scanning and more spacious inspection flows.
+- Do not lock panels into layout assumptions that would block resize, reorder, or future split-view workflows.
+- Let layout stay flexible, but keep spacing, radius, typography, border weight, and token usage inside the shared system.
+- When a layout feels too busy, solve it by clarifying hierarchy and reducing visual noise, not by introducing new decorative styles.

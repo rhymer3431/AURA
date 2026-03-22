@@ -46,6 +46,19 @@ Apply the upstream guidance with these repository-specific overrides:
 - Use the SnowUI design-system board to refine tokens, variable reuse, typography scale, and component taxonomy.
 - Use the SnowUI dashboard reference to refine hierarchy, spacing, border weight, header/sidebar structure, and control density.
 - Do not copy SnowUI blindly. Keep AURA's runtime-ops character, telemetry semantics, and diagnostic density.
+- When local SnowUI references conflict with the upstream generic guidance, the local SnowUI references win for this repository.
+
+## SnowUI Contract
+
+Use the local SnowUI references as the default operating contract for dashboard UI work:
+
+- Reuse existing tokens and existing components before adding new ones.
+- Treat `variables first`, the `90% principle`, and a lean system as default behavior, not optional taste.
+- Prefer semantic tokens and theme-aware variables over direct `px`, hex, radius, or one-off effect values.
+- Keep light and dark mode compatibility intact unless the user explicitly narrows scope to one theme.
+- Prefer base components and variants; page-specific components are the fallback when reuse truly breaks down.
+- If behavior is the same and only presentation shifts, absorb it into variants, slots, or wrappers instead of minting a new base.
+- If a pattern repeats three times or more, promote it into a reusable base/variant or saved system pattern.
 
 ## Command Mapping
 
@@ -64,3 +77,5 @@ Map them to normal Codex behavior instead:
 If the user asks for frontend work outside `dashboard/`, do not use this skill unless they explicitly want the dashboard design language applied there too.
 
 If the user asks to align the dashboard with SnowUI or the current project reference, update `dashboard/.interface-design/system.md` first when the design direction changes materially, then implement UI changes against that saved system.
+
+When aligning to SnowUI, preserve AURA as a runtime-ops console: calm, compact, diagnostic, and semantically meaningful. SnowUI is the structure and system reference, not a reason to flatten telemetry meaning or turn the dashboard into a generic SaaS shell.
