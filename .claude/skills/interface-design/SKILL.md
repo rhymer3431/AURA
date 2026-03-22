@@ -12,6 +12,8 @@ Before doing dashboard UI work with this skill, read these files in order:
 1. `dashboard/tools/interface-design/.claude/skills/interface-design/SKILL.md`
 2. `dashboard/tools/interface-design/.claude/skills/interface-design/references/principles.md`
 3. `dashboard/tools/interface-design/.claude/skills/interface-design/references/validation.md`
+4. `dashboard/.interface-design/system.md`
+5. `.claude/skills/interface-design/references/snowui-dashboard.md`
 
 Load extra references only when needed:
 
@@ -31,11 +33,15 @@ Apply the upstream guidance with these repository-specific overrides:
 
 - Scope is limited to `dashboard/` unless the user explicitly expands it.
 - Treat upstream references to `.interface-design/system.md` as `dashboard/.interface-design/system.md`.
+- Treat `.claude/skills/interface-design/references/snowui-dashboard.md` as the canonical extracted reference for the SnowUI dashboard Figma file:
+  - `https://www.figma.com/design/jWo6r4s6gxj5X1ffae11LA/SnowUI-Design-System--Community-?node-id=73957-26057`
 - Default audit/extract targets are:
   - `dashboard/src`
   - `dashboard/src/styles`
   - `dashboard/guidelines/Guidelines.md`
 - Preserve the existing dashboard/Tauri product context. Do not drift into marketing-site patterns.
+- Use the SnowUI reference to refine hierarchy, spacing, border weight, header/sidebar structure, and control density.
+- Do not copy SnowUI blindly. Keep AURA's runtime-ops character, telemetry semantics, and diagnostic density.
 
 ## Command Mapping
 
@@ -52,3 +58,5 @@ Map them to normal Codex behavior instead:
 ## Working Rule
 
 If the user asks for frontend work outside `dashboard/`, do not use this skill unless they explicitly want the dashboard design language applied there too.
+
+If the user asks to align the dashboard with SnowUI or the current project reference, update `dashboard/.interface-design/system.md` first when the design direction changes materially, then implement UI changes against that saved system.
