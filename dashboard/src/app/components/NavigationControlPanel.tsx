@@ -53,11 +53,11 @@ export function NavigationControlPanel() {
         title="Planner & Control"
         description="planning context, command arbitration, and recovery state projected from the main control server snapshot"
         action={<Badge color={phaseTone}>{currentPhase}</Badge>}
-        className="mb-4"
+        className="mb-3.5"
       />
 
-      <div className="dashboard-inset mb-4 p-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-[12px]">
+      <div className="dashboard-inset mb-3.5 p-3.5">
+        <div className="grid grid-cols-2 gap-3 text-[11px] md:grid-cols-5">
           <div>
             <div className="dashboard-eyebrow mb-1">execution_mode</div>
             <div className="font-medium text-[var(--foreground)]">{executionMode}</div>
@@ -81,7 +81,7 @@ export function NavigationControlPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-7 gap-3 mb-4">
+      <div className="mb-3.5 grid grid-cols-3 gap-2.5 md:grid-cols-7">
         {metrics.map((metric) => (
           <div key={metric.label} className="dashboard-field">
             <div className="dashboard-eyebrow mb-1">{metric.label}</div>
@@ -90,7 +90,7 @@ export function NavigationControlPanel() {
         ))}
       </div>
 
-      <div className="dashboard-inset mb-5 flex items-center gap-2.5 px-3 py-2 flex-wrap">
+      <div className="dashboard-inset mb-4 flex flex-wrap items-center gap-2 px-3 py-2">
         <span className="dashboard-eyebrow">Arbitration</span>
         <Badge color={phaseTone}>{stringValue(runtime.plannerControlMode, "idle")}</Badge>
         <span className="dashboard-micro">instruction: {stringValue(runtime.activeInstruction, "none") || "none"}</span>
@@ -104,10 +104,10 @@ export function NavigationControlPanel() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="dashboard-panel-strong p-4">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="dashboard-panel-strong p-3.5">
           <div className="dashboard-title mb-3 text-[13px]">Trajectory Freshness (s)</div>
-          <div className="h-[120px]">
+          <div className="h-[108px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={history.stale}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(123,102,79,0.12)" vertical={false} />
@@ -119,9 +119,9 @@ export function NavigationControlPanel() {
             </ResponsiveContainer>
           </div>
         </div>
-        <div className="dashboard-panel-strong p-4">
+        <div className="dashboard-panel-strong p-3.5">
           <div className="dashboard-title mb-3 text-[13px]">Goal Distance (m)</div>
-          <div className="h-[120px]">
+          <div className="h-[108px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={history.goalDistance}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(123,102,79,0.12)" vertical={false} />
@@ -135,9 +135,9 @@ export function NavigationControlPanel() {
         </div>
       </div>
 
-      <div className="dashboard-panel-strong mt-5 p-4">
+      <div className="dashboard-panel-strong mt-4 p-3.5">
         <div className="dashboard-eyebrow mb-2">Main Control Server Snapshot</div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-[11px]">
+        <div className="grid grid-cols-1 gap-2.5 text-[11px] md:grid-cols-4">
           <div className="dashboard-field">
             <div className="dashboard-eyebrow mb-1">Execution Mode</div>
             <div className="font-medium text-[var(--foreground)]">{executionMode}</div>

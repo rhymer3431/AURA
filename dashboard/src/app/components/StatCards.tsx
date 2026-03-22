@@ -67,23 +67,23 @@ export function StatCards() {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {stats.map((item, index) => (
         <motion.div
           key={item.label}
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.34, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
-          whileHover={{ y: -4 }}
+          transition={{ duration: 0.3, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
+          whileHover={{ y: -2 }}
         >
           <ConsoleMetricCard
             label={item.label}
             value={item.value}
             tone={item.tone}
             className="h-full"
-            valueClassName="break-all"
+            valueClassName="break-all text-[22px] leading-none"
             meta={(
-              <div className="flex items-center justify-between gap-3 pt-4 text-[12px]">
+              <div className="flex items-center justify-between gap-3 pt-3 text-[11px]">
                 <span className="truncate text-[var(--text-tertiary)]">{item.change}</span>
                 {item.trend === "up" ? (
                   <TrendingUp className="size-3.5 shrink-0 text-[var(--foreground)]" />

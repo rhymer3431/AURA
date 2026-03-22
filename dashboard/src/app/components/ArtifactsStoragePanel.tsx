@@ -26,7 +26,7 @@ export function ArtifactsStoragePanel() {
   const logSources = Array.from(new Set((state?.logs ?? []).map((item) => item.source).filter((item) => item !== ""))).slice(-6);
 
   return (
-    <ConsolePanel className="flex flex-col gap-5">
+    <ConsolePanel className="flex flex-col gap-4">
       <ConsoleSectionTitle
         icon={HardDrive}
         eyebrow="artifact mirror"
@@ -34,13 +34,13 @@ export function ArtifactsStoragePanel() {
         description="runtime artifact, memory footprint, transport endpoint, and implementation log path를 한 곳에 모았습니다."
       />
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="dashboard-panel-strong p-5">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+        <div className="dashboard-panel-strong p-4">
           <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)] mb-3">
             <Radio className="size-4 text-[var(--text-faint)]" />
             Runtime Endpoints
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <DetailRow label="API Base" value={bootstrap?.apiBaseUrl ?? "n/a"} />
             <DetailRow label="WebRTC Base" value={bootstrap?.webrtcBasePath ?? "n/a"} />
             <DetailRow label="Control" value={stringValue(busHealth.control_endpoint, "tcp://127.0.0.1:5580")} />
@@ -48,12 +48,12 @@ export function ArtifactsStoragePanel() {
           </div>
         </div>
 
-        <div className="dashboard-panel-strong p-5">
+        <div className="dashboard-panel-strong p-4">
           <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)] mb-3">
             <Database className="size-4 text-[var(--text-faint)]" />
             Memory Module Footprint
           </div>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="mb-3.5 grid grid-cols-3 gap-2.5">
             {[
               { label: "Objects", value: String(memory.objectCount ?? 0) },
               { label: "Places", value: String(memory.placeCount ?? 0) },
@@ -66,17 +66,17 @@ export function ArtifactsStoragePanel() {
             ))}
           </div>
           <DetailRow label="Scratchpad State" value={stringValue(scratchpad.taskState, "idle")} />
-          <div className="dashboard-field dashboard-mono mt-3 text-[12px] text-[var(--text-secondary)] leading-relaxed break-words">
+          <div className="dashboard-field dashboard-mono mt-2.5 text-[12px] text-[var(--text-secondary)] leading-relaxed break-words">
             {stringValue(scratchpad.instruction, "no active scratchpad instruction")}
           </div>
         </div>
 
-        <div className="dashboard-panel-strong p-5">
+        <div className="dashboard-panel-strong p-4">
           <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)] mb-3">
             <FolderOpen className="size-4 text-[var(--text-faint)]" />
             Runtime Mirror Snapshot
           </div>
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             <DetailRow label="Scene Preset" value={state?.session.config?.scenePreset ?? "inactive"} />
             <DetailRow label="Peer Session" value={stringValue(transport.peerSessionId, "none")} />
             <DetailRow label="Last Event" value={state?.session.lastEvent?.message ?? "n/a"} />
@@ -85,9 +85,9 @@ export function ArtifactsStoragePanel() {
         </div>
       </div>
 
-      <div className="dashboard-panel-strong p-5">
-        <div className="dashboard-title text-[13px] mb-3">Implementation Log Files</div>
-        <div className="dashboard-scroll space-y-2 max-h-[320px] overflow-y-auto pr-1">
+      <div className="dashboard-panel-strong p-4">
+        <div className="dashboard-title mb-2.5 text-[13px]">Implementation Log Files</div>
+        <div className="dashboard-scroll max-h-[280px] space-y-2 overflow-y-auto pr-1">
           {logFiles.length === 0 && (
             <div className="dashboard-field text-[12px] text-[var(--text-tertiary)]">no process log files available</div>
           )}

@@ -113,15 +113,15 @@ export function ConsoleSectionTitle({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-start justify-between gap-3", className)}>
-      <div className="flex items-start gap-3">
+    <div className={cn("flex items-start justify-between gap-2.5", className)}>
+      <div className="flex items-start gap-2.5">
         <div className="dashboard-icon-shell mt-0.5">
           <Icon className="size-4" />
         </div>
         <div>
           {eyebrow ? <div className="dashboard-eyebrow mb-1">{eyebrow}</div> : null}
           <h3 className="dashboard-title">{title}</h3>
-          {description ? <p className="dashboard-subtitle mt-1">{description}</p> : null}
+          {description ? <p className="dashboard-subtitle mt-0.5">{description}</p> : null}
         </div>
       </div>
       {action}
@@ -143,7 +143,7 @@ export function ConsoleInfoRow({
   mono?: boolean;
 }) {
   return (
-    <div className={cn("flex items-center justify-between gap-3 text-[11px]", className)}>
+    <div className={cn("flex items-center justify-between gap-3 text-[10px]", className)}>
       <span className="dashboard-meta">{label}</span>
       <span className={cn("dashboard-data-value", mono && "dashboard-mono", valueClassName)}>{value}</span>
     </div>
@@ -174,9 +174,9 @@ export function ConsoleMetricCard({
         "--kpi-border": metricToneVars[tone].border,
       } as React.CSSProperties}
     >
-      <div className="dashboard-label pt-3">{label}</div>
-      <div className={cn("dashboard-value mt-3", valueClassName)}>{value}</div>
-      {meta ? <div className="dashboard-micro mt-3">{meta}</div> : null}
+      <div className="dashboard-label pt-1">{label}</div>
+      <div className={cn("dashboard-value mt-2", valueClassName)}>{value}</div>
+      {meta ? <div className="dashboard-micro mt-2">{meta}</div> : null}
     </div>
   );
 }

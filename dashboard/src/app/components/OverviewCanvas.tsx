@@ -96,10 +96,10 @@ export function OverviewCanvas() {
   }));
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <StatCards />
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(320px,0.9fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.85fr)_minmax(280px,0.85fr)]">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -111,10 +111,10 @@ export function OverviewCanvas() {
               eyebrow="Operational signal"
               title="Live trend canvas"
               description="Goal distance, Nav latency, and S2 latency across the latest runtime samples."
-              className="mb-5"
+              className="mb-4"
             />
 
-            <div className="h-[292px] rounded-[18px] bg-white/70 px-2 py-2">
+            <div className="h-[248px] rounded-[16px] border border-[rgba(var(--ink-rgb),0.06)] bg-white/72 px-2 py-2">
               <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={240}>
                 <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -18 }}>
                   <CartesianGrid stroke="rgba(0,0,0,0.05)" vertical={false} />
@@ -133,9 +133,9 @@ export function OverviewCanvas() {
                   <Tooltip
                     contentStyle={{
                       border: "none",
-                      borderRadius: "16px",
+                      borderRadius: "12px",
                       background: "rgba(255,255,255,0.96)",
-                      boxShadow: "0 10px 24px rgba(0,0,0,0.06)",
+                      boxShadow: "0 8px 20px rgba(0,0,0,0.05)",
                     }}
                     labelStyle={{ color: "rgba(0,0,0,0.4)", fontSize: 11 }}
                   />
@@ -167,7 +167,7 @@ export function OverviewCanvas() {
               </ResponsiveContainer>
             </div>
 
-            <div className="mt-5 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-1.5">
               <ConsoleBadge tone="slate" dot={false}>Goal distance</ConsoleBadge>
               <ConsoleBadge tone="cyan" dot={false}>Nav latency</ConsoleBadge>
               <ConsoleBadge tone="violet" dot={false}>S2 latency</ConsoleBadge>
@@ -186,43 +186,43 @@ export function OverviewCanvas() {
               eyebrow="Runtime pulse"
               title="System brief"
               description="High-signal operational context without opening a separate monitoring page."
-              className="mb-5"
+              className="mb-4"
             />
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-2.5">
               <div className="dashboard-field bg-[var(--tone-cyan-bg)]">
                 <div className="dashboard-eyebrow mb-1">Frame age</div>
-                <div className="text-[20px] font-semibold text-[var(--foreground)]">{frameAge}</div>
+                <div className="text-[18px] font-semibold text-[var(--foreground)]">{frameAge}</div>
               </div>
               <div className="dashboard-field bg-[var(--tone-violet-bg)]">
                 <div className="dashboard-eyebrow mb-1">Goal dist.</div>
-                <div className="text-[20px] font-semibold text-[var(--foreground)]">{goalDistance}</div>
+                <div className="text-[18px] font-semibold text-[var(--foreground)]">{goalDistance}</div>
               </div>
               <div className="dashboard-field bg-white">
                 <div className="dashboard-eyebrow mb-1">Plan latency</div>
-                <div className="text-[20px] font-semibold text-[var(--foreground)]">{planLatency}</div>
+                <div className="text-[18px] font-semibold text-[var(--foreground)]">{planLatency}</div>
               </div>
               <div className="dashboard-field bg-white">
                 <div className="dashboard-eyebrow mb-1">Detections</div>
-                <div className="text-[20px] font-semibold text-[var(--foreground)]">
+                <div className="text-[18px] font-semibold text-[var(--foreground)]">
                   {detectionCount}
-                  <span className="ml-2 text-[12px] font-normal text-[var(--text-tertiary)]">
+                  <span className="ml-2 text-[11px] font-normal text-[var(--text-tertiary)]">
                     tracked {trackedCount}
                   </span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-4 rounded-[18px] bg-white px-4 py-4">
+            <div className="mt-3 rounded-[16px] border border-[rgba(var(--ink-rgb),0.05)] bg-white px-3.5 py-3">
               <div className="dashboard-eyebrow mb-2">Current instruction</div>
-              <p className="text-[13px] leading-6 text-[var(--text-secondary)]">{instruction}</p>
+              <p className="text-[13px] leading-5 text-[var(--text-secondary)]">{instruction}</p>
             </div>
 
-            <div className="mt-4 space-y-2.5">
+            <div className="mt-3 space-y-2">
               {statusRows.map((item, index) => (
                 <motion.div
                   key={item.name}
-                  className="flex items-start justify-between gap-3 rounded-[18px] bg-white px-4 py-3"
+                  className="flex items-start justify-between gap-3 rounded-[16px] border border-[rgba(var(--ink-rgb),0.05)] bg-white px-3.5 py-2.5"
                   initial={{ opacity: 0, x: 14 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.28, delay: 0.12 + index * 0.04 }}
@@ -230,11 +230,11 @@ export function OverviewCanvas() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className={`size-2 rounded-full ${statusDotClass[item.tone] ?? statusDotClass.slate}`} />
-                      <div className="truncate text-[14px] font-semibold text-[var(--foreground)]">{item.name}</div>
+                      <div className="truncate text-[13px] font-semibold text-[var(--foreground)]">{item.name}</div>
                     </div>
-                    <div className="mt-1 truncate text-[12px] text-[var(--text-tertiary)]">{item.summary}</div>
+                    <div className="mt-1 truncate text-[11px] text-[var(--text-tertiary)]">{item.summary}</div>
                   </div>
-                  <div className="flex items-center gap-1 text-[12px] text-[var(--text-tertiary)]">
+                  <div className="flex items-center gap-1 text-[11px] text-[var(--text-tertiary)]">
                     {item.label}
                     <ArrowUpRight className="size-3.5" />
                   </div>
@@ -245,7 +245,7 @@ export function OverviewCanvas() {
         </motion.div>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.42fr)_minmax(340px,0.92fr)]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,0.86fr)]">
         <motion.div
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
@@ -255,7 +255,7 @@ export function OverviewCanvas() {
         </motion.div>
 
         <motion.div
-          className="space-y-5"
+          className="space-y-4"
           initial={{ opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.45, delay: 0.16, ease: [0.22, 1, 0.36, 1] }}

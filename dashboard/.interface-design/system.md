@@ -27,7 +27,7 @@
 - quiet charcoal action pills
 
 ## Signature
-- SnowUI-style triptych workbench: calm left navigation, centered task surface with section tabs and intro card, slim right support rail for live runtime context
+- SnowUI-style triptych workbench compressed for operations: tight left navigation, dense central task surface, and a slim right support rail that stays readable without inflating the shell
 
 ## Defaults Replaced
 - Default template admin shell -> compact SnowUI-derived header and sidebar framing
@@ -68,47 +68,48 @@
 ## Reusable Patterns
 
 ### Shell Navigation
-- Sidebar width: 240px to 252px
+- Sidebar width: 196px to 208px
 - Collapsed sidebar width: 80px
-- Item height: 40px to 44px
+- Item height: 36px to 40px
 - Active state: soft neutral pill, not a loud filled block
 - Section labels: 11px to 12px, low-contrast, compact
 - Use SnowUI-style grouping: brand top, navigation center, account/utilities bottom
 - Desktop may introduce a right-side support rail when width allows; treat it as secondary context, not primary work area
 
 ### Top Bar
-- Height should stay visually shallow and compact
+- Height should stay visually shallow and compact: 56px to 60px target
 - Breadcrumb, search, and action icons live on one horizontal band
 - Use bottom divider or same-plane separation instead of elevated card treatment
 - Search control is a rounded capsule with inline shortcut/meta chip
+- Search width target: 180px to 220px in compact desktop layouts
 - Primary content tabs can sit directly under the top bar or page header as a second navigation band
 
 ### Panel Frame
-- Outer panel: 20px to 24px radius
-- Padding: 16px to 24px
+- Outer panel: 18px to 20px radius
+- Padding: 14px to 20px
 - Border: 0.5px to 1px low-contrast graphite
 - Background: near-white porcelain, not pure white
 - Do not stack unnecessary shadows to separate adjacent panels
 
 ### KPI Card
 - Prefer quiet stat blocks over loud marketing cards
-- Value: 24px to 32px depending on density
+- Value: 22px to 28px depending on density
 - Meta: mono 11px to 12px
 - Accent rail is optional, not mandatory
 - If color appears, it should encode runtime state or service health
-- On narrower work surfaces, cards should stack before becoming cramped four-column tiles
+- On narrower work surfaces, cards should stack before becoming cramped four-column tiles; on compact desktop widths, four cards in one row are preferred when each card can stay above ~190px
 
 ### Data Strip
 - Font: IBM Plex Mono 11px
 - Background: soft inset graphite/porcelain tone
-- Border radius: 12px to 16px
-- Padding: 10px 12px
+- Border radius: 12px to 14px
+- Padding: 8px 12px
 
 ### Page Intro Card
 - A large white card can sit above the main work area to orient the user
 - Layout: left icon/title/summary, right-side quick actions or status
 - Use this as a context card, not as a marketing hero
-- Follow with compact metadata fields on a consistent grid
+- Follow with compact metadata fields on a consistent grid; keep intro-to-body spacing tight enough that the first actionable panel is visible without scrolling on common desktop heights
 
 ### Section Tabs
 - Tabs are text-first with understated active underline or pill treatment
@@ -116,14 +117,14 @@
 - Tabs should switch sibling pages within the same navigation group
 
 ### Support Rail
-- Width: 272px to 304px when present
+- Width: 248px to 272px when present
 - Sections are stacked lists with quiet headings
 - Good content: recent events, runtime alerts, active modules, quick context
 - Do not place primary controls here; it is awareness space
 
 ### Search Capsule
-- Width: around 160px minimum in compact top bars
-- Height: 32px to 36px
+- Width: 180px to 220px in compact top bars
+- Height: 30px to 34px
 - Fill: quiet neutral alpha
 - Embedded shortcut chip uses hairline border and 12px text
 
@@ -133,7 +134,7 @@
 - Icons should feel aligned and quiet, never like decorative badges
 
 ### Status Badge
-- Height: 24px to 26px
+- Height: 22px to 24px
 - Font: IBM Plex Mono 11px medium
 - Dot + label, or tight pill label for compact contexts
 - Use one of: cyan, emerald, amber, coral, violet, slate
@@ -145,6 +146,7 @@
 - Hairline borders and inset fills should do most of the structural work
 - Data readouts use mono where scan alignment matters
 - Navigation, tabs, and support rail should stay compact, not drift back into bulky admin templates
+- First screen on 1280px-wide desktop should expose page title, status badges, KPI row, and the first primary work panel without needing to scroll
 - No new random hex values inside components when a token or pattern already exists
 
 ## Reference

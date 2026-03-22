@@ -138,38 +138,38 @@ export function OccupancyMapPanel() {
   const routeStatus = routeEnabled ? (Boolean(runtime.globalRouteActive) ? "active" : "idle") : "disabled";
 
   return (
-    <div className="bg-[#F5F8FB] rounded-[28px] p-6">
-      <div className="flex items-center justify-between gap-4 mb-5">
+    <div className="rounded-[24px] border border-black/6 bg-[#F5F8FB] p-5">
+      <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 text-[12px] text-black/45 mb-1">
             <Map className="size-4" />
             Occupancy Localization
           </div>
           <h3 className="text-[18px] font-semibold text-black">Occupancy Map</h3>
-          <p className="text-[12px] text-black/45 mt-1">
+          <p className="mt-1 text-[11px] text-black/45">
             scene: <span className="text-black/70">{activeScenePreset || "inactive"}</span>
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-3 min-w-[280px]">
-          <div className="rounded-2xl bg-white border border-black/5 px-4 py-3">
+        <div className="grid min-w-[240px] grid-cols-2 gap-2.5">
+          <div className="rounded-[18px] border border-black/5 bg-white px-3.5 py-3">
             <div className="text-[11px] text-black/45 mb-1">Robot XY</div>
-            <div className="text-[15px] font-medium text-black">
+            <div className="text-[14px] font-medium text-black">
               {formatCoord(robotPose[0])}, {formatCoord(robotPose[1])}
             </div>
           </div>
-          <div className="rounded-2xl bg-white border border-black/5 px-4 py-3">
+          <div className="rounded-[18px] border border-black/5 bg-white px-3.5 py-3">
             <div className="text-[11px] text-black/45 mb-1">Global Route</div>
-            <div className="text-[15px] font-medium text-black">
+            <div className="text-[14px] font-medium text-black">
               {routeStatus} {routeEnabled ? `(${Number(runtime.globalRouteWaypointIndex ?? 0)}/${Number(runtime.globalRouteWaypointCount ?? 0)})` : ""}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         <div className="xl:col-span-8">
-          <div className="rounded-[24px] overflow-hidden border border-black/8 bg-white">
-            <div className="px-4 py-3 border-b border-black/6 flex items-center justify-between bg-[linear-gradient(135deg,#fff8ee_0%,#f9fbff_100%)]">
+          <div className="overflow-hidden rounded-[20px] border border-black/8 bg-white">
+            <div className="flex items-center justify-between border-b border-black/6 bg-[linear-gradient(135deg,#fff8ee_0%,#f9fbff_100%)] px-3.5 py-2.5">
               <div className="flex items-center gap-2 text-[12px] text-black/55">
                 <Route className="size-4" />
                 {mapData?.label ?? "Occupancy source"}
@@ -179,19 +179,19 @@ export function OccupancyMapPanel() {
               </div>
             </div>
 
-            {loading && <div className="px-5 py-10 text-[13px] text-black/50">occupancy map metadata를 불러오는 중입니다.</div>}
+            {loading && <div className="px-4 py-8 text-[12px] text-black/50">occupancy map metadata를 불러오는 중입니다.</div>}
 
             {!loading && (loadError !== "" || mapData?.available === false || mapData === null) && (
-              <div className="px-5 py-10 text-[13px] text-black/55">
+              <div className="px-4 py-8 text-[12px] text-black/55">
                 <div className="font-medium text-black mb-2">이 scene에는 occupancy map 표시를 준비하지 못했습니다.</div>
                 <div>{loadError || mapData?.reason || "선택된 scene preset에 대응하는 occupancy 자산이 없습니다."}</div>
               </div>
             )}
 
             {!loading && mapData?.available === true && (
-              <div className="p-4">
+              <div className="p-3.5">
                 <div
-                  className="relative w-full overflow-hidden rounded-[20px] border border-black/10 bg-[#eef3f8]"
+                  className="relative w-full overflow-hidden rounded-[18px] border border-black/10 bg-[#eef3f8]"
                   style={{ aspectRatio: `${mapData.imageWidth ?? 1} / ${mapData.imageHeight ?? 1}` }}
                 >
                   <img
@@ -244,7 +244,7 @@ export function OccupancyMapPanel() {
                   </svg>
                 </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-3 text-[11px] text-black/50">
+                <div className="mt-3 flex flex-wrap items-center gap-2.5 text-[11px] text-black/50">
                   <div className="inline-flex items-center gap-2 rounded-full bg-[#fff6ee] px-3 py-1.5">
                     <span className="size-2 rounded-full bg-[#f16718]" />
                     route
@@ -267,26 +267,26 @@ export function OccupancyMapPanel() {
           </div>
         </div>
 
-        <div className="xl:col-span-4 space-y-4">
-          <div className="rounded-[24px] bg-white border border-black/6 p-4">
+        <div className="space-y-3 xl:col-span-4">
+          <div className="rounded-[20px] border border-black/6 bg-white p-3.5">
             <div className="flex items-center gap-2 text-[12px] text-black/45 mb-3">
               <Crosshair className="size-4" />
               Localization Snapshot
             </div>
-            <div className="grid grid-cols-2 gap-3 text-[12px]">
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+            <div className="grid grid-cols-2 gap-2.5 text-[12px]">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Robot X</div>
                 <div className="text-black font-medium">{formatCoord(robotPose[0])}</div>
               </div>
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Robot Y</div>
                 <div className="text-black font-medium">{formatCoord(robotPose[1])}</div>
               </div>
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Yaw</div>
                 <div className="text-black font-medium">{robotYawRad.toFixed(2)} rad</div>
               </div>
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Goal Dist</div>
                 <div className="text-black font-medium">
                   {typeof runtime.goalDistanceM === "number" ? `${Number(runtime.goalDistanceM).toFixed(2)}m` : "n/a"}
@@ -295,21 +295,21 @@ export function OccupancyMapPanel() {
             </div>
           </div>
 
-          <div className="rounded-[24px] bg-white border border-black/6 p-4">
+          <div className="rounded-[20px] border border-black/6 bg-white p-3.5">
             <div className="flex items-center gap-2 text-[12px] text-black/45 mb-3">
               <Target className="size-4" />
               Route Debug
             </div>
-            <div className="space-y-3 text-[12px]">
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+            <div className="space-y-2.5 text-[12px]">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Replan reason</div>
                 <div className="text-black font-medium">{stringValue(runtime.globalRouteLastReplanReason, "none") || "none"}</div>
               </div>
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Route error</div>
                 <div className="text-black font-medium break-words">{stringValue(runtime.globalRouteLastError, "clear") || "clear"}</div>
               </div>
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Map bounds</div>
                 <div className="text-black font-medium">
                   x [{formatCoord(mapData?.xMin)}, {formatCoord(mapData?.xMax)}]
@@ -318,7 +318,7 @@ export function OccupancyMapPanel() {
                   y [{formatCoord(mapData?.yMin)}, {formatCoord(mapData?.yMax)}]
                 </div>
               </div>
-              <div className="rounded-2xl bg-[#F7F9FB] px-3 py-3">
+              <div className="rounded-[16px] bg-[#F7F9FB] px-3 py-2.5">
                 <div className="text-black/45 mb-1">Active waypoint</div>
                 <div className="text-black font-medium">
                   {activeWaypoint ? `${activeWaypoint[0].toFixed(2)}, ${activeWaypoint[1].toFixed(2)}` : "none"}

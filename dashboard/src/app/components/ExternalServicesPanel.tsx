@@ -34,8 +34,8 @@ function ModuleCard({
   const metrics = metricRows(node);
 
   return (
-    <div className="dashboard-panel-strong p-4 flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-1.5">
+    <div className="dashboard-panel-strong flex min-w-0 flex-1 flex-col p-3.5">
+      <div className="mb-1 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Radio className="size-3.5 text-[var(--text-faint)]" />
           <span className="text-[12px] font-medium text-[var(--foreground)]">{node.name}</span>
@@ -45,9 +45,9 @@ function ModuleCard({
         </ConsoleBadge>
       </div>
 
-      <div className="dashboard-micro mb-2 truncate">{node.summary || "idle"}</div>
+      <div className="dashboard-micro mb-1.5 truncate">{node.summary || "idle"}</div>
 
-      <div className="grid grid-cols-3 gap-1.5 text-[10px] mb-2">
+      <div className="mb-2 grid grid-cols-3 gap-1.5 text-[10px]">
         {metrics.slice(0, 6).map((item) => (
           <div key={item.label} className="dashboard-field !rounded-[16px] !px-2 !py-2">
             <div className="dashboard-eyebrow !text-[10px] !tracking-[0.12em]">{item.label}</div>
@@ -56,7 +56,7 @@ function ModuleCard({
         ))}
       </div>
 
-      <div className="h-[32px]">
+      <div className="h-[28px]">
         <ResponsiveContainer width="100%" height="100%" minWidth={120} minHeight={32}>
           <BarChart data={latencyData.length > 0 ? latencyData : [{ t: 0, v: Number(node.latencyMs ?? 0) || 0 }]}>
             <Bar dataKey="v" fill={barColor} radius={[2, 2, 0, 0]} />
@@ -93,9 +93,9 @@ export function ExternalServicesPanel() {
         eyebrow="health matrix"
         title="External Services"
         description="robot gateway, main control server, and runtime modules arranged on one health surface"
-        className="mb-4"
+        className="mb-3.5"
       />
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
         {cards.map((card) => (
           <ModuleCard
             key={card.node.name}

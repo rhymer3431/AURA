@@ -128,7 +128,7 @@ export default function App() {
 
     if (activePage === "perception-memory") {
       return (
-        <div className="grid grid-cols-1 2xl:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
           <PerceptionWidget />
           <MemoryWidget />
         </div>
@@ -137,11 +137,11 @@ export default function App() {
 
     if (activePage === "ipc-viewer") {
       return (
-        <div className="grid grid-cols-1 2xl:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
           <div className="2xl:col-span-8">
             <RobotViewer />
           </div>
-          <div className="2xl:col-span-4 grid grid-cols-1 gap-6">
+          <div className="grid grid-cols-1 gap-4 2xl:col-span-4">
             <SensorsWidget />
             <IpcOrchestrationWidget />
           </div>
@@ -151,7 +151,7 @@ export default function App() {
 
     if (activePage === "external-services") {
       return (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <ExternalServicesPanel />
           <ProcessesWidget />
         </div>
@@ -164,7 +164,7 @@ export default function App() {
 
     if (activePage === "execution-modes") {
       return (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <ControlStrip />
           <ExecutionModesPanel />
         </div>
@@ -200,12 +200,12 @@ export default function App() {
               transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="dashboard-eyebrow">{page.groupTitle}</div>
-              <h1 className="dashboard-page-title mt-2">{page.label}</h1>
-              <p className="dashboard-page-caption mt-2 max-w-2xl">{page.description}</p>
+              <h1 className="dashboard-page-title mt-1">{page.label}</h1>
+              <p className="dashboard-page-caption mt-1.5 max-w-xl">{page.description}</p>
             </motion.div>
 
             <motion.div
-              className="flex flex-wrap items-center gap-2"
+              className="flex flex-wrap items-center gap-1.5"
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
@@ -226,7 +226,7 @@ export default function App() {
 
           <div className="dashboard-page-body">
             {error !== "" && (
-              <div className="dashboard-panel border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-4 py-3 text-[12px] text-[var(--tone-coral-fg)]">
+              <div className="dashboard-panel border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-3.5 py-2.5 text-[12px] text-[var(--tone-coral-fg)]">
                 {error}
               </div>
             )}

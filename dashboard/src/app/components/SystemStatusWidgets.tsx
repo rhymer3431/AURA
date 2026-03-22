@@ -30,7 +30,7 @@ import { ConsoleBadge, ConsoleInfoRow, ConsolePanel, ConsoleSectionTitle, toneFr
 
 function SectionHeader({ icon: Icon, title }: { icon: typeof Scan; title: string }) {
   return (
-    <div className="flex items-center gap-2 mb-3">
+    <div className="mb-2.5 flex items-center gap-2">
       <div className="dashboard-icon-shell !size-8">
         <Icon className="size-4" />
       </div>
@@ -80,13 +80,13 @@ export function ProcessesWidget() {
         eyebrow="runtime layout"
         title="프로세스 구성"
         description="runtime process mirror, pid, and supervisor state"
-        className="mb-4"
+        className="mb-3.5"
       />
-      <div className="space-y-2.5">
+      <div className="space-y-2">
         {processes.map((process) => (
           <div
             key={process.name}
-            className="dashboard-panel-strong flex items-center gap-3 px-4 py-3 transition-all"
+            className="dashboard-panel-strong flex items-center gap-3 px-3.5 py-2.5 transition-all"
           >
             <span
               className={`size-2 rounded-full ${
@@ -124,13 +124,13 @@ export function SensorsWidget() {
         <SectionHeader icon={MonitorSmartphone} title="센서 입력 상태" />
         <Chip color={toneForStatus(gateway.status)}>{statusLabel(gateway.status)}</Chip>
       </div>
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="mb-3.5 grid grid-cols-3 gap-2.5">
         {[
           { label: "RGB", ok: booleanValue(sensors.rgbAvailable) },
           { label: "Depth", ok: booleanValue(sensors.depthAvailable) },
           { label: "Pose", ok: booleanValue(sensors.poseAvailable) },
         ].map((sensor) => (
-          <div key={sensor.label} className="dashboard-panel-strong py-3 text-center">
+          <div key={sensor.label} className="dashboard-panel-strong py-2.5 text-center">
             <span className={`inline-block size-2.5 rounded-full ${sensor.ok ? "bg-emerald-500" : "bg-amber-500"} mb-1.5`} />
             <div className="text-[12px] font-medium text-[var(--text-secondary)]">{sensor.label}</div>
           </div>
@@ -159,17 +159,17 @@ export function PerceptionWidget() {
 
   return (
     <ConsolePanel>
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-2.5 flex items-center justify-between">
         <SectionHeader icon={Scan} title="Perception Module" />
         <Chip color={toneForStatus(module.status)}>{statusLabel(module.status)}</Chip>
       </div>
-      <div className="flex items-center justify-between text-[11px] mb-3">
+      <div className="mb-2.5 flex items-center justify-between text-[11px]">
         <span className="dashboard-meta">{module.summary || "Detector Backend"}</span>
         <Chip color={booleanValue(perception.detectorReady) ? "green" : "amber"}>
           {stringValue(perception.detectorBackend, stringValue(capability.backend_name, "unknown"))}
         </Chip>
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="mb-3.5 grid grid-cols-2 gap-2.5">
         {[
           { label: "Detection", value: String(perception.detectionCount ?? 0) },
           { label: "Tracked", value: String(perception.trackedDetectionCount ?? 0) },
@@ -199,16 +199,16 @@ export function MemoryWidget() {
 
   return (
     <ConsolePanel className="h-full flex flex-col">
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-2.5 flex items-center justify-between">
         <SectionHeader icon={Database} title="Memory Module" />
         <Chip color={toneForStatus(module.status)}>{statusLabel(module.status)}</Chip>
       </div>
-      <div className="space-y-2 text-[11px] mb-3">
+      <div className="mb-2.5 space-y-2 text-[11px]">
         <div className="flex justify-between items-center"><span className="dashboard-meta">Module Summary</span><Chip color={toneForStatus(module.status)}>{module.summary || "idle"}</Chip></div>
         <div className="flex justify-between items-center"><span className="dashboard-meta">Memory-Aware</span><Chip color={booleanValue(memory.memoryAwareTaskActive) ? "blue" : "slate"}>{booleanValue(memory.memoryAwareTaskActive) ? "task_active" : "idle"}</Chip></div>
         <div className="flex justify-between items-center"><span className="dashboard-meta">Scratchpad</span><Chip color={stringValue(scratchpad.taskState) === "active" ? "green" : "amber"}>{stringValue(scratchpad.taskState, "idle")}</Chip></div>
       </div>
-      <div className="grid grid-cols-3 gap-3 mb-4">
+      <div className="mb-3.5 grid grid-cols-3 gap-2.5">
         {[
           { label: "Objects", value: String(memory.objectCount ?? 0) },
           { label: "Places", value: String(memory.placeCount ?? 0) },
@@ -220,7 +220,7 @@ export function MemoryWidget() {
           </div>
         ))}
       </div>
-      <div className="dashboard-panel-strong p-3 flex-1">
+      <div className="dashboard-panel-strong flex-1 p-3">
         <div className="dashboard-eyebrow mb-2">Scratchpad (Current Task)</div>
         <div className="dashboard-field dashboard-mono text-[12px] text-[var(--text-secondary)] leading-tight break-words">
           {stringValue(scratchpad.instruction, "idle")}
@@ -247,35 +247,35 @@ export function MainControlServerWidget() {
 
   return (
     <ConsolePanel>
-      <div className="flex items-center justify-between mb-4">
+      <div className="mb-3.5 flex items-center justify-between">
         <SectionHeader icon={Layers} title="Main Control Server" />
         <Chip color={toneForStatus(server.status)}>{statusLabel(server.status)}</Chip>
       </div>
-      <div className="dashboard-panel-strong px-4 py-3 mb-4">
+      <div className="dashboard-panel-strong mb-3.5 px-3.5 py-3">
         <div className="text-[12px] font-medium text-[var(--foreground)]">{server.summary || "Ready"}</div>
         <div className="dashboard-micro mt-1">{server.detail || "No active runtime task"}</div>
       </div>
-      <div className="grid grid-cols-2 gap-3 mb-4 text-[11px]">
-        <div className="dashboard-panel-strong px-3 py-3">
+      <div className="mb-3.5 grid grid-cols-2 gap-2.5 text-[11px]">
+        <div className="dashboard-panel-strong px-3 py-2.5">
           <div className="dashboard-eyebrow mb-1">Mode</div>
           <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.mode, "idle")}</div>
         </div>
-        <div className="dashboard-panel-strong px-3 py-3">
+        <div className="dashboard-panel-strong px-3 py-2.5">
           <div className="dashboard-eyebrow mb-1">Task State</div>
           <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.taskState, "idle")}</div>
         </div>
-        <div className="dashboard-panel-strong px-3 py-3">
+        <div className="dashboard-panel-strong px-3 py-2.5">
           <div className="dashboard-eyebrow mb-1">Control Mode</div>
           <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.plannerControlMode, "idle")}</div>
         </div>
-        <div className="dashboard-panel-strong px-3 py-3">
+        <div className="dashboard-panel-strong px-3 py-2.5">
           <div className="dashboard-eyebrow mb-1">Recovery</div>
           <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.recoveryState, "NORMAL")}</div>
         </div>
       </div>
       <div className="space-y-2">
         {coreEntries.map((node) => (
-          <div key={node.name} className="dashboard-panel-strong px-4 py-3">
+          <div key={node.name} className="dashboard-panel-strong px-3.5 py-2.5">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[12px] font-medium text-[var(--foreground)]">{node.name}</div>
@@ -300,9 +300,9 @@ export function IpcOrchestrationWidget() {
   const telemetry = architectureModule(state, "telemetry");
 
   return (
-    <ConsolePanel className="flex flex-col gap-4">
+    <ConsolePanel className="flex flex-col gap-3.5">
       <div>
-        <div className="flex items-center justify-between mb-3">
+        <div className="mb-2.5 flex items-center justify-between">
           <SectionHeader icon={Eye} title="Gateway / Telemetry" />
           <Chip color={toneForStatus(telemetry.status)}>{statusLabel(telemetry.status)}</Chip>
         </div>
@@ -317,11 +317,11 @@ export function IpcOrchestrationWidget() {
         </div>
       </div>
 
-      <div className="h-px bg-[rgba(var(--ink-rgb),0.06)] w-full"></div>
+      <div className="h-px w-full bg-[rgba(var(--ink-rgb),0.06)]"></div>
 
       <div>
         <SectionHeader icon={Layers} title="Gateway State Mirror" />
-        <div className="dashboard-panel-strong p-4 text-[12px]">
+        <div className="dashboard-panel-strong p-3.5 text-[12px]">
           <ConsoleInfoRow className="mb-2" label="gateway" value={gateway.summary || "idle"} />
           <ConsoleInfoRow className="mb-2" label="telemetry" value={telemetry.summary || "inactive"} />
           <ConsoleInfoRow className="mb-2" label="last status" value={stringValue(lastStatus.state, "n/a")} />

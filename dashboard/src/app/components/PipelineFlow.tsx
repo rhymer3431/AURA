@@ -61,24 +61,24 @@ export function PipelineFlow() {
         description="robot gateway → main control server → runtime modules"
       />
 
-      <div className="flex items-center gap-2 overflow-x-auto pb-3 flex-1">
+      <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-2">
         {stages.map((stage, index) => (
-          <div key={stage.name} className="flex items-center gap-2 shrink-0">
-            <div className="dashboard-panel-strong min-w-[118px] px-4 py-4 text-center transition-all">
-              <span className={`inline-block size-2 rounded-full mb-2 ${toneClass(stage.status)}`} />
+          <div key={stage.name} className="flex shrink-0 items-center gap-1.5">
+            <div className="dashboard-panel-strong min-w-[108px] px-3 py-3.5 text-center transition-all">
+              <span className={`mb-1.5 inline-block size-2 rounded-full ${toneClass(stage.status)}`} />
               <div className="text-[12px] font-medium whitespace-pre-line leading-tight text-[var(--foreground)]">
                 {stage.name}
               </div>
-              <div className="dashboard-micro mt-2">{stage.detail}</div>
+              <div className="dashboard-micro mt-1.5">{stage.detail}</div>
             </div>
             {index < stages.length - 1 && (
-              <ArrowRight className="size-4 text-[var(--text-faint)] shrink-0 mx-1" />
+              <ArrowRight className="mx-0.5 size-4 shrink-0 text-[var(--text-faint)]" />
             )}
           </div>
         ))}
       </div>
 
-      <div className="mt-4">
+      <div className="mt-3">
         <div className="dashboard-eyebrow mb-2">Main Control Server Core</div>
         <div className="flex items-center gap-2.5 text-[11px] flex-wrap">
           {core !== undefined &&

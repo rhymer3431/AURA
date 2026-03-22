@@ -163,7 +163,7 @@ export function RobotViewer() {
 
   return (
     <ConsolePanel className="h-full flex flex-col">
-      <div className="mb-4 flex items-start justify-between gap-4">
+      <div className="mb-3.5 flex items-start justify-between gap-3">
         <ConsoleSectionTitle
           icon={Video}
           eyebrow="vision feed"
@@ -186,7 +186,7 @@ export function RobotViewer() {
         </div>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
         <ConsoleBadge tone={viewer.connected ? "emerald" : "amber"}>
           {viewer.connected ? "WEBRTC" : viewerEnabled ? "CONNECTING" : "INACTIVE"}
         </ConsoleBadge>
@@ -198,7 +198,7 @@ export function RobotViewer() {
         </ConsoleBadge>
       </div>
 
-      <div className="relative w-full aspect-video overflow-hidden rounded-[20px] border border-[rgba(var(--ink-rgb),0.08)] bg-neutral-950">
+      <div className="relative w-full aspect-video overflow-hidden rounded-[18px] border border-[rgba(var(--ink-rgb),0.08)] bg-neutral-950">
         <video
           ref={viewer.rgbVideoRef}
           className="w-full h-full object-cover"
@@ -208,16 +208,16 @@ export function RobotViewer() {
         />
         <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
-        <div className="absolute top-0 left-0 w-full p-3 flex justify-between items-start pointer-events-none">
+        <div className="pointer-events-none absolute left-0 top-0 flex w-full items-start justify-between p-2.5">
           <div className="flex flex-col gap-1">
-            <div className="dashboard-mono text-[10px] text-white/80 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-sm">
+            <div className="dashboard-mono rounded-full bg-black/45 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur-sm">
               SRC: {frameSource}
             </div>
-            <div className="dashboard-mono text-[10px] text-white/80 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-sm">
+            <div className="dashboard-mono rounded-full bg-black/45 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur-sm">
               RES: {numberValue(image.width) ?? 0}x{numberValue(image.height) ?? 0} | TRACKS: {trackRoles.join(",") || "none"}
             </div>
           </div>
-          <div className="dashboard-mono flex items-center gap-1.5 text-[10px] text-white/80 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-sm">
+          <div className="dashboard-mono flex items-center gap-1.5 rounded-full bg-black/45 px-2.5 py-1 text-[10px] text-white/80 backdrop-blur-sm">
             <SignalHigh className="size-3 text-emerald-400" />
             frame age {formatMs(state?.transport.frameAgeMs, "n/a")}
           </div>
@@ -240,7 +240,7 @@ export function RobotViewer() {
         )}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+      <div className="mt-3 grid grid-cols-1 gap-2.5 md:grid-cols-4">
         <div className="dashboard-field">
           <div className="dashboard-eyebrow mb-1">Inference</div>
           <div className="dashboard-micro text-[var(--foreground)]">{detectorBackend}</div>

@@ -46,8 +46,8 @@ export function ControlStrip() {
   const lastEvent = state?.session.lastEvent?.message ?? "";
 
   return (
-    <ConsolePanel className="p-5">
-      <div className="mb-4 flex items-start justify-between gap-4">
+    <ConsolePanel className="p-4">
+      <div className="mb-3.5 flex items-start justify-between gap-3">
         <ConsoleSectionTitle
           icon={Play}
           eyebrow="session control"
@@ -59,8 +59,8 @@ export function ControlStrip() {
         </ConsoleBadge>
       </div>
 
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-col gap-3.5">
+        <div className="flex flex-wrap items-end gap-2.5">
           <div>
             <div className="dashboard-eyebrow mb-1">launch mode</div>
             <select
@@ -86,7 +86,7 @@ export function ControlStrip() {
               ))}
             </select>
           </div>
-          <div className="flex gap-2 ml-auto">
+          <div className="ml-auto flex gap-2">
             <button
               onClick={() => void startSession()}
               disabled={loading || !isLocomotionConfigValid}
@@ -106,7 +106,7 @@ export function ControlStrip() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <Toggle label="viewer publish" checked={form.viewerEnabled} onChange={(checked) => setForm({ viewerEnabled: checked })} />
           <Toggle label="memory store" checked={form.memoryStore} onChange={(checked) => setForm({ memoryStore: checked })} />
           <Toggle label="detection" checked={form.detectionEnabled} onChange={(checked) => setForm({ detectionEnabled: checked })} />
@@ -116,12 +116,12 @@ export function ControlStrip() {
         </div>
 
         {!isLocomotionConfigValid && (
-          <div className="rounded-xl border border-[var(--tone-amber-border)] bg-[var(--tone-amber-bg)] px-3 py-2 text-[12px] text-[var(--tone-amber-fg)]">
+          <div className="rounded-[14px] border border-[var(--tone-amber-border)] bg-[var(--tone-amber-bg)] px-3 py-2 text-[12px] text-[var(--tone-amber-fg)]">
             {"locomotion config는 `action scale > 0`, `cmd max vx/vy >= 0`, `cmd max wz > 0` 이어야 합니다."}
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 xl:grid-cols-5">
           <div>
             <div className="dashboard-eyebrow mb-1">action scale</div>
             <input
@@ -183,9 +183,9 @@ export function ControlStrip() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-2.5">
           <input
-            className="dashboard-input flex-1 min-w-[280px]"
+            className="dashboard-input min-w-[240px] flex-1"
             placeholder={canSubmitTask ? "instruction을 입력하면 서버가 실행 모드를 분류합니다" : "running session에서만 task를 제출할 수 있습니다"}
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
@@ -212,7 +212,7 @@ export function ControlStrip() {
           </button>
         </div>
 
-        <div className="dashboard-inset flex flex-wrap items-center gap-4 px-4 py-3 text-[11px]">
+        <div className="dashboard-inset flex flex-wrap items-center gap-3 px-3.5 py-2.5 text-[11px]">
           <span>
             runtime:{" "}
             <span className="dashboard-mono text-[var(--foreground)]">
