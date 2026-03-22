@@ -122,10 +122,6 @@ export const dashboardPages = Object.fromEntries(
   dashboardNavSections.flatMap((section) => section.items.map((item) => [item.id, item])),
 ) as Record<DashboardPageId, DashboardPage>;
 
-export function dashboardSectionForPage(pageId: DashboardPageId): DashboardNavSection | null {
-  return dashboardNavSections.find((section) => section.items.some((item) => item.id === pageId)) ?? null;
-}
-
 export function parseDashboardPageId(value: string | null | undefined): DashboardPageId {
   const normalized = String(value ?? "")
     .trim()

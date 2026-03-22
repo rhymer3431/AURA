@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
@@ -19,9 +20,6 @@ import {
 } from "./components/SystemStatusWidgets";
 import { ExecutionModesPanel } from "./components/ExecutionModesPanel";
 import { ArtifactsStoragePanel } from "./components/ArtifactsStoragePanel";
-import { DashboardSectionTabs } from "./components/DashboardSectionTabs";
-import { DashboardPageHero } from "./components/DashboardPageHero";
-import { DashboardActivityRail } from "./components/DashboardActivityRail";
 import {
   DEFAULT_DASHBOARD_PAGE,
   dashboardPageHash,
@@ -40,7 +38,7 @@ function currentPageFromLocation(): DashboardPageId {
 }
 
 export default function App() {
-  const { error, state } = useDashboard();
+  const { error, refresh, state } = useDashboard();
   const [activePage, setActivePage] = useState<DashboardPageId>(() => currentPageFromLocation());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -210,33 +208,27 @@ export default function App() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <button type="button" className="dashboard-button-secondary" onClick={() => void refresh()}>
+                <RefreshCw className="size-4" />
+                Refresh
+              </button>
               <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
                 {state?.session.active ? "session live" : "session idle"}
               </ConsoleBadge>
               <ConsoleBadge tone="cyan" dot={false}>
                 mode {String(state?.runtime.executionMode ?? state?.runtime.modes?.executionMode ?? "IDLE")}
               </ConsoleBadge>
-              <ConsoleBadge tone="slate" dot={false}>
-                scene {state?.session.config?.scenePreset ?? "draft"}
-              </ConsoleBadge>
             </div>
           </div>
 
-          <DashboardSectionTabs activePage={activePage} onNavigate={navigateTo} />
-
           <div className="dashboard-page-body">
-            <div className="dashboard-page-primary">
-              {error !== "" && (
-                <div className="dashboard-panel border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-4 py-3 text-[12px] text-[var(--tone-coral-fg)]">
-                  {error}
-                </div>
-              )}
+            {error !== "" && (
+              <div className="dashboard-panel border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-4 py-3 text-[12px] text-[var(--tone-coral-fg)]">
+                {error}
+              </div>
+            )}
 
-              {activePage === "pipeline-overview" ? null : <DashboardPageHero page={page} />}
-              {renderPageContent()}
-            </div>
-
-            <DashboardActivityRail />
+            {renderPageContent()}
           </div>
         </div>
       </main>

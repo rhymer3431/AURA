@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Eye, EyeOff, Video, SignalHigh } from "lucide-react";
+import { Eye, EyeOff, Video, SignalHigh } from "lucide-react";
 
 import { useDashboard } from "../state";
 import { useWebRTCViewer } from "../hooks/useWebRTCViewer";
@@ -183,9 +183,6 @@ export function RobotViewer() {
             {showOverlay ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
             BBox Overlays
           </button>
-          <button className="dashboard-button-secondary !rounded-full !px-3 !py-2 text-[var(--text-secondary)]">
-            <Maximize2 className="size-3.5" />
-          </button>
         </div>
       </div>
 
@@ -243,21 +240,22 @@ export function RobotViewer() {
         )}
       </div>
 
-      <div className="dashboard-inset mt-4 px-4 py-3">
-        <div className="dashboard-eyebrow mb-3">telemetry strip</div>
-        <div className="flex items-center gap-4 flex-wrap">
-          <div className="dashboard-micro">
-            Inference: <span className="text-[var(--foreground)]">{detectorBackend}</span>
-          </div>
-          <div className="h-3 w-px bg-[rgba(var(--ink-rgb),0.08)]" />
-          <div className="dashboard-micro">
-            Detected: <span className="text-[var(--foreground)]">{detections.length} objects</span>
-          </div>
-          <div className="h-3 w-px bg-[rgba(var(--ink-rgb),0.08)]" />
-          <div className="dashboard-micro">
-            Trajectory: <span className="text-[var(--foreground)]">{asArray(telemetry.trajectoryPixels ?? telemetry.trajectory_pixels).length} pts</span>
-          </div>
-          <div className="ml-auto dashboard-micro">peer {peerSessionId}</div>
+      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-4">
+        <div className="dashboard-field">
+          <div className="dashboard-eyebrow mb-1">Inference</div>
+          <div className="dashboard-micro text-[var(--foreground)]">{detectorBackend}</div>
+        </div>
+        <div className="dashboard-field">
+          <div className="dashboard-eyebrow mb-1">Detected</div>
+          <div className="dashboard-micro text-[var(--foreground)]">{detections.length} objects</div>
+        </div>
+        <div className="dashboard-field">
+          <div className="dashboard-eyebrow mb-1">Trajectory</div>
+          <div className="dashboard-micro text-[var(--foreground)]">{asArray(telemetry.trajectoryPixels ?? telemetry.trajectory_pixels).length} pts</div>
+        </div>
+        <div className="dashboard-field">
+          <div className="dashboard-eyebrow mb-1">Peer</div>
+          <div className="dashboard-micro text-[var(--foreground)]">{peerSessionId}</div>
         </div>
       </div>
     </ConsolePanel>
