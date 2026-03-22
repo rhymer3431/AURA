@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Play, Square, Send, Ban } from "lucide-react";
 
 import { useDashboard } from "../state";
+import { ConsoleBadge, ConsolePanel, ConsoleSectionTitle } from "./console-ui";
 
 function Toggle({
   label,
@@ -13,11 +14,12 @@ function Toggle({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 text-[12px] text-black/70">
+    <label className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
       <input
         type="checkbox"
         checked={checked}
         onChange={(event) => onChange(event.target.checked)}
+        className="accent-[var(--signal-cyan)]"
       />
       {label}
     </label>
@@ -44,13 +46,25 @@ export function ControlStrip() {
   const lastEvent = state?.session.lastEvent?.message ?? "";
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-5 border border-black/5">
+    <ConsolePanel className="p-5">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <ConsoleSectionTitle
+          icon={Play}
+          eyebrow="session control"
+          title="Runtime Control Strip"
+          description="launch profile, locomotion constraints, and task submission live on one rail"
+        />
+        <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
+          {state?.session.active ? "stack running" : "stack stopped"}
+        </ConsoleBadge>
+      </div>
+
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <div className="text-[11px] text-black/40 mb-1">launch mode</div>
+            <div className="dashboard-eyebrow mb-1">launch mode</div>
             <select
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
+              className="dashboard-input"
               value={form.launchMode}
               onChange={(event) => setForm({ launchMode: event.target.value as "gui" | "headless" })}
             >
@@ -59,9 +73,9 @@ export function ControlStrip() {
             </select>
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">scene preset</div>
+            <div className="dashboard-eyebrow mb-1">scene preset</div>
             <select
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
+              className="dashboard-input"
               value={form.scenePreset}
               onChange={(event) => setForm({ scenePreset: event.target.value })}
             >
@@ -76,7 +90,7 @@ export function ControlStrip() {
             <button
               onClick={() => void startSession()}
               disabled={loading || !isLocomotionConfigValid}
-              className="inline-flex items-center gap-2 rounded-xl bg-black text-white px-4 py-2 text-[13px] disabled:opacity-50"
+              className="dashboard-button-primary disabled:opacity-50"
             >
               <Play className="size-4" />
               Start Stack
@@ -84,7 +98,7 @@ export function ControlStrip() {
             <button
               onClick={() => void stopSession()}
               disabled={loading || state?.session.active !== true}
-              className="inline-flex items-center gap-2 rounded-xl bg-white border border-black/10 px-4 py-2 text-[13px] disabled:opacity-50"
+              className="dashboard-button-secondary disabled:opacity-50"
             >
               <Square className="size-4" />
               Stop Stack
@@ -96,8 +110,8 @@ export function ControlStrip() {
           <Toggle label="viewer publish" checked={form.viewerEnabled} onChange={(checked) => setForm({ viewerEnabled: checked })} />
           <Toggle label="memory store" checked={form.memoryStore} onChange={(checked) => setForm({ memoryStore: checked })} />
           <Toggle label="detection" checked={form.detectionEnabled} onChange={(checked) => setForm({ detectionEnabled: checked })} />
-          <div className="ml-auto text-[11px] text-black/40">
-            active session: <span className="text-black/80 font-medium">{state?.session.active ? "running" : "stopped"}</span>
+          <div className="ml-auto dashboard-micro">
+            active session: <span className="text-[var(--foreground)]">{state?.session.active ? "running" : "stopped"}</span>
           </div>
         </div>
 
@@ -109,9 +123,9 @@ export function ControlStrip() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <div>
-            <div className="text-[11px] text-black/40 mb-1">action scale</div>
+            <div className="dashboard-eyebrow mb-1">action scale</div>
             <input
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              className="dashboard-input"
               value={locomotionConfig.actionScale}
               onChange={(event) =>
                 setForm({ locomotionConfig: { ...locomotionConfig, actionScale: event.target.value } })
@@ -119,9 +133,9 @@ export function ControlStrip() {
             />
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">onnx device</div>
+            <div className="dashboard-eyebrow mb-1">onnx device</div>
             <select
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              className="dashboard-input"
               value={locomotionConfig.onnxDevice}
               onChange={(event) =>
                 setForm({
@@ -138,9 +152,9 @@ export function ControlStrip() {
             </select>
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">cmd max vx</div>
+            <div className="dashboard-eyebrow mb-1">cmd max vx</div>
             <input
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              className="dashboard-input"
               value={locomotionConfig.cmdMaxVx}
               onChange={(event) =>
                 setForm({ locomotionConfig: { ...locomotionConfig, cmdMaxVx: event.target.value } })
@@ -148,9 +162,9 @@ export function ControlStrip() {
             />
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">cmd max vy</div>
+            <div className="dashboard-eyebrow mb-1">cmd max vy</div>
             <input
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              className="dashboard-input"
               value={locomotionConfig.cmdMaxVy}
               onChange={(event) =>
                 setForm({ locomotionConfig: { ...locomotionConfig, cmdMaxVy: event.target.value } })
@@ -158,9 +172,9 @@ export function ControlStrip() {
             />
           </div>
           <div>
-            <div className="text-[11px] text-black/40 mb-1">cmd max wz</div>
+            <div className="dashboard-eyebrow mb-1">cmd max wz</div>
             <input
-              className="bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10 w-full"
+              className="dashboard-input"
               value={locomotionConfig.cmdMaxWz}
               onChange={(event) =>
                 setForm({ locomotionConfig: { ...locomotionConfig, cmdMaxWz: event.target.value } })
@@ -171,7 +185,7 @@ export function ControlStrip() {
 
         <div className="flex flex-wrap gap-3">
           <input
-            className="flex-1 min-w-[280px] bg-white rounded-xl px-3 py-2 text-[13px] border border-black/10"
+            className="dashboard-input flex-1 min-w-[280px]"
             placeholder={canSubmitTask ? "instruction을 입력하면 서버가 실행 모드를 분류합니다" : "running session에서만 task를 제출할 수 있습니다"}
             value={instruction}
             onChange={(event) => setInstruction(event.target.value)}
@@ -183,7 +197,7 @@ export function ControlStrip() {
               setInstruction("");
             }}
             disabled={!canSubmitTask || instruction.trim() === ""}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-500 text-white px-4 py-2 text-[13px] disabled:opacity-40"
+            className="dashboard-button-accent disabled:opacity-40"
           >
             <Send className="size-4" />
             Submit Task
@@ -191,40 +205,40 @@ export function ControlStrip() {
           <button
             onClick={() => void cancelTask()}
             disabled={!canSubmitTask}
-            className="inline-flex items-center gap-2 rounded-xl bg-white border border-black/10 px-4 py-2 text-[13px] disabled:opacity-40"
+            className="dashboard-button-secondary disabled:opacity-40"
           >
             <Ban className="size-4" />
             Set Idle
           </button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-4 text-[11px] text-black/45">
+        <div className="dashboard-inset flex flex-wrap items-center gap-4 px-4 py-3 text-[11px]">
           <span>
             runtime:{" "}
-            <span className="text-black/80 font-medium">
+            <span className="dashboard-mono text-[var(--foreground)]">
               {runtimeMode} / {sessionConfig?.launchMode ?? form.launchMode}
             </span>
           </span>
           <span className="truncate">
             locomotion:{" "}
-            <span className="text-black/80 font-medium">
+            <span className="dashboard-mono text-[var(--foreground)]">
               action {sessionConfig?.locomotionConfig.actionScale ?? Number(locomotionConfig.actionScale)} /{" "}
               {sessionConfig?.locomotionConfig.onnxDevice ?? locomotionConfig.onnxDevice}
             </span>
           </span>
           <span>
             viewer:{" "}
-            <span className="text-black/80 font-medium">
+            <span className="dashboard-mono text-[var(--foreground)]">
               {Boolean(state?.transport.viewerEnabled) ? "published" : "inactive"}
             </span>
           </span>
           {lastEvent !== "" && (
             <span className="truncate">
-              last event: <span className="text-black/75">{lastEvent}</span>
+              last event: <span className="dashboard-mono text-[var(--foreground)]">{lastEvent}</span>
             </span>
           )}
         </div>
       </div>
-    </div>
+    </ConsolePanel>
   );
 }

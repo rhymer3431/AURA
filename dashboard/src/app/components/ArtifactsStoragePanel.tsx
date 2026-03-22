@@ -2,12 +2,13 @@ import { Database, FolderOpen, HardDrive, Radio } from "lucide-react";
 
 import { useDashboard } from "../state";
 import { asRecord, stringValue } from "../selectors";
+import { ConsolePanel, ConsoleSectionTitle } from "./console-ui";
 
 function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between gap-3 text-[12px]">
-      <span className="text-black/45">{label}</span>
-      <span className="text-black/75 font-medium text-right break-all">{value}</span>
+      <span className="dashboard-meta">{label}</span>
+      <span className="text-[var(--foreground)] font-medium text-right break-all">{value}</span>
     </div>
   );
 }
@@ -25,19 +26,18 @@ export function ArtifactsStoragePanel() {
   const logSources = Array.from(new Set((state?.logs ?? []).map((item) => item.source).filter((item) => item !== ""))).slice(-6);
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6 flex flex-col gap-5">
-      <div className="flex items-center gap-2">
-        <HardDrive className="size-4 text-black/40" />
-        <div>
-          <h3 className="text-[15px] font-semibold text-black">Artifacts & Diagnostics</h3>
-          <p className="text-[12px] text-black/50 mt-0.5">runtime artifact, memory footprint, transport endpoint, implementation log path를 한 곳에 모았습니다.</p>
-        </div>
-      </div>
+    <ConsolePanel className="flex flex-col gap-5">
+      <ConsoleSectionTitle
+        icon={HardDrive}
+        eyebrow="artifact mirror"
+        title="Artifacts & Diagnostics"
+        description="runtime artifact, memory footprint, transport endpoint, and implementation log path를 한 곳에 모았습니다."
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-black/75 mb-3">
-            <Radio className="size-4 text-black/35" />
+        <div className="dashboard-panel-strong p-5">
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)] mb-3">
+            <Radio className="size-4 text-[var(--text-faint)]" />
             Runtime Endpoints
           </div>
           <div className="space-y-3">
@@ -48,9 +48,9 @@ export function ArtifactsStoragePanel() {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-black/75 mb-3">
-            <Database className="size-4 text-black/35" />
+        <div className="dashboard-panel-strong p-5">
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)] mb-3">
+            <Database className="size-4 text-[var(--text-faint)]" />
             Memory Module Footprint
           </div>
           <div className="grid grid-cols-3 gap-3 mb-4">
@@ -59,21 +59,21 @@ export function ArtifactsStoragePanel() {
               { label: "Places", value: String(memory.placeCount ?? 0) },
               { label: "Rules", value: String(memory.semanticRuleCount ?? 0) },
             ].map((item) => (
-              <div key={item.label} className="rounded-xl bg-[#F7F9FB] px-3 py-3 text-center">
-                <div className="text-[11px] text-black/45 mb-1">{item.label}</div>
-                <div className="text-[16px] font-semibold text-black">{item.value}</div>
+              <div key={item.label} className="dashboard-field text-center">
+                <div className="dashboard-eyebrow mb-1">{item.label}</div>
+                <div className="dashboard-mono text-[16px] font-semibold text-[var(--foreground)]">{item.value}</div>
               </div>
             ))}
           </div>
           <DetailRow label="Scratchpad State" value={stringValue(scratchpad.taskState, "idle")} />
-          <div className="mt-3 rounded-xl bg-[#F7F9FB] px-3 py-3 text-[12px] text-black/65 leading-relaxed break-words">
+          <div className="dashboard-field dashboard-mono mt-3 text-[12px] text-[var(--text-secondary)] leading-relaxed break-words">
             {stringValue(scratchpad.instruction, "no active scratchpad instruction")}
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 text-[12px] font-semibold text-black/75 mb-3">
-            <FolderOpen className="size-4 text-black/35" />
+        <div className="dashboard-panel-strong p-5">
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-[var(--text-secondary)] mb-3">
+            <FolderOpen className="size-4 text-[var(--text-faint)]" />
             Runtime Mirror Snapshot
           </div>
           <div className="space-y-3">
@@ -85,20 +85,20 @@ export function ArtifactsStoragePanel() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl p-5 shadow-sm">
-        <div className="text-[12px] font-semibold text-black/75 mb-3">Implementation Log Files</div>
-        <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
+      <div className="dashboard-panel-strong p-5">
+        <div className="dashboard-title text-[13px] mb-3">Implementation Log Files</div>
+        <div className="dashboard-scroll space-y-2 max-h-[320px] overflow-y-auto pr-1">
           {logFiles.length === 0 && (
-            <div className="rounded-xl bg-[#F7F9FB] px-3 py-3 text-[12px] text-black/45">no process log files available</div>
+            <div className="dashboard-field text-[12px] text-[var(--text-tertiary)]">no process log files available</div>
           )}
           {logFiles.map((item) => (
-            <div key={item.key} className="rounded-xl bg-[#F7F9FB] px-3 py-3">
-              <div className="text-[11px] font-medium text-black/65 mb-1">{item.label}</div>
-              <div className="font-mono text-[11px] text-black/55 break-all">{item.path || "n/a"}</div>
+            <div key={item.key} className="dashboard-field">
+              <div className="text-[11px] font-medium text-[var(--text-secondary)] mb-1">{item.label}</div>
+              <div className="dashboard-mono text-[11px] text-[var(--text-tertiary)] break-all">{item.path || "n/a"}</div>
             </div>
           ))}
         </div>
       </div>
-    </div>
+    </ConsolePanel>
   );
 }

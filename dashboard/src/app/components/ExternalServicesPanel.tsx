@@ -4,18 +4,10 @@ import { Layers3, Radio } from "lucide-react";
 import { useDashboard } from "../state";
 import { architectureModule, architectureNode, asRecord, formatMs, statusLabel, statusTone, stringValue } from "../selectors";
 import type { ArchitectureNode } from "../types";
+import { ConsoleBadge, ConsolePanel, ConsoleSectionTitle, toneFromStatusTone } from "./console-ui";
 
 function statusClasses(status: string) {
-  if (statusTone(status) === "green") {
-    return "bg-emerald-50 text-emerald-600 border-emerald-200";
-  }
-  if (statusTone(status) === "amber") {
-    return "bg-amber-50 text-amber-600 border-amber-200";
-  }
-  if (statusTone(status) === "red") {
-    return "bg-red-50 text-red-600 border-red-200";
-  }
-  return "bg-slate-50 text-slate-600 border-slate-200";
+  return toneFromStatusTone(statusTone(status));
 }
 
 function metricRows(node: ArchitectureNode) {
@@ -42,35 +34,24 @@ function ModuleCard({
   const metrics = metricRows(node);
 
   return (
-    <div className="bg-white rounded-2xl p-4 flex-1 min-w-0">
+    <div className="dashboard-panel-strong p-4 flex-1 min-w-0">
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-1.5">
-          <Radio className="size-3.5 text-black/30" />
-          <span className="text-[12px] font-medium text-black">{node.name}</span>
+          <Radio className="size-3.5 text-[var(--text-faint)]" />
+          <span className="text-[12px] font-medium text-[var(--foreground)]">{node.name}</span>
         </div>
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] border ${statusClasses(node.status)}`}>
-          <span
-            className={`size-1.5 rounded-full ${
-              statusTone(node.status) === "green"
-                ? "bg-emerald-500"
-                : statusTone(node.status) === "amber"
-                  ? "bg-amber-500"
-                  : statusTone(node.status) === "red"
-                    ? "bg-red-500"
-                    : "bg-slate-500"
-            }`}
-          />
+        <ConsoleBadge tone={statusClasses(node.status)}>
           {statusLabel(node.status)}
-        </span>
+        </ConsoleBadge>
       </div>
 
-      <div className="text-[10px] text-black/30 mb-2 truncate">{node.summary || "idle"}</div>
+      <div className="dashboard-micro mb-2 truncate">{node.summary || "idle"}</div>
 
       <div className="grid grid-cols-3 gap-1.5 text-[10px] mb-2">
         {metrics.slice(0, 6).map((item) => (
-          <div key={item.label} className="bg-black/[0.02] rounded-lg px-2 py-1.5">
-            <div className="text-black/30">{item.label}</div>
-            <div className="text-black/80 font-medium truncate">{item.value}</div>
+          <div key={item.label} className="dashboard-field !rounded-[16px] !px-2 !py-2">
+            <div className="dashboard-eyebrow !text-[10px] !tracking-[0.12em]">{item.label}</div>
+            <div className="mt-1 truncate text-[11px] font-medium text-[var(--foreground)]">{item.value}</div>
           </div>
         ))}
       </div>
@@ -87,7 +68,7 @@ function ModuleCard({
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-2 text-[10px] text-black/40">latency mirror {formatMs(node.latencyMs, "n/a")}</div>
+      <div className="dashboard-micro mt-2">latency mirror {formatMs(node.latencyMs, "n/a")}</div>
     </div>
   );
 }
@@ -106,14 +87,14 @@ export function ExternalServicesPanel() {
   ];
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <div className="flex items-center gap-2 mb-4">
-        <Layers3 className="size-4 text-black/40" />
-        <div>
-          <h3 className="text-[15px] font-semibold text-black">Module Health</h3>
-          <p className="text-[12px] text-black/50 mt-0.5">robot gateway와 main control server를 포함한 runtime modules 상태를 world state 기준으로 정렬해 보여줍니다.</p>
-        </div>
-      </div>
+    <ConsolePanel>
+      <ConsoleSectionTitle
+        icon={Layers3}
+        eyebrow="health matrix"
+        title="Module Health"
+        description="robot gateway, main control server, and runtime modules arranged on one health surface"
+        className="mb-4"
+      />
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         {cards.map((card) => (
           <ModuleCard
@@ -124,6 +105,6 @@ export function ExternalServicesPanel() {
           />
         ))}
       </div>
-    </div>
+    </ConsolePanel>
   );
 }

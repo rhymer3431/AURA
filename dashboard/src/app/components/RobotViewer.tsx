@@ -5,6 +5,7 @@ import { useDashboard } from "../state";
 import { useWebRTCViewer } from "../hooks/useWebRTCViewer";
 import { asArray, asRecord, formatMs, numberValue, stringValue } from "../selectors";
 import { buildApiUrl } from "../network";
+import { ConsoleBadge, ConsolePanel, ConsoleSectionTitle } from "./console-ui";
 
 function drawOverlay(
   canvas: HTMLCanvasElement,
@@ -161,42 +162,46 @@ export function RobotViewer() {
   const peerSessionId = stringValue(state?.transport.peerSessionId, "none");
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <Video className="size-4 text-black/40" />
-          <h3 className="text-[15px] font-semibold text-black">Live Robot View</h3>
-          <span
-            className={`ml-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-medium border ${
-              viewer.connected
-                ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                : "bg-amber-50 text-amber-700 border-amber-100"
-            }`}
-          >
-            <span className={`size-1.5 rounded-full ${viewer.connected ? "bg-emerald-500" : "bg-amber-500"}`} />
-            {viewer.connected ? "WEBRTC" : viewerEnabled ? "CONNECTING" : "INACTIVE"}
-          </span>
-        </div>
+    <ConsolePanel className="h-full flex flex-col">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <ConsoleSectionTitle
+          icon={Video}
+          eyebrow="vision stream"
+          title="Live Robot View"
+          description="RGB stream, detection overlays, trajectory trace, and active target markers"
+        />
 
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowOverlay((current) => !current)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors border ${
+            className={`dashboard-button-secondary !rounded-full !px-3 !py-2 text-[11px] ${
               showOverlay
-                ? "bg-black/5 border-black/10 text-black/80"
-                : "bg-white border-black/10 text-black/40 hover:bg-black/[0.02]"
+                ? "border-[rgba(79,152,168,0.16)] bg-[rgba(79,152,168,0.12)] text-[var(--tone-cyan-fg)]"
+                : "text-[var(--text-secondary)]"
             }`}
           >
             {showOverlay ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
             BBox Overlays
           </button>
-          <button className="p-1.5 rounded-lg border border-black/10 text-black/40 hover:bg-black/[0.02] transition-colors">
+          <button className="dashboard-button-secondary !rounded-full !px-3 !py-2 text-[var(--text-secondary)]">
             <Maximize2 className="size-3.5" />
           </button>
         </div>
       </div>
 
-      <div className="relative w-full aspect-video bg-neutral-950 rounded-lg overflow-hidden border border-black/10">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <ConsoleBadge tone={viewer.connected ? "emerald" : "amber"}>
+          {viewer.connected ? "WEBRTC" : viewerEnabled ? "CONNECTING" : "INACTIVE"}
+        </ConsoleBadge>
+        <ConsoleBadge tone="slate" dot={false}>
+          source {frameSource}
+        </ConsoleBadge>
+        <ConsoleBadge tone="cyan" dot={false}>
+          detector {detectorBackend}
+        </ConsoleBadge>
+      </div>
+
+      <div className="relative w-full aspect-video overflow-hidden rounded-[22px] border border-[rgba(24,33,37,0.08)] bg-neutral-950">
         <video
           ref={viewer.rgbVideoRef}
           className="w-full h-full object-cover"
@@ -208,14 +213,14 @@ export function RobotViewer() {
 
         <div className="absolute top-0 left-0 w-full p-3 flex justify-between items-start pointer-events-none">
           <div className="flex flex-col gap-1">
-            <div className="font-mono text-[10px] text-white/80 bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">
+            <div className="dashboard-mono text-[10px] text-white/80 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-sm">
               SRC: {frameSource}
             </div>
-            <div className="font-mono text-[10px] text-white/80 bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">
+            <div className="dashboard-mono text-[10px] text-white/80 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-sm">
               RES: {numberValue(image.width) ?? 0}x{numberValue(image.height) ?? 0} | TRACKS: {trackRoles.join(",") || "none"}
             </div>
           </div>
-          <div className="flex items-center gap-1.5 font-mono text-[10px] text-white/80 bg-black/40 px-2 py-0.5 rounded backdrop-blur-sm">
+          <div className="dashboard-mono flex items-center gap-1.5 text-[10px] text-white/80 bg-black/45 px-2.5 py-1 rounded-full backdrop-blur-sm">
             <SignalHigh className="size-3 text-emerald-400" />
             frame age {formatMs(state?.transport.frameAgeMs, "n/a")}
           </div>
@@ -238,24 +243,23 @@ export function RobotViewer() {
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between px-1 gap-4">
+      <div className="dashboard-inset mt-4 px-4 py-3">
+        <div className="dashboard-eyebrow mb-3">telemetry strip</div>
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="text-[11px] text-black/60">
-            Inference: <span className="text-black/80 font-medium">{detectorBackend}</span>
+          <div className="dashboard-micro">
+            Inference: <span className="text-[var(--foreground)]">{detectorBackend}</span>
           </div>
-          <div className="w-px h-3 bg-black/10" />
-          <div className="text-[11px] text-black/40">
-            Detected: <span className="text-black/80 font-medium">{detections.length} objects</span>
+          <div className="h-3 w-px bg-[rgba(24,33,37,0.08)]" />
+          <div className="dashboard-micro">
+            Detected: <span className="text-[var(--foreground)]">{detections.length} objects</span>
           </div>
-          <div className="w-px h-3 bg-black/10" />
-          <div className="text-[11px] text-black/40">
-            Trajectory: <span className="text-black/80 font-medium">{asArray(telemetry.trajectoryPixels ?? telemetry.trajectory_pixels).length} pts</span>
+          <div className="h-3 w-px bg-[rgba(24,33,37,0.08)]" />
+          <div className="dashboard-micro">
+            Trajectory: <span className="text-[var(--foreground)]">{asArray(telemetry.trajectoryPixels ?? telemetry.trajectory_pixels).length} pts</span>
           </div>
-        </div>
-        <div className="text-[10px] text-black/30 font-mono">
-          peer {peerSessionId}
+          <div className="ml-auto dashboard-micro">peer {peerSessionId}</div>
         </div>
       </div>
-    </div>
+    </ConsolePanel>
   );
 }

@@ -2,6 +2,7 @@ import { TrendingUp, TrendingDown } from "lucide-react";
 
 import { useDashboard } from "../state";
 import { architectureModule, architectureNode, asRecord, formatMeters, formatMs, statusLabel, stringValue } from "../selectors";
+import { ConsoleMetricCard, type ConsoleTone } from "./console-ui";
 
 export function StatCards() {
   const { state } = useDashboard();
@@ -26,53 +27,52 @@ export function StatCards() {
       value: statusLabel(gateway.status),
       change: gateway.detail || "idle",
       trend: gateway.status === "ok" ? ("up" as const) : ("down" as const),
-      bg: "bg-[#E3E5FE]",
+      tone: (gateway.status === "ok" ? "cyan" : "amber") as ConsoleTone,
     },
     {
       label: "Control Server",
       value: controlServer.summary || "Ready",
       change: stringValue(controlServer.detail, "idle"),
       trend: controlServer.status === "ok" ? ("up" as const) : ("down" as const),
-      bg: "bg-[#E3F1FC]",
+      tone: (controlServer.status === "ok" ? "emerald" : "amber") as ConsoleTone,
     },
     {
       label: "Modules Ready",
       value: `${healthyModules} / ${requiredModules.length}`,
       change: `${modules.filter((item) => item.status === "ok").length} active`,
       trend: healthyModules === requiredModules.length && requiredModules.length > 0 ? ("up" as const) : ("down" as const),
-      bg: "bg-[#EFE8FC]",
+      tone: (healthyModules === requiredModules.length && requiredModules.length > 0 ? "violet" : "amber") as ConsoleTone,
     },
     {
       label: "Recovery State",
       value: recoveryState,
       change: formatMeters(runtime.goalDistanceM, stringValue(runtime.activeCommandType, "idle")),
       trend: recoveryState === "NORMAL" ? ("up" as const) : ("down" as const),
-      bg: "bg-[#E6F2FA]",
+      tone: (recoveryState === "NORMAL" ? "emerald" : "coral") as ConsoleTone,
     },
   ];
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
       {stats.map((item) => (
-        <div
+        <ConsoleMetricCard
           key={item.label}
-          className={`${item.bg} rounded-3xl p-6 flex flex-col justify-between h-[120px] transition-transform hover:scale-[1.02]`}
-        >
-          <div className="text-[14px] font-medium text-black/80">{item.label}</div>
-          <div className="flex items-end justify-between gap-3">
-            <div className="text-[24px] font-semibold text-black leading-none tracking-tight break-all">
-              {item.value}
-            </div>
-            <div className="flex items-center gap-1 text-[12px] font-medium text-black/70 mb-1">
-              {item.change}
+          label={item.label}
+          value={item.value}
+          tone={item.tone}
+          className="transition-transform duration-150 hover:-translate-y-0.5"
+          valueClassName="break-all"
+          meta={(
+            <div className="flex items-center justify-between gap-3">
+              <span className="truncate">{item.change}</span>
               {item.trend === "up" ? (
-                <TrendingUp className="size-3 text-black/80" />
+                <TrendingUp className="size-3 shrink-0 text-[var(--text-secondary)]" />
               ) : (
-                <TrendingDown className="size-3 text-black/80" />
+                <TrendingDown className="size-3 shrink-0 text-[var(--text-secondary)]" />
               )}
             </div>
-          </div>
-        </div>
+          )}
+        />
       ))}
     </div>
   );

@@ -26,12 +26,15 @@ import {
   statusTone,
   stringValue,
 } from "../selectors";
+import { ConsoleBadge, ConsoleInfoRow, ConsolePanel, ConsoleSectionTitle, toneFromStatusTone } from "./console-ui";
 
 function SectionHeader({ icon: Icon, title }: { icon: typeof Scan; title: string }) {
   return (
-    <div className="flex items-center gap-1.5 mb-3">
-      <Icon className="size-4 text-black/40" />
-      <span className="text-[13px] font-medium text-black">{title}</span>
+    <div className="flex items-center gap-2 mb-3">
+      <div className="dashboard-icon-shell !size-8">
+        <Icon className="size-4" />
+      </div>
+      <span className="text-[13px] font-medium text-[var(--foreground)]">{title}</span>
     </div>
   );
 }
@@ -44,25 +47,13 @@ function Chip({
   children: React.ReactNode;
 }) {
   const tones = {
-    green: "bg-emerald-50 text-emerald-600 border-emerald-200",
-    blue: "bg-sky-50 text-sky-600 border-sky-200",
-    amber: "bg-amber-50 text-amber-600 border-amber-200",
-    violet: "bg-violet-50 text-violet-600 border-violet-200",
-    slate: "bg-slate-50 text-slate-600 border-slate-200",
+    green: "emerald",
+    blue: "cyan",
+    amber: "amber",
+    violet: "violet",
+    slate: "slate",
   };
-  const dots = {
-    green: "bg-emerald-500",
-    blue: "bg-sky-500",
-    amber: "bg-amber-500",
-    violet: "bg-violet-500",
-    slate: "bg-slate-500",
-  };
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${tones[color]}`}>
-      <span className={`size-1.5 rounded-full ${dots[color]}`} />
-      {children}
-    </span>
-  );
+  return <ConsoleBadge tone={tones[color] as "emerald" | "cyan" | "amber" | "violet" | "slate"}>{children}</ConsoleBadge>;
 }
 
 function toneForStatus(status: string): "green" | "blue" | "amber" | "violet" | "slate" {
@@ -83,13 +74,19 @@ export function ProcessesWidget() {
   const processes = state?.processes ?? [];
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6">
-      <SectionHeader icon={Box} title="Implementation Diagnostics" />
+    <ConsolePanel>
+      <ConsoleSectionTitle
+        icon={Box}
+        eyebrow="process mirror"
+        title="Implementation Diagnostics"
+        description="raw process state, pid, and supervisor mirror"
+        className="mb-4"
+      />
       <div className="space-y-2.5">
         {processes.map((process) => (
           <div
             key={process.name}
-            className="flex items-center gap-3 bg-white rounded-2xl px-4 py-3 shadow-sm transition-all"
+            className="dashboard-panel-strong flex items-center gap-3 px-4 py-3 transition-all"
           >
             <span
               className={`size-2 rounded-full ${
@@ -103,8 +100,8 @@ export function ProcessesWidget() {
               }`}
             />
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] text-black/80 truncate">{process.name}</div>
-              <div className="text-[10px] text-black/40">
+              <div className="text-[12px] text-[var(--foreground)] truncate">{process.name}</div>
+              <div className="dashboard-micro">
                 {statusLabel(process.state)} · PID {process.pid ?? "n/a"}
               </div>
             </div>
@@ -112,7 +109,7 @@ export function ProcessesWidget() {
           </div>
         ))}
       </div>
-    </div>
+    </ConsolePanel>
   );
 }
 
@@ -122,7 +119,7 @@ export function SensorsWidget() {
   const gateway = architectureNode(state, "gateway");
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6">
+    <ConsolePanel>
       <div className="flex items-center justify-between mb-3">
         <SectionHeader icon={MonitorSmartphone} title="Robot Gateway" />
         <Chip color={toneForStatus(gateway.status)}>{statusLabel(gateway.status)}</Chip>
@@ -133,19 +130,19 @@ export function SensorsWidget() {
           { label: "Depth", ok: booleanValue(sensors.depthAvailable) },
           { label: "Pose", ok: booleanValue(sensors.poseAvailable) },
         ].map((sensor) => (
-          <div key={sensor.label} className="bg-white rounded-2xl py-3 text-center shadow-sm">
+          <div key={sensor.label} className="dashboard-panel-strong py-3 text-center">
             <span className={`inline-block size-2.5 rounded-full ${sensor.ok ? "bg-emerald-500" : "bg-amber-500"} mb-1.5`} />
-            <div className="text-[12px] font-medium text-black/70">{sensor.label}</div>
+            <div className="text-[12px] font-medium text-[var(--text-secondary)]">{sensor.label}</div>
           </div>
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
-        <div className="flex justify-between items-center"><span className="text-black/50">Gateway</span><span className="text-black/70 truncate ml-1 bg-black/[0.03] px-1.5 py-0.5 rounded">{gateway.summary || "idle"}</span></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Frame Freshness</span><span className="text-emerald-600 font-medium">{formatMs(state?.transport.frameAgeMs, "n/a")}</span></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Frame Source</span><span className="text-black/70 truncate ml-1 bg-black/[0.03] px-1.5 py-0.5 rounded">{stringValue(sensors.source, "n/a")}</span></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Frame ID</span><span className="text-black/70">{String(sensors.frameId ?? "n/a")}</span></div>
+        <ConsoleInfoRow label="Gateway" value={<span className="truncate rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{gateway.summary || "idle"}</span>} />
+        <ConsoleInfoRow label="Frame Freshness" value={formatMs(state?.transport.frameAgeMs, "n/a")} valueClassName="text-[var(--signal-emerald)] font-medium" />
+        <ConsoleInfoRow label="Frame Source" value={<span className="truncate rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{stringValue(sensors.source, "n/a")}</span>} />
+        <ConsoleInfoRow label="Frame ID" value={String(sensors.frameId ?? "n/a")} />
       </div>
-    </div>
+    </ConsolePanel>
   );
 }
 
@@ -156,13 +153,13 @@ export function PerceptionWidget() {
   const module = architectureModule(state, "perception");
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6">
+    <ConsolePanel>
       <div className="flex items-center justify-between mb-3">
         <SectionHeader icon={Scan} title="Perception Module" />
         <Chip color={toneForStatus(module.status)}>{statusLabel(module.status)}</Chip>
       </div>
       <div className="flex items-center justify-between text-[11px] mb-3">
-        <span className="text-black/50">{module.summary || "Detector Backend"}</span>
+        <span className="dashboard-meta">{module.summary || "Detector Backend"}</span>
         <Chip color={booleanValue(perception.detectorReady) ? "green" : "amber"}>
           {stringValue(perception.detectorBackend, stringValue(capability.backend_name, "unknown"))}
         </Chip>
@@ -174,18 +171,18 @@ export function PerceptionWidget() {
           { label: "Trajectory", value: String(perception.trajectoryPointCount ?? 0) },
           { label: "Ready", value: booleanValue(perception.detectorReady) ? "yes" : "no" },
         ].map((card) => (
-          <div key={card.label} className="bg-white rounded-2xl px-3 py-2.5 shadow-sm">
-            <div className="text-[11px] text-black/50 mb-0.5">{card.label}</div>
-            <div className="text-black font-semibold text-[16px]">{card.value}</div>
+          <div key={card.label} className="dashboard-panel-strong px-3 py-2.5">
+            <div className="dashboard-eyebrow mb-1">{card.label}</div>
+            <div className="dashboard-mono text-[16px] font-semibold text-[var(--foreground)]">{card.value}</div>
           </div>
         ))}
       </div>
       <div className="space-y-1.5 text-[11px]">
-        <div className="flex justify-between items-center"><span className="text-black/50">Module Detail</span><span className="text-black/70 bg-black/[0.03] px-1.5 py-0.5 rounded">{module.detail || "n/a"}</span></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Selected Reason</span><span className="text-black/70 bg-black/[0.03] px-1.5 py-0.5 rounded">{stringValue(perception.detectorSelectedReason, "n/a")}</span></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Capability Status</span><Chip color={stringValue(capability.status) === "ready" ? "green" : "amber"}>{stringValue(capability.status, "unknown")}</Chip></div>
+        <ConsoleInfoRow label="Module Detail" value={<span className="rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{module.detail || "n/a"}</span>} />
+        <ConsoleInfoRow label="Selected Reason" value={<span className="rounded-full bg-[rgba(24,33,37,0.05)] px-2 py-0.5">{stringValue(perception.detectorSelectedReason, "n/a")}</span>} />
+        <div className="flex justify-between items-center"><span className="dashboard-meta">Capability Status</span><Chip color={stringValue(capability.status) === "ready" ? "green" : "amber"}>{stringValue(capability.status, "unknown")}</Chip></div>
       </div>
-    </div>
+    </ConsolePanel>
   );
 }
 
@@ -196,15 +193,15 @@ export function MemoryWidget() {
   const module = architectureModule(state, "memory");
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6 h-full flex flex-col">
+    <ConsolePanel className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <SectionHeader icon={Database} title="Memory Module" />
         <Chip color={toneForStatus(module.status)}>{statusLabel(module.status)}</Chip>
       </div>
       <div className="space-y-2 text-[11px] mb-3">
-        <div className="flex justify-between items-center"><span className="text-black/50">Module Summary</span><Chip color={toneForStatus(module.status)}>{module.summary || "idle"}</Chip></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Memory-Aware</span><Chip color={booleanValue(memory.memoryAwareTaskActive) ? "blue" : "slate"}>{booleanValue(memory.memoryAwareTaskActive) ? "task_active" : "idle"}</Chip></div>
-        <div className="flex justify-between items-center"><span className="text-black/50">Scratchpad</span><Chip color={stringValue(scratchpad.taskState) === "active" ? "green" : "amber"}>{stringValue(scratchpad.taskState, "idle")}</Chip></div>
+        <div className="flex justify-between items-center"><span className="dashboard-meta">Module Summary</span><Chip color={toneForStatus(module.status)}>{module.summary || "idle"}</Chip></div>
+        <div className="flex justify-between items-center"><span className="dashboard-meta">Memory-Aware</span><Chip color={booleanValue(memory.memoryAwareTaskActive) ? "blue" : "slate"}>{booleanValue(memory.memoryAwareTaskActive) ? "task_active" : "idle"}</Chip></div>
+        <div className="flex justify-between items-center"><span className="dashboard-meta">Scratchpad</span><Chip color={stringValue(scratchpad.taskState) === "active" ? "green" : "amber"}>{stringValue(scratchpad.taskState, "idle")}</Chip></div>
       </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
         {[
@@ -212,22 +209,22 @@ export function MemoryWidget() {
           { label: "Places", value: String(memory.placeCount ?? 0) },
           { label: "Rules", value: String(memory.semanticRuleCount ?? 0) },
         ].map((card) => (
-          <div key={card.label} className="bg-white rounded-2xl px-3 py-2.5 text-center shadow-sm">
-            <div className="text-[11px] text-black/50 mb-0.5">{card.label}</div>
-            <div className="text-black font-semibold text-[16px]">{card.value}</div>
+          <div key={card.label} className="dashboard-panel-strong px-3 py-2.5 text-center">
+            <div className="dashboard-eyebrow mb-1">{card.label}</div>
+            <div className="dashboard-mono text-[16px] font-semibold text-[var(--foreground)]">{card.value}</div>
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-2xl p-3 flex-1 shadow-sm">
-        <div className="text-[11px] font-medium text-black/60 mb-2">Scratchpad (Current Task)</div>
-        <div className="text-black/70 text-[12px] font-mono bg-[#F7F9FB] rounded-xl p-2.5 leading-tight break-words">
+      <div className="dashboard-panel-strong p-3 flex-1">
+        <div className="dashboard-eyebrow mb-2">Scratchpad (Current Task)</div>
+        <div className="dashboard-field dashboard-mono text-[12px] text-[var(--text-secondary)] leading-tight break-words">
           {stringValue(scratchpad.instruction, "idle")}
         </div>
       </div>
-      <div className="bg-sky-50 border border-sky-100 rounded-lg px-2 py-1.5 mt-2 text-[10px] text-sky-700 text-center">
+      <div className="mt-2 rounded-full border border-[var(--tone-cyan-border)] bg-[var(--tone-cyan-bg)] px-2 py-1.5 text-[10px] text-[var(--tone-cyan-fg)] text-center dashboard-mono">
         next priority: {stringValue(scratchpad.nextPriority, "n/a")}
       </div>
-    </div>
+    </ConsolePanel>
   );
 }
 
@@ -244,47 +241,47 @@ export function MainControlServerWidget() {
   const metrics = asRecord(server.metrics);
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6">
+    <ConsolePanel>
       <div className="flex items-center justify-between mb-4">
         <SectionHeader icon={Layers} title="Main Control Server" />
         <Chip color={toneForStatus(server.status)}>{statusLabel(server.status)}</Chip>
       </div>
-      <div className="bg-white rounded-2xl px-4 py-3 shadow-sm mb-4">
-        <div className="text-[12px] font-medium text-black/80">{server.summary || "Ready"}</div>
-        <div className="text-[11px] text-black/45 mt-1">{server.detail || "No active runtime task"}</div>
+      <div className="dashboard-panel-strong px-4 py-3 mb-4">
+        <div className="text-[12px] font-medium text-[var(--foreground)]">{server.summary || "Ready"}</div>
+        <div className="dashboard-micro mt-1">{server.detail || "No active runtime task"}</div>
       </div>
       <div className="grid grid-cols-2 gap-3 mb-4 text-[11px]">
-        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
-          <div className="text-black/45 mb-1">Mode</div>
-          <div className="text-black font-medium">{stringValue(metrics.mode, "idle")}</div>
+        <div className="dashboard-panel-strong px-3 py-3">
+          <div className="dashboard-eyebrow mb-1">Mode</div>
+          <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.mode, "idle")}</div>
         </div>
-        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
-          <div className="text-black/45 mb-1">Task State</div>
-          <div className="text-black font-medium">{stringValue(metrics.taskState, "idle")}</div>
+        <div className="dashboard-panel-strong px-3 py-3">
+          <div className="dashboard-eyebrow mb-1">Task State</div>
+          <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.taskState, "idle")}</div>
         </div>
-        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
-          <div className="text-black/45 mb-1">Control Mode</div>
-          <div className="text-black font-medium">{stringValue(metrics.plannerControlMode, "idle")}</div>
+        <div className="dashboard-panel-strong px-3 py-3">
+          <div className="dashboard-eyebrow mb-1">Control Mode</div>
+          <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.plannerControlMode, "idle")}</div>
         </div>
-        <div className="bg-white rounded-2xl px-3 py-3 shadow-sm">
-          <div className="text-black/45 mb-1">Recovery</div>
-          <div className="text-black font-medium">{stringValue(metrics.recoveryState, "NORMAL")}</div>
+        <div className="dashboard-panel-strong px-3 py-3">
+          <div className="dashboard-eyebrow mb-1">Recovery</div>
+          <div className="font-medium text-[var(--foreground)]">{stringValue(metrics.recoveryState, "NORMAL")}</div>
         </div>
       </div>
       <div className="space-y-2">
         {coreEntries.map((node) => (
-          <div key={node.name} className="bg-white rounded-2xl px-4 py-3 shadow-sm">
+          <div key={node.name} className="dashboard-panel-strong px-4 py-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[12px] font-medium text-black/80">{node.name}</div>
-                <div className="text-[11px] text-black/45 mt-1 truncate">{node.summary || node.detail || "idle"}</div>
+                <div className="text-[12px] font-medium text-[var(--foreground)]">{node.name}</div>
+                <div className="dashboard-micro mt-1 truncate">{node.summary || node.detail || "idle"}</div>
               </div>
               <Chip color={toneForStatus(node.status)}>{statusLabel(node.status)}</Chip>
             </div>
           </div>
         ))}
       </div>
-    </div>
+    </ConsolePanel>
   );
 }
 
@@ -298,46 +295,37 @@ export function IpcOrchestrationWidget() {
   const telemetry = architectureModule(state, "telemetry");
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6 flex flex-col gap-4">
+    <ConsolePanel className="flex flex-col gap-4">
       <div>
         <div className="flex items-center justify-between mb-3">
           <SectionHeader icon={Eye} title="Gateway / Telemetry" />
           <Chip color={toneForStatus(telemetry.status)}>{statusLabel(telemetry.status)}</Chip>
         </div>
         <div className="space-y-2 text-[11px]">
-          <div className="bg-black/[0.02] border border-black/[0.04] rounded-lg px-2.5 py-2 font-mono text-[10px] text-black/60">
+          <div className="dashboard-field dashboard-mono text-[10px] text-[var(--text-secondary)]">
             <div>control: {stringValue(busHealth.control_endpoint, "tcp://127.0.0.1:5580")}</div>
             <div className="mt-0.5">telemetry: {stringValue(busHealth.telemetry_endpoint, "tcp://127.0.0.1:5581")}</div>
           </div>
-          <div className="flex justify-between items-center"><span className="text-black/50">Peer 연결</span><Chip color={booleanValue(transport.peerActive) ? "green" : "amber"}>{booleanValue(transport.peerActive) ? "connected" : "inactive"}</Chip></div>
-          <div className="flex justify-between items-center"><span className="text-black/50">Frame Seq</span><span className="text-black/70">{String(transport.frameSeq ?? "n/a")}</span></div>
-          <div className="flex justify-between items-center"><span className="text-black/50">Frame Age</span><span className="text-black/70">{formatMs(transport.frameAgeMs, "n/a")}</span></div>
+          <div className="flex justify-between items-center"><span className="dashboard-meta">Peer 연결</span><Chip color={booleanValue(transport.peerActive) ? "green" : "amber"}>{booleanValue(transport.peerActive) ? "connected" : "inactive"}</Chip></div>
+          <ConsoleInfoRow label="Frame Seq" value={String(transport.frameSeq ?? "n/a")} />
+          <ConsoleInfoRow label="Frame Age" value={formatMs(transport.frameAgeMs, "n/a")} />
         </div>
       </div>
 
-      <div className="h-px bg-black/5 w-full"></div>
+      <div className="h-px bg-[rgba(24,33,37,0.06)] w-full"></div>
 
       <div>
         <SectionHeader icon={Layers} title="Gateway State Mirror" />
-        <div className="bg-white rounded-2xl p-4 shadow-sm text-[12px]">
-          <div className="flex justify-between mb-2">
-            <span className="text-black/50">gateway</span>
-            <span className="text-black/80 font-medium">{gateway.summary || "idle"}</span>
-          </div>
-          <div className="flex justify-between mb-2">
-            <span className="text-black/50">telemetry</span>
-            <span className="text-black/70">{telemetry.summary || "inactive"}</span>
-          </div>
-          <div className="flex justify-between mb-2">
-            <span className="text-black/50">last status</span>
-            <span className="text-black/70">{stringValue(lastStatus.state, "n/a")}</span>
-          </div>
-          <div className="text-[10px] text-black/30 mt-2 bg-white px-1.5 py-1 rounded border border-black/5 text-center">
+        <div className="dashboard-panel-strong p-4 text-[12px]">
+          <ConsoleInfoRow className="mb-2" label="gateway" value={gateway.summary || "idle"} />
+          <ConsoleInfoRow className="mb-2" label="telemetry" value={telemetry.summary || "inactive"} />
+          <ConsoleInfoRow className="mb-2" label="last status" value={stringValue(lastStatus.state, "n/a")} />
+          <div className="dashboard-field dashboard-mono mt-2 text-center text-[10px] text-[var(--text-tertiary)]">
             {stringValue(lastStatus.reason, gateway.detail || telemetry.detail || "viewer/state bridge active")}
           </div>
         </div>
       </div>
-    </div>
+    </ConsolePanel>
   );
 }
 
@@ -380,15 +368,20 @@ export function LogsWidget() {
   }, [limit]);
 
   return (
-    <div className="bg-[#F7F9FB] rounded-3xl p-6 h-full flex flex-col">
+    <ConsolePanel className="h-full flex flex-col">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-1.5">
-          <Terminal className="size-4 text-black/40" />
-          <h3 className="text-[13px] font-medium text-black">시스템 로그</h3>
+          <div className="dashboard-icon-shell">
+            <Terminal className="size-4" />
+          </div>
+          <div>
+            <div className="dashboard-eyebrow">system feed</div>
+            <h3 className="text-[13px] font-medium text-[var(--foreground)]">시스템 로그</h3>
+          </div>
         </div>
         <button
           onClick={() => setLogsExpanded((current) => !current)}
-          className="text-[11px] text-black/40 hover:text-black/80 transition-colors flex items-center gap-1 bg-black/[0.03] px-2 py-1 rounded-md"
+          className="dashboard-button-secondary !rounded-full !px-3 !py-2 text-[11px] text-[var(--text-secondary)]"
         >
           {logsExpanded ? "접기" : "모두 보기"}
           {logsExpanded ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
@@ -401,25 +394,25 @@ export function LogsWidget() {
         </div>
       )}
 
-      <div className={`space-y-1 font-mono text-[11px] bg-white rounded-2xl p-3 flex-1 overflow-y-auto shadow-sm ${logsExpanded ? "max-h-[300px]" : "max-h-[140px]"}`}>
+      <div className={`dashboard-scroll dashboard-panel-strong space-y-1 dashboard-mono text-[11px] p-3 flex-1 overflow-y-auto ${logsExpanded ? "max-h-[300px]" : "max-h-[140px]"}`}>
         {logs.length === 0 && (
-          <div className="text-black/35 px-2 py-2">no logs yet</div>
+          <div className="text-[var(--text-faint)] px-2 py-2">no logs yet</div>
         )}
         {logs.map((log, index) => {
           const level = stringValue(log.level || log.stream, "info");
           return (
-            <div key={`${log.source}-${index}`} className="flex gap-2 py-1.5 hover:bg-[#F7F9FB] px-2 rounded-xl transition-colors">
-              <span className="text-black/30 w-[70px] shrink-0">{log.timestampNs ? String(log.timestampNs).slice(-8) : log.stream}</span>
-              <span className={`w-[80px] shrink-0 font-semibold ${level === "error" || level === "stderr" ? "text-red-500" : level === "warn" || level === "warning" ? "text-amber-500" : "text-black/50"}`}>
+            <div key={`${log.source}-${index}`} className="flex gap-2 py-1.5 hover:bg-[rgba(24,33,37,0.04)] px-2 rounded-xl transition-colors">
+              <span className="text-[var(--text-faint)] w-[70px] shrink-0">{log.timestampNs ? String(log.timestampNs).slice(-8) : log.stream}</span>
+              <span className={`w-[80px] shrink-0 font-semibold ${level === "error" || level === "stderr" ? "text-red-500" : level === "warn" || level === "warning" ? "text-amber-500" : "text-[var(--text-secondary)]"}`}>
                 {log.source}
               </span>
-              <span className={`flex-1 truncate ${level === "error" || level === "stderr" ? "text-red-600" : level === "warn" || level === "warning" ? "text-amber-600" : "text-black/70"}`}>
+              <span className={`flex-1 truncate ${level === "error" || level === "stderr" ? "text-red-600" : level === "warn" || level === "warning" ? "text-amber-600" : "text-[var(--foreground)]"}`}>
                 {log.message}
               </span>
             </div>
           );
         })}
       </div>
-    </div>
+    </ConsolePanel>
   );
 }

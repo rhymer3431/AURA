@@ -24,6 +24,7 @@ function buildMockLog(nowMs: number, message: string) {
 function buildMockBootstrap(apiBaseUrl: string) {
   const normalizedBase = trimTrailingSlash(apiBaseUrl);
   return {
+    plannerModes: ["interactive", "pointgoal"],
     executionModes: ["TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE"],
     launchModes: ["gui", "headless"],
     scenePresets: ["warehouse", "interioragent", "interior agent kujiale 3"],

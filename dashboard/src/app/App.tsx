@@ -28,6 +28,7 @@ import {
   type DashboardPageId,
 } from "./navigation";
 import { useDashboard } from "./state";
+import { ConsoleBadge } from "./components/console-ui";
 
 function currentPageFromLocation(): DashboardPageId {
   if (typeof window === "undefined") {
@@ -37,7 +38,7 @@ function currentPageFromLocation(): DashboardPageId {
 }
 
 export default function App() {
-  const { error } = useDashboard();
+  const { error, state } = useDashboard();
   const [activePage, setActivePage] = useState<DashboardPageId>(() => currentPageFromLocation());
 
   useEffect(() => {
@@ -150,20 +151,33 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-white overflow-hidden font-['Inter',sans-serif]">
+    <div className="dashboard-shell">
       <Sidebar activePage={activePage} onNavigate={navigateTo} />
-      <main className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
+      <main className="dashboard-main">
         <TopBar page={page} />
-        <div className="flex-1 overflow-y-auto px-8 pb-10">
-          <div className="flex items-center justify-between mb-6 mt-6">
+        <div className="dashboard-page dashboard-scroll">
+          <div className="dashboard-page-header">
             <div>
-              <h2 className="text-[18px] font-semibold text-black">{page.label}</h2>
-              <p className="text-[12px] text-black/50 mt-1">{page.description}</p>
+              <div className="dashboard-eyebrow mb-2">{page.groupTitle}</div>
+              <h2 className="text-[24px] font-semibold tracking-[-0.04em] text-[var(--foreground)]">{page.label}</h2>
+              <p className="dashboard-subtitle max-w-3xl mt-2">{page.description}</p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
+                {state?.session.active ? "session live" : "session idle"}
+              </ConsoleBadge>
+              <ConsoleBadge tone="cyan" dot={false}>
+                mode {String(state?.runtime.executionMode ?? state?.runtime.modes?.executionMode ?? "IDLE")}
+              </ConsoleBadge>
+              <ConsoleBadge tone="slate" dot={false}>
+                scene {state?.session.config?.scenePreset ?? "draft"}
+              </ConsoleBadge>
             </div>
           </div>
 
           {error !== "" && (
-            <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-700">
+            <div className="dashboard-panel mb-4 border-[color:var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-4 py-3 text-[12px] text-[var(--tone-coral-fg)]">
               {error}
             </div>
           )}
