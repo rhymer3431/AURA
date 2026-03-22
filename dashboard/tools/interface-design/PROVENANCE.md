@@ -16,5 +16,6 @@
 
 - This snapshot is vendored under `dashboard/tools/interface-design/`.
 - Codex loads the project-local wrapper at `.claude/skills/interface-design/SKILL.md`.
+- The vendored snapshot keeps the upstream `.claude` and `.claude-plugin` paths for compatibility and provenance, but the content is adapted for Codex use in this repository.
 - The wrapper constrains this skill to dashboard frontend work and maps the design memory file to `dashboard/.interface-design/system.md`.
 - No global installation under `~/.codex/skills` is part of this integration.

@@ -1,18 +1,17 @@
 ---
 name: interface-design:status
-description: Show current design system state including direction, tokens, and patterns.
+description: Codex workflow reference for summarizing the current saved interface system.
 ---
 
 # interface-design status
 
-Show current design system state.
+Use this workflow to show the current design system state from `.interface-design/system.md`.
 
 ## What to Show
 
-**If `.interface-design/system.md` exists:**
+If `.interface-design/system.md` exists, summarize:
 
-Display:
-```
+```text
 Design System: [Project Name]
 
 Direction: [Precision & Density / Warmth / etc]
@@ -32,19 +31,19 @@ Patterns:
 Last updated: [from git or file mtime]
 ```
 
-**If no system.md:**
+If no `system.md` exists, report that clearly and point to the next useful Codex workflow:
 
-```
+```text
 No design system found.
 
-Options:
-1. Build UI → system will be established automatically
-2. Run /interface-design:extract → pull patterns from existing code
+Next steps:
+1. Build UI and establish the system during implementation
+2. Perform the extract workflow to derive patterns from existing code
 ```
 
 ## Implementation
 
 1. Read `.interface-design/system.md`
-2. Parse direction, tokens, patterns
-3. Format and display
-4. If no system, suggest next steps
+2. Parse direction, tokens, and patterns
+3. Format a concise summary
+4. If no system exists, suggest the next workflow without using slash-command language

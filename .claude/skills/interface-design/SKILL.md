@@ -7,6 +7,8 @@ description: Project-local wrapper for the vendored interface-design skill. Use 
 
 This repository vendors the upstream `Dammyjay93/interface-design` skill under `dashboard/tools/interface-design/`.
 
+The vendored snapshot keeps its upstream `.claude` path layout for compatibility and provenance, but the canonical entrypoint for this repository is this Codex wrapper.
+
 Before doing dashboard UI work with this skill, read these files in order:
 
 1. `dashboard/tools/interface-design/.claude/skills/interface-design/SKILL.md`
@@ -62,15 +64,17 @@ Use the local SnowUI references as the default operating contract for dashboard 
 
 ## Command Mapping
 
-The vendored upstream `.claude/commands/*.md` files are reference workflows only. Codex does not expose them as native slash commands in this repo.
+The vendored upstream `.claude/commands/*.md` files are reference workflows only. In this repo they are Codex-oriented workflow references, not native slash commands.
 
 Map them to normal Codex behavior instead:
 
 - `init`: establish or refine dashboard UI direction, then optionally create/update `dashboard/.interface-design/system.md`
 - `status`: read and summarize `dashboard/.interface-design/system.md`
 - `audit`: inspect `dashboard/src`, `dashboard/src/styles`, and `dashboard/guidelines/Guidelines.md` against the saved system
-- `extract`: derive reusable dashboard design patterns from the same paths and offer to save them
+- `extract`: derive reusable dashboard design patterns from the same paths and persist them only when the task requires saved system updates
 - `critique`: run an internal design critique and improve the UI before presenting it
+
+Treat those workflow names as documentation labels, not as callable slash commands.
 
 ## Working Rule
 

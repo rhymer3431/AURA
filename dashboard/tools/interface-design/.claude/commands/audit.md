@@ -1,42 +1,46 @@
 ---
 name: interface-design:audit
-description: Check existing code against your design system for spacing, depth, color, and pattern violations.
+description: Codex workflow reference for checking UI code against the saved interface system.
 ---
 
 # interface-design audit
 
-Check existing code against your design system.
+Use this workflow to compare existing UI code against the saved design system.
 
-## Usage
+## Recommended Targets
 
-```
-/audit <path>     # Audit specific file/directory
-/audit            # Audit common UI paths
-```
+Audit a specific file or directory when the user scopes the task.
+
+Otherwise, use the default UI targets for this repository:
+
+- `dashboard/src`
+- `dashboard/src/styles`
+- `dashboard/guidelines/Guidelines.md`
 
 ## What to Check
 
-**If `.interface-design/system.md` exists:**
+If `.interface-design/system.md` exists, check:
 
 1. **Spacing violations**
-   - Find spacing values not on defined grid
-   - Example: 17px when base is 4px
+   - Find spacing values not on the defined grid
+   - Example: 17px when the base is 4px
 
 2. **Depth violations**
-   - Borders-only system → flag shadows
-   - Subtle system → flag layered shadows
-   - Allow ring shadows (0 0 0 1px)
+   - Borders-only system: flag shadows
+   - Subtle system: flag layered shadows
+   - Allow ring shadows such as `0 0 0 1px`
 
 3. **Color violations**
-   - If palette defined → flag colors not in palette
-   - Allow semantic grays
+   - If a palette is defined, flag colors outside it
+   - Allow neutral semantic grays if they fit the saved system
 
 4. **Pattern drift**
-   - Find buttons not matching Button pattern
-   - Find cards not matching Card pattern
+   - Find buttons that diverge from the saved button pattern
+   - Find cards that diverge from the saved card pattern
 
-**Report format:**
-```
+Report in this shape:
+
+```text
 Audit Results: src/components/
 
 Violations:
@@ -50,20 +54,20 @@ Suggestions:
   - Adjust spacing to grid
 ```
 
-**If no system.md:**
+If no `system.md` exists, say so and redirect to a Codex-native next step:
 
-```
+```text
 No design system to audit against.
 
 Create a system first:
-1. Build UI → establish system automatically
-2. Run /extract → create system from existing code
+1. Establish the system while building UI
+2. Perform the extract workflow to derive a system from existing code
 ```
 
 ## Implementation
 
-1. Check for system.md
-2. Parse system rules
-3. Read target files (tsx, jsx, css, scss)
-4. Compare against rules
-5. Report violations with suggestions
+1. Check for `system.md`
+2. Parse the saved rules
+3. Read target files (`tsx`, `jsx`, `css`, `scss`, and relevant docs)
+4. Compare them against the saved system
+5. Report violations with concrete suggestions

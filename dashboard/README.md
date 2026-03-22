@@ -45,6 +45,7 @@ This dashboard now vendors the upstream `Dammyjay93/interface-design` frontend s
 - Vendored upstream snapshot: `dashboard/tools/interface-design/`
 - Pinned upstream commit: `8c407c1c42890010a9eb403a9f419b1eeadcfdad`
 - Codex project entrypoint: `.claude/skills/interface-design/SKILL.md`
+- Vendored internal `.claude` paths are kept for upstream compatibility, but the local wrapper and workflow text are adapted for Codex.
 - Project design memory path: `dashboard/.interface-design/system.md`
 - Added SnowUI design-system reference: `.claude/skills/interface-design/references/snowui-design-system.md`
 - Default audit/extract targets: `dashboard/src`, `dashboard/src/styles`, `dashboard/guidelines/Guidelines.md`

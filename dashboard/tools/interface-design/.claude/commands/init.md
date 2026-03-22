@@ -1,83 +1,80 @@
 ---
 name: interface-design:init
-description: Build UI with craft and consistency. For interface design (dashboards, apps, tools) — not marketing sites.
+description: Codex workflow reference for establishing or refining interface direction with craft and consistency.
 ---
 
-## Required Reading — Do This First
+## Purpose
 
-Before writing any code, read this file completely:
+Use this workflow when you need to establish or refine interface direction for dashboards, admin panels, apps, tools, or other product UI.
 
-1. `../skills/interface-design/SKILL.md` — the foundation, principles, craft knowledge, and checks
+Do not use it for landing pages or marketing surfaces. Switch to a separate frontend design workflow instead.
 
-Do not skip this. The craft knowledge is in this file.
+## Required Reading
 
----
+Before writing code, read:
 
-**Scope:** Dashboards, apps, tools, admin panels. Not landing pages or marketing sites.
+1. `../skills/interface-design/SKILL.md`
 
-## Intent First — Answer Before Building
+Do not skip it. The craft principles and validation checks live there.
 
-Before touching code, answer these out loud:
+## Intent First
 
-**Who is this human?** Not "users." Where are they? What's on their mind? A teacher at 7am with coffee is not a developer debugging at midnight.
+Before touching code, state the answers to these questions in your working notes:
 
-**What must they accomplish?** Not "use the dashboard." The verb. Grade submissions. Find the broken deployment. Approve the payment.
+- Who is the actual human using this interface?
+- What must they accomplish?
+- What should the interface feel like?
 
-**What should this feel like?** In words that mean something. "Clean" means nothing. Warm like a notebook? Cold like a terminal? Dense like a trading floor?
-
-If you cannot answer these with specifics, stop and ask the user. Do not guess. Do not default.
+If any of those answers materially affect the design direction and cannot be derived from the repo or prompt, ask the user a concise question. Otherwise, state your assumption and continue.
 
 ## Before Writing Each Component
 
-State the intent AND the technical approach:
+State the intent and the technical approach:
 
-```
+```text
 Intent: [who, what they need to do, how it should feel]
-Palette: [foundation + accent — and WHY these colors fit the product's world]
-Depth: [borders / subtle shadows / layered — and WHY]
-Surfaces: [your elevation scale — and WHY this temperature]
-Typography: [your typeface choice — and WHY it fits the intent]
+Palette: [foundation + accent — and why they fit the product's world]
+Depth: [borders / subtle shadows / layered — and why]
+Surfaces: [your elevation scale — and why this temperature]
+Typography: [your typeface choice — and why it fits the intent]
 Spacing: [your base unit]
 ```
 
-Every choice must be explainable. If your answer is "it's common" or "it works" — you haven't chosen. You've defaulted.
-
-**The test:** If another AI given a similar prompt would produce the same output, you have failed. The interface must emerge from THIS user, THIS problem, THIS intent.
+Every choice must be explainable. If the rationale is only "it's common" or "it works," the decision defaulted.
 
 ## Communication
 
-Be invisible. Don't announce modes or narrate process.
+Do the work directly. Keep reasoning concrete, but do not narrate fake modes or meta workflows.
 
-**Never say:** "I'm in ESTABLISH MODE", "Let me check system.md..."
+Bad:
 
-**Instead:** Jump into work. State suggestions with reasoning.
+- "I'm in ESTABLISH MODE"
+- "Let me check system.md..."
 
-## Suggest + Ask
+Good:
 
-Lead with your exploration and recommendation, then confirm:
-```
-"Domain: [concepts from this product's world]
-Color world: [colors that exist in this domain]
-Signature: [one element unique to this product]
+- State the explored domain, proposed direction, and implementation reasoning.
 
-Direction: [approach that connects to the above]"
+## Direction Workflow
 
-[AskUserQuestion: "Does that direction feel right?"]
-```
+1. Read the required files above, even if `system.md` already exists.
+2. Check whether `.interface-design/system.md` exists.
+3. If it exists, apply the established decisions unless the user asked to change direction.
+4. If it does not exist, assess the domain and produce:
+   - domain concepts
+   - color world
+   - signature element
+   - default patterns to reject
+5. Propose a direction that ties those four outputs together.
+6. Ask the user only if a high-impact direction choice remains ambiguous.
+7. Build and then run the craft checks before presenting results.
 
-## Flow
+## Persistence
 
-1. Read the required files above (always — even if system.md exists)
-2. Check if `.interface-design/system.md` exists
-3. **If exists**: Apply established patterns from system.md
-4. **If not**: Assess context, suggest direction, get confirmation, build
+Do not automatically interrupt the task to ask whether patterns should be saved.
 
-The skill files contain the craft principles. system.md contains project-specific decisions. You need both.
+Update `.interface-design/system.md` only when one of these is true:
 
-## After Every Task
-
-Offer to save when you finish building UI:
-
-"Want me to save these patterns to `.interface-design/system.md`?"
-
-Always offer — new patterns should be captured whether system.md exists or not.
+- the user explicitly asks to save or persist the design system
+- the task explicitly includes establishing or refining the saved system
+- the current work materially changes the saved design direction and the system file must stay authoritative

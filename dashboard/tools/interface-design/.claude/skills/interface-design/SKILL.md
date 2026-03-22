@@ -11,7 +11,7 @@ Build interface design with craft and consistency.
 
 **Use for:** Dashboards, admin panels, SaaS apps, tools, settings pages, data interfaces.
 
-**Not for:** Landing pages, marketing sites, campaigns. Redirect those to `/frontend-design`.
+**Not for:** Landing pages, marketing sites, campaigns. Use a separate frontend design workflow for those surfaces.
 
 ---
 
@@ -324,8 +324,8 @@ Be invisible. Don't announce modes or narrate process.
 
 **Instead:** Jump into work. State suggestions with reasoning.
 
-## Suggest + Ask
-Lead with your exploration and recommendation, then confirm:
+## Suggest + Decide
+Lead with your exploration and recommendation:
 ```
 "Domain: [5+ concepts from the product's world]
 Color world: [5+ colors that exist in this domain]
@@ -333,9 +333,9 @@ Signature: [one element unique to this product]
 Rejecting: [default 1] → [alternative], [default 2] → [alternative], [default 3] → [alternative]
 
 Direction: [approach that connects to the above]"
-
-[Ask: "Does that direction feel right?"]
 ```
+
+If that direction depends on a high-impact preference the prompt and repo do not resolve, ask a concise user question. Otherwise, state the assumption and continue.
 
 ## If Project Has system.md
 Read `.interface-design/system.md` and apply. Decisions are made.
@@ -343,22 +343,24 @@ Read `.interface-design/system.md` and apply. Decisions are made.
 ## If No system.md
 1. Explore domain — Produce all four required outputs
 2. Propose — Direction must reference all four
-3. Confirm — Get user buy-in
+3. Clarify only if a material ambiguity remains
 4. Build — Apply principles
 5. **Evaluate** — Run the mandate checks before showing
-6. Offer to save
+6. Update saved system memory only when the task requires persistence
 
 ---
 
 # After Completing a Task
 
-When you finish building something, **always offer to save**:
+Do not interrupt the task with a save prompt by default.
 
-```
-"Want me to save these patterns for future sessions?"
-```
+Write to `.interface-design/system.md` only when:
 
-If yes, write to `.interface-design/system.md`:
+- the user explicitly asks to save or persist the system
+- the task explicitly includes establishing or refining the saved system
+- the current change materially updates the authoritative design direction and the saved system must remain current
+
+When you do persist, capture:
 - Direction and feel
 - Depth strategy (borders/shadows/layered)
 - Spacing base unit
@@ -383,9 +385,9 @@ For more detail on specific topics:
 - `references/validation.md` — Memory management, when to update system.md
 - `references/critique.md` — Post-build craft critique protocol
 
-# Commands
+# Reference Workflows
 
-- `/interface-design:status` — Current system state
-- `/interface-design:audit` — Check code against system
-- `/interface-design:extract` — Extract patterns from code
-- `/interface-design:critique` — Critique your build for craft, then rebuild what defaulted
+- `status` — summarize the current saved system
+- `audit` — check code against the saved system
+- `extract` — derive patterns from existing code
+- `critique` — critique the build for craft, then rebuild what defaulted
