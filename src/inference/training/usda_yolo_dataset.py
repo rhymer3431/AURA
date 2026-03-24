@@ -16,29 +16,8 @@ from PIL import Image
 
 from runtime.global_route import MapMeta, load_occupancy_grid
 
-YOLO_CLASS_NAMES: tuple[str, ...] = (
-    "bed",
-    "book",
-    "cabinet",
-    "chair",
-    "curtain",
-    "door",
-    "fridge",
-    "lamp",
-    "mirror",
-    "pillow",
-    "range_hood",
-    "shelf",
-    "sink",
-    "sofa",
-    "table",
-    "toilet",
-    "tv",
-    "vase",
-    "washing_machine",
-    "window",
-)
-YOLO_CLASS_TO_ID: dict[str, int] = {name: index for index, name in enumerate(YOLO_CLASS_NAMES)}
+from ..taxonomy import YOLO_CLASS_NAMES, YOLO_CLASS_TO_ID
+
 RAW_CLASS_TO_YOLO_CLASS: dict[str, str] = {
     "bed": "bed",
     "basin": "sink",

@@ -8,6 +8,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from ..taxonomy import normalize_detector_class_name
 from .base import DetectionResult, DetectorBackend, DetectorInfo
 from .capabilities import DetectorRuntimeReport
 
@@ -310,13 +311,20 @@ class UltralyticsYoloDetector(DetectorBackend):
                 centroid = ((bbox[0] + bbox[2]) * 0.5, (bbox[1] + bbox[3]) * 0.5)
 
             class_id = int(cls_tensor[index].item()) if index < cls_tensor.shape[0] else 0
+            raw_model_class_name = str(names.get(class_id, "")).strip() if class_id in names else ""
             class_name = self._resolve_class_name(class_id, names=names, metadata=metadata)
+            if class_name == "":
+                skipped_label = raw_model_class_name or str((metadata or {}).get("target_class_hint", "")).strip() or f"class_{class_id}"
+                self._append_warning_once(f"unsupported detector class skipped: {skipped_label}")
+                continue
             detection_metadata: dict[str, Any] = {
                 "backend": "ultralytics_yolo",
                 "class_id": class_id,
                 "model_path": self.model_path,
                 "model_format": self.model_format,
             }
+            if raw_model_class_name != "":
+                detection_metadata["raw_model_class_name"] = raw_model_class_name
             if mask_areas is not None and index < mask_areas.shape[0]:
                 detection_metadata["mask_area_px"] = int(mask_areas[index].item())
             output.append(
@@ -424,11 +432,15 @@ class UltralyticsYoloDetector(DetectorBackend):
     @staticmethod
     def _resolve_class_name(class_id: int, *, names: dict[int, str], metadata: dict[str, Any] | None) -> str:
         if class_id in names and str(names[class_id]).strip() != "":
-            return str(names[class_id])
+            return normalize_detector_class_name(str(names[class_id]))
         fallback = str((metadata or {}).get("target_class_hint", "")).strip()
         if fallback != "":
-            return fallback
-        return f"class_{class_id}"
+            return normalize_detector_class_name(fallback)
+        return ""
+
+    def _append_warning_once(self, message: str) -> None:
+        if message not in self._report.warnings:
+            self._report.warnings.append(message)
 
     def _format_runtime_error(self) -> str:
         issues = [*self._report.errors, *self._report.warnings]
