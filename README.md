@@ -142,6 +142,33 @@ Isaac 환경 호환성, D455 센서 마운트, perception ingress, memory ingres
 - `tests`: 단위/통합 테스트
 - `media`: 데모 자료
 
+## Room Scene Builder
+
+`datasets/InteriorAgent/kujiale_0003/kujiale_0003.usda`를 바로 열어도 되지만, YOLO 데이터 생성 전에는 방 단위 USDA로 먼저 쪼개서 쓰는 편이 더 가볍습니다.
+
+1. 방 단위 scene 생성
+
+```bash
+python -m inference.training.usda_room_scene_builder build \
+  --source-usda datasets/InteriorAgent/kujiale_0003/kujiale_0003.usda \
+  --source-rooms-json datasets/InteriorAgent/kujiale_0003/rooms.json
+```
+
+기본 출력은 `datasets/InteriorAgent/kujiale_0003/room_scenes/<room_scope>.usda`와 대응하는 `<room_scope>.rooms.json`입니다.
+
+2. 생성된 방 scene으로 기존 YOLO build 실행
+
+```bash
+python -m inference.training.usda_yolo_dataset build \
+  --output-dir artifacts/datasets/livingroom_767839_yolo \
+  --scene-usda datasets/InteriorAgent/kujiale_0003/room_scenes/livingroom_767839.usda \
+  --rooms-json datasets/InteriorAgent/kujiale_0003/room_scenes/livingroom_767839.rooms.json \
+  --occupancy-image "datasets/InteriorAgent/kujiale_0003/occupancy map.png" \
+  --config-path datasets/InteriorAgent/kujiale_0003/config.txt
+```
+
+이 흐름은 기존 YOLO/YOLO-seg builder 인터페이스를 바꾸지 않고, 입력 scene만 room-scoped USDA로 바꿔 쓰는 방식입니다.
+
 ## 관련 문서
 
 - [RUNNING.md](./RUNNING.md): 실행 경로와 PowerShell 예시

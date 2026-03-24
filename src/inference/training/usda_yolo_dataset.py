@@ -85,8 +85,8 @@ MIN_BBOX_HEIGHT_PX = 12
 MIN_BBOX_AREA_PX = 256
 MAX_OCCLUSION_RATIO = 0.70
 MANIFEST_SCHEMA_VERSION = "usda_yolo_v1"
-_HEADER_RE = re.compile(r'^(def Scope|def Xform|over)\s+"([^"]+)"')
-_REFERENCE_RE = re.compile(r"@\.\/Meshes\/(.+?)\.usd@")
+_HEADER_RE = re.compile(r'^(def Scope|def Xform|def|over)\s+"([^"]+)"')
+_REFERENCE_RE = re.compile(r"@(?P<asset_path>[^@]*?Meshes/(?P<mesh_rel>.+?)\.usd)@")
 _RAW_CLASS_RE = re.compile(r"^(.+)_([0-9]{4})$")
 _VEC3_RE = re.compile(r"double3\s+xformOp:translate\s*=\s*\(([^)]+)\)")
 _SCALE_RE = re.compile(r"float3\s+xformOp:scale\s*=\s*\(([^)]+)\)")
@@ -249,7 +249,15 @@ def _iter_usda_blocks(lines: list[str], path: tuple[tuple[str, str], ...] = ()) 
             index += 1
             continue
         kind_token, name = match.groups()
-        kind = "Scope" if kind_token == "def Scope" else "Xform" if kind_token == "def Xform" else "Over"
+        kind = (
+            "Scope"
+            if kind_token == "def Scope"
+            else "Xform"
+            if kind_token == "def Xform"
+            else "Def"
+            if kind_token == "def"
+            else "Over"
+        )
         header_lines = [lines[index]]
         brace_balance = lines[index].count("{") - lines[index].count("}")
         index += 1
@@ -348,8 +356,8 @@ def _collect_scene_inventory(scene_usda_path: str | Path, *, rooms_json_path: st
         reference_match = _REFERENCE_RE.search(block.header_text)
         if reference_match is None:
             continue
-        mesh_name = reference_match.group(1)
-        raw_class_match = _RAW_CLASS_RE.match(Path(mesh_name).name)
+        mesh_rel = reference_match.group("mesh_rel").replace("\\", "/")
+        raw_class_match = _RAW_CLASS_RE.match(Path(mesh_rel).name)
         if raw_class_match is None:
             continue
         raw_class_name = raw_class_match.group(1)
@@ -376,7 +384,7 @@ def _collect_scene_inventory(scene_usda_path: str | Path, *, rooms_json_path: st
                 room_polygon=tuple(room_polygon),
                 prim_path=prim_path,
                 object_name=block.name,
-                mesh_path=f"Meshes/{mesh_name}.usd",
+                mesh_path=f"Meshes/{mesh_rel}.usd",
                 raw_class_name=raw_class_name,
                 class_name=class_name,
                 translation_xyz=(float(translation[0]), float(translation[1]), float(translation[2])),
