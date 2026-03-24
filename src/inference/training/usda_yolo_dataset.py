@@ -73,6 +73,9 @@ DEFAULT_TEST_COUNT = 40
 DEFAULT_IMAGE_WIDTH = 640
 DEFAULT_IMAGE_HEIGHT = 640
 DEFAULT_SEED = 7
+IMAGE_FILE_SUFFIX = ".jpg"
+JPEG_QUALITY = 95
+JPEG_SUBSAMPLING = 0
 RENDER_MODE = "PathTracing"
 DLSS_EXEC_MODE = 2
 PATH_TRACING_SPP = 32
@@ -617,7 +620,13 @@ def _write_label_file(path: Path, boxes: list[dict[str, Any]]) -> None:
 
 def _write_image(path: Path, image_rgb: np.ndarray) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    Image.fromarray(np.asarray(image_rgb, dtype=np.uint8), mode="RGB").save(path)
+    Image.fromarray(np.asarray(image_rgb, dtype=np.uint8), mode="RGB").save(
+        path,
+        format="JPEG",
+        quality=JPEG_QUALITY,
+        subsampling=JPEG_SUBSAMPLING,
+        optimize=True,
+    )
 
 
 def _relative_path(path: Path, root: Path) -> str:
@@ -717,6 +726,7 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> None:
             "",
             "- Ultralytics config file: `data.yaml`",
             "- Labels use normalized YOLO `class_id cx cy w h` format.",
+            f"- RGB images are stored as `{IMAGE_FILE_SUFFIX}` JPEG files.",
         ]
     )
     (root / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -1365,7 +1375,7 @@ def build_yolo_dataset(
                 if not kept_boxes:
                     continue
                 stem = f"{split}_{produced_count:05d}"
-                image_path = root / "images" / split / f"{stem}.png"
+                image_path = root / "images" / split / f"{stem}{IMAGE_FILE_SUFFIX}"
                 label_path = root / "labels" / split / f"{stem}.txt"
                 _write_image(image_path, rendered.rgb_image)
                 _write_label_file(label_path, kept_boxes)
@@ -1485,7 +1495,7 @@ def validate_yolo_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         image_dir = root / "images" / split
         label_dir = root / "labels" / split
         metadata_path = root / "metadata" / f"{split}.jsonl"
-        image_files = sorted(image_dir.glob("*.png")) if image_dir.exists() else []
+        image_files = sorted(image_dir.glob(f"*{IMAGE_FILE_SUFFIX}")) if image_dir.exists() else []
         label_files = sorted(label_dir.glob("*.txt")) if label_dir.exists() else []
         image_stems = {path.stem for path in image_files}
         label_stems = {path.stem for path in label_files}

@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -143,6 +144,11 @@ def test_build_yolo_dataset_with_fake_renderer_and_validate(tmp_path: Path, monk
     assert (dataset_dir / "data.yaml").exists()
     assert (dataset_dir / "classes.txt").exists()
     assert (dataset_dir / "metadata" / "train.jsonl").exists()
+    train_metadata = dataset_mod.load_jsonl_records(dataset_dir / "metadata" / "train.jsonl")
+    train_image = dataset_dir / train_metadata[0]["image_path"]
+    assert train_image.suffix == dataset_mod.IMAGE_FILE_SUFFIX
+    with Image.open(train_image) as image:
+        assert image.format == "JPEG"
 
     validation = dataset_mod.validate_yolo_dataset(dataset_dir)
     assert validation["manifest_errors"] == []

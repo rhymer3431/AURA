@@ -247,6 +247,7 @@ def _write_readme(root: Path, manifest: dict[str, Any]) -> None:
             "",
             "- Ultralytics config file: `data.yaml`",
             "- Labels use YOLO-seg polygon format: `class_id x1 y1 x2 y2 ...`.",
+            f"- RGB images are stored as `{detection.IMAGE_FILE_SUFFIX}` JPEG files.",
         ]
     )
     (root / "README.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -572,7 +573,7 @@ def build_yolo_seg_dataset(
                     for segment in kept_segments
                 )
                 stem = f"{split}_{produced_count:05d}"
-                image_path = root / "images" / split / f"{stem}.png"
+                image_path = root / "images" / split / f"{stem}{detection.IMAGE_FILE_SUFFIX}"
                 label_path = root / "labels" / split / f"{stem}.txt"
                 detection._write_image(image_path, rendered.rgb_image)
                 _write_label_file(label_path, kept_segments)
@@ -692,7 +693,7 @@ def validate_yolo_seg_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         image_dir = root / "images" / split
         label_dir = root / "labels" / split
         metadata_path = root / "metadata" / f"{split}.jsonl"
-        image_files = sorted(image_dir.glob("*.png")) if image_dir.exists() else []
+        image_files = sorted(image_dir.glob(f"*{detection.IMAGE_FILE_SUFFIX}")) if image_dir.exists() else []
         label_files = sorted(label_dir.glob("*.txt")) if label_dir.exists() else []
         image_stems = {path.stem for path in image_files}
         label_stems = {path.stem for path in label_files}
