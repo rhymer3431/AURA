@@ -73,6 +73,13 @@ DEFAULT_TEST_COUNT = 40
 DEFAULT_IMAGE_WIDTH = 640
 DEFAULT_IMAGE_HEIGHT = 640
 DEFAULT_SEED = 7
+RENDER_MODE = "PathTracing"
+DLSS_EXEC_MODE = 2
+PATH_TRACING_SPP = 32
+PATH_TRACING_TOTAL_SPP = 32
+PATH_TRACING_DENOISER_ENABLED = 1
+PATH_TRACING_SETTLE_UPDATES = 40
+REALTIME_SETTLE_UPDATES = 16
 CAMERA_RADIUS_MIN_M = 1.2
 CAMERA_RADIUS_MAX_M = 3.0
 CAMERA_HEIGHT_M = 1.45
@@ -792,6 +799,7 @@ class _IsaacYoloRenderer:
         self._timeline = None
         self._usd_bbox_cache = None
         self._initialized = False
+        self._render_mode = RENDER_MODE
         self._simulation_app_class = self._resolve_simulation_app_class()
         self._camera_class = None
         self._semantics_add = None
@@ -884,6 +892,8 @@ class _IsaacYoloRenderer:
         _debug_trace("isaac_setup_start", scene_usda_path=self._scene_usda_path.as_posix())
         self._sim_app = self._simulation_app_class({"headless": True, "renderer": "RayTracedLighting"})
         _debug_trace("isaac_setup_after_sim_app")
+        self._configure_render_quality()
+        _debug_trace("isaac_setup_after_configure_render_quality", render_mode=self._render_mode)
         self._enable_camera_extension()
         _debug_trace("isaac_setup_after_enable_camera_extension")
         self._camera_class = self._resolve_camera_class()
@@ -934,6 +944,27 @@ class _IsaacYoloRenderer:
         _debug_trace("isaac_setup_after_create_camera")
         self._initialized = True
         _debug_trace("isaac_setup_complete")
+
+    def _configure_render_quality(self) -> None:
+        try:
+            import carb
+        except Exception:  # noqa: BLE001
+            return
+        settings = carb.settings.get_settings()
+        if settings is None:
+            return
+        settings.set("rtx/post/dlss/execMode", int(DLSS_EXEC_MODE))
+        settings.set("/omni/replicator/captureOnPlay", False)
+        settings.set("/omni/replicator/asyncRendering", False)
+        settings.set("/app/asyncRendering", False)
+        if self._render_mode == "PathTracing":
+            settings.set("/rtx/rendermode", "PathTracing")
+            settings.set("/rtx/pathtracing/spp", int(PATH_TRACING_SPP))
+            settings.set("/rtx/pathtracing/totalSpp", int(PATH_TRACING_TOTAL_SPP))
+            settings.set("/rtx/pathtracing/optixDenoiser/enabled", int(PATH_TRACING_DENOISER_ENABLED))
+        else:
+            settings.set("/rtx/rendermode", "RayTracedLighting")
+            settings.set("/rtx/post/aa/op", 3)
 
     def _apply_semantics(self) -> None:
         assert self._stage is not None
@@ -996,13 +1027,20 @@ class _IsaacYoloRenderer:
             resume()
         if self._timeline is not None:
             self._timeline.play()
-        max_updates = max(8, int(frame_count) * 4)
+        if self._render_mode == "PathTracing":
+            max_updates = max(int(PATH_TRACING_SETTLE_UPDATES), int(frame_count) * 4)
+        else:
+            max_updates = max(int(REALTIME_SETTLE_UPDATES), int(frame_count) * 4)
+        latest_valid = None
         for _ in range(max_updates):
             self._sim_app.update()
             rgba = getattr(self._camera, "get_rgba", lambda: None)()
             array = self._coerce_array(rgba)
             if array is not None and array.ndim == 3 and array.shape[-1] >= 3 and array.size > 0:
-                return
+                latest_valid = array
+                if self._render_mode != "PathTracing":
+                    return
+        return latest_valid
 
     @staticmethod
     def _coerce_array(value: Any) -> np.ndarray | None:
