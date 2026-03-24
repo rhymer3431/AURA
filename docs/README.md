@@ -20,6 +20,8 @@
   - A-F 단계별 변경 요약
 - [architecture/SYSTEM_DIAGRAM_STRUCTURE.md](./architecture/SYSTEM_DIAGRAM_STRUCTURE.md)
   - 다이어그램 작성용 시스템 구조, 노드/엣지, control/observability 흐름
+- [architecture/SYSTEM2_TALK_NAV_LORA_DESIGN.md](./architecture/SYSTEM2_TALK_NAV_LORA_DESIGN.md)
+  - 단일 VLM 기준 TALK/NAV 라우팅, 프롬프트, LoRA 데이터셋/학습 설계
 
 문서 원칙:
 
