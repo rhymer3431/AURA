@@ -107,7 +107,7 @@ def test_segment_matches_target_prim_accepts_same_or_child_path() -> None:
     )
 
 
-def test_boost_rgb_brightness_increases_values_and_clips() -> None:
+def test_tone_map_rgb_image_applies_srgb_curve_and_clips() -> None:
     rgb = np.asarray(
         [
             [[10, 20, 30], [200, 220, 240]],
@@ -115,11 +115,11 @@ def test_boost_rgb_brightness_increases_values_and_clips() -> None:
         dtype=np.uint8,
     )
 
-    boosted = dataset_mod._boost_rgb_brightness(rgb, gain=3.5)
+    tone_mapped = dataset_mod._tone_map_rgb_image(rgb, exposure_gain=1.5)
 
-    assert boosted.dtype == np.uint8
-    assert boosted[0, 0].tolist() == [35, 70, 105]
-    assert boosted[0, 1].tolist() == [255, 255, 255]
+    assert tone_mapped.dtype == np.uint8
+    assert tone_mapped[0, 0].tolist() == [69, 96, 117]
+    assert tone_mapped[0, 1].tolist() == [255, 255, 255]
 
 
 def test_mask_to_largest_polygon_extracts_largest_component() -> None:

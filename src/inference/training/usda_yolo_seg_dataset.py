@@ -30,7 +30,7 @@ MIN_BBOX_AREA_PX = detection.MIN_BBOX_AREA_PX
 CONTOUR_APPROX_RATIO = 0.0025
 MIN_CONTOUR_AREA_PX = 8.0
 MANIFEST_SCHEMA_VERSION = "usda_yolo_seg_v1"
-RGB_BRIGHTNESS_GAIN = 3.5
+RGB_EXPOSURE_GAIN = 1.5
 
 
 def _repo_root() -> Path:
@@ -139,11 +139,25 @@ def _mask_to_largest_polygon(mask: np.ndarray) -> tuple[tuple[tuple[int, int], .
     return polygon_xy, bbox_xyxy
 
 
-def _boost_rgb_brightness(rgb_image: np.ndarray, *, gain: float = RGB_BRIGHTNESS_GAIN) -> np.ndarray:
-    if float(gain) <= 0.0:
-        raise ValueError(f"gain must be positive, got {gain}")
-    boosted = np.asarray(rgb_image, dtype=np.float32) * float(gain)
-    return np.clip(np.rint(boosted), 0.0, 255.0).astype(np.uint8)
+def _tone_map_rgb_image(image: Any, *, exposure_gain: float = RGB_EXPOSURE_GAIN) -> np.ndarray:
+    if float(exposure_gain) <= 0.0:
+        raise ValueError(f"exposure_gain must be positive, got {exposure_gain}")
+    array = np.asarray(image)
+    if array.ndim != 3 or array.shape[-1] < 3:
+        raise ValueError(f"RGB image must have at least 3 channels, got shape={array.shape}")
+    rgb = np.asarray(array[..., :3], dtype=np.float32)
+    max_value = float(np.nanmax(rgb)) if rgb.size > 0 else 0.0
+    if max_value > 1.5:
+        rgb = rgb / 255.0
+    rgb = np.nan_to_num(rgb, nan=0.0, posinf=1.0, neginf=0.0)
+    rgb = np.clip(rgb * float(exposure_gain), 0.0, 1.0)
+    threshold = 0.0031308
+    rgb = np.where(
+        rgb <= threshold,
+        12.92 * rgb,
+        1.055 * np.power(rgb, 1.0 / 2.4) - 0.055,
+    )
+    return np.clip(np.rint(rgb * 255.0), 0.0, 255.0).astype(np.uint8)
 
 
 def _polygon_to_yolo(points_xy: tuple[tuple[int, int], ...], *, image_width: int, image_height: int) -> list[float]:
@@ -466,7 +480,7 @@ class _IsaacYoloSegRenderer(detection._IsaacYoloRenderer):
         instance_map, instance_info, semantic_map, semantic_info = self._capture_segmentation_payloads()
         if rgba is None or instance_map is None:
             return None
-        rgb_image = _boost_rgb_brightness(detection._normalize_rgb_image(rgba))
+        rgb_image = _tone_map_rgb_image(rgba)
         return RenderedSegmentationSample(
             rgb_image=rgb_image,
             segments=self._extract_segments(instance_map, instance_info, semantic_map, semantic_info),
