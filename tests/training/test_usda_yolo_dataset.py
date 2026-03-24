@@ -116,6 +116,11 @@ def test_bbox_helpers_normalize_for_yolo() -> None:
     assert label_line.startswith(f"{dataset_mod.YOLO_CLASS_TO_ID['chair']} ")
 
 
+def test_normalize_dataset_root_text_handles_windows_drive_paths() -> None:
+    normalized = dataset_mod._normalize_dataset_root_text(r"C:\Users\mango\project\isaac-aura\artifacts\dataset")
+    assert normalized == "/mnt/c/Users/mango/project/isaac-aura/artifacts/dataset"
+
+
 def test_build_yolo_dataset_with_fake_renderer_and_validate(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(dataset_mod, "_IsaacYoloRenderer", _FakeIsaacYoloRenderer)
     dataset_dir = tmp_path / "kujiale_0003_yolo"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
 import re
 from collections import Counter, defaultdict
@@ -182,6 +183,17 @@ def _write_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False, default=_json_default) + "\n")
+
+
+def _debug_trace(event: str, **payload: Any) -> None:
+    trace_path = os.environ.get("USDA_YOLO_TRACE_PATH", "").strip()
+    if trace_path == "":
+        return
+    path = Path(trace_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {"event": event, **payload}
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, ensure_ascii=False, default=_json_default) + "\n")
 
 
 def load_jsonl_records(path: str | Path) -> list[dict[str, Any]]:
@@ -649,6 +661,23 @@ def _parse_data_yaml(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _normalize_dataset_root_text(path_text: str | Path, *, base_root: str | Path | None = None) -> str:
+    text = str(path_text).strip().strip("'\"")
+    if text == "":
+        return ""
+    text = text.replace("\\", "/")
+    drive_match = re.match(r"^(?P<drive>[A-Za-z]):(?P<rest>/.*)?$", text)
+    if drive_match:
+        drive = drive_match.group("drive").lower()
+        rest = drive_match.group("rest") or ""
+        return f"/mnt/{drive}{rest}".rstrip("/")
+    if text.startswith("/"):
+        return text.rstrip("/")
+    if base_root is None:
+        return Path(text).resolve().as_posix().rstrip("/")
+    return (Path(base_root).resolve() / text).resolve().as_posix().rstrip("/")
+
+
 def _write_readme(root: Path, manifest: dict[str, Any]) -> None:
     lines = [
         "# USDA YOLO Dataset",
@@ -734,6 +763,8 @@ def _look_at_quaternion(
 
 
 class _IsaacYoloRenderer:
+    _defer_close_until_process_exit = True
+
     def __init__(
         self,
         *,
@@ -749,10 +780,13 @@ class _IsaacYoloRenderer:
         self._sim_app = None
         self._camera = None
         self._stage = None
+        self._syntheticdata = None
+        self._timeline = None
+        self._usd_bbox_cache = None
         self._initialized = False
-        self._camera_class = self._resolve_camera_class()
-        self._semantics_add = self._resolve_semantics_helper()
         self._simulation_app_class = self._resolve_simulation_app_class()
+        self._camera_class = None
+        self._semantics_add = None
         self._setup()
 
     @staticmethod
@@ -774,6 +808,24 @@ class _IsaacYoloRenderer:
             "Isaac Sim Python modules are unavailable. Run this command with Isaac Sim standalone python. "
             + " | ".join(errors)
         )
+
+    @staticmethod
+    def _enable_camera_extension() -> None:
+        try:
+            import omni.kit.app
+        except Exception:  # noqa: BLE001
+            return
+        try:
+            app = omni.kit.app.get_app()
+            if app is None:
+                return
+            ext_mgr = app.get_extension_manager()
+            if ext_mgr is None:
+                return
+            ext_mgr.set_extension_enabled_immediate("isaacsim.sensors.camera", True)
+            ext_mgr.set_extension_enabled_immediate("isaacsim.core.utils", True)
+        except Exception:  # noqa: BLE001
+            return
 
     @staticmethod
     def _resolve_camera_class():
@@ -821,21 +873,36 @@ class _IsaacYoloRenderer:
         )
 
     def _setup(self) -> None:
+        _debug_trace("isaac_setup_start", scene_usda_path=self._scene_usda_path.as_posix())
         self._sim_app = self._simulation_app_class({"headless": True, "renderer": "RayTracedLighting"})
+        _debug_trace("isaac_setup_after_sim_app")
+        self._enable_camera_extension()
+        _debug_trace("isaac_setup_after_enable_camera_extension")
+        self._camera_class = self._resolve_camera_class()
+        _debug_trace("isaac_setup_after_resolve_camera_class", camera_class=repr(self._camera_class))
+        self._semantics_add = self._resolve_semantics_helper()
+        _debug_trace("isaac_setup_after_resolve_semantics_helper", semantics_helper=repr(self._semantics_add))
         try:
+            import omni.timeline
             import omni.usd
         except Exception as exc:  # noqa: BLE001
             self.close()
             raise RuntimeError(
                 "Isaac Sim USD context is unavailable. Run this command with Isaac Sim standalone python."
             ) from exc
+        self._timeline = omni.timeline.get_timeline_interface()
+        self._syntheticdata = getattr(__import__("omni.syntheticdata", fromlist=["sensors"]), "sensors", None)
+        _debug_trace("isaac_setup_after_imports")
         context = omni.usd.get_context()
         if context is None:
             self.close()
             raise RuntimeError("Isaac USD context is unavailable after SimulationApp initialization.")
+        _debug_trace("isaac_setup_after_get_context")
         success = bool(context.open_stage(str(self._scene_usda_path)))
+        _debug_trace("isaac_setup_after_open_stage", success=success)
         for _ in range(12):
             self._sim_app.update()
+        _debug_trace("isaac_setup_after_stage_updates")
         if not success:
             self.close()
             raise RuntimeError(f"Failed to open USDA stage: {self._scene_usda_path}")
@@ -843,12 +910,26 @@ class _IsaacYoloRenderer:
         if self._stage is None:
             self.close()
             raise RuntimeError(f"USD stage is not available after opening: {self._scene_usda_path}")
+        try:
+            from pxr import Usd, UsdGeom
+
+            self._usd_bbox_cache = UsdGeom.BBoxCache(
+                Usd.TimeCode.Default(),
+                includedPurposes=[UsdGeom.Tokens.default_, UsdGeom.Tokens.render, UsdGeom.Tokens.proxy],
+            )
+        except Exception:  # noqa: BLE001
+            self._usd_bbox_cache = None
+        _debug_trace("isaac_setup_after_get_stage")
         self._apply_semantics()
+        _debug_trace("isaac_setup_after_apply_semantics")
         self._create_camera()
+        _debug_trace("isaac_setup_after_create_camera")
         self._initialized = True
+        _debug_trace("isaac_setup_complete")
 
     def _apply_semantics(self) -> None:
         assert self._stage is not None
+        assert self._semantics_add is not None
         for item in self._scene_objects:
             prim = self._stage.GetPrimAtPath(item.prim_path)
             if not prim.IsValid():
@@ -856,10 +937,11 @@ class _IsaacYoloRenderer:
             try:
                 self._semantics_add(prim, labels=[item.class_name], instance_name="class", overwrite=True)
             except TypeError:
-                self._semantics_add(prim, item.class_name, "class")
+                self._semantics_add(prim, [item.class_name], "class")
 
     def _create_camera(self) -> None:
         assert self._stage is not None
+        assert self._camera_class is not None
         camera_prim_path = "/World/YoloDatasetCamera"
         self._stage.DefinePrim(camera_prim_path, "Camera")
         self._camera = self._camera_class(
@@ -867,19 +949,52 @@ class _IsaacYoloRenderer:
             resolution=(self._image_width, self._image_height),
             annotator_device="cpu",
         )
-        add_bbox = getattr(self._camera, "add_bounding_box_2d_tight_to_frame", None)
-        if callable(add_bbox):
-            add_bbox(init_params={"semanticTypes": ["class"]})
         for _ in range(6):
             self._sim_app.update()
         initialize = getattr(self._camera, "initialize", None)
         if callable(initialize):
             initialize()
+        _debug_trace("isaac_create_camera_after_initialize")
+        set_lens_distortion_model = getattr(self._camera, "set_lens_distortion_model", None)
+        if callable(set_lens_distortion_model):
+            set_lens_distortion_model("pinhole")
+        render_product_path = None
+        get_render_product_path = getattr(self._camera, "get_render_product_path", None)
+        if callable(get_render_product_path):
+            for _ in range(12):
+                self._sim_app.update()
+                render_product_path = get_render_product_path()
+                if render_product_path:
+                    break
+        if not render_product_path:
+            raise RuntimeError("Isaac camera render product path is unavailable after initialize().")
+        _debug_trace("isaac_create_camera_after_render_product", render_product_path=str(render_product_path))
         add_bbox = getattr(self._camera, "add_bounding_box_2d_tight_to_frame", None)
         if callable(add_bbox):
             add_bbox(init_params={"semanticTypes": ["class"]})
+        resume = getattr(self._camera, "resume", None)
+        if callable(resume):
+            resume()
+        if self._timeline is not None:
+            self._timeline.play()
         for _ in range(6):
             self._sim_app.update()
+
+    def _wait_for_render(self, frame_count: int = 10) -> None:
+        if self._camera is None:
+            return
+        resume = getattr(self._camera, "resume", None)
+        if callable(resume):
+            resume()
+        if self._timeline is not None:
+            self._timeline.play()
+        max_updates = max(8, int(frame_count) * 4)
+        for _ in range(max_updates):
+            self._sim_app.update()
+            rgba = getattr(self._camera, "get_rgba", lambda: None)()
+            array = self._coerce_array(rgba)
+            if array is not None and array.ndim == 3 and array.shape[-1] >= 3 and array.size > 0:
+                return
 
     @staticmethod
     def _coerce_array(value: Any) -> np.ndarray | None:
@@ -964,6 +1079,63 @@ class _IsaacYoloRenderer:
             return candidate.split(",")[-1].strip() or None
         return None
 
+    def _project_world_bbox(self, target_object: SceneObjectRecord) -> tuple[int, int, int, int] | None:
+        if self._stage is None or self._camera is None or self._usd_bbox_cache is None:
+            return None
+        try:
+            prim = self._stage.GetPrimAtPath(target_object.prim_path)
+            if not prim.IsValid():
+                _debug_trace("isaac_project_bbox_invalid_prim", target_prim_path=target_object.prim_path)
+                return None
+            image_coords_from_world = getattr(self._camera, "get_image_coords_from_world_points", None)
+            if not callable(image_coords_from_world):
+                _debug_trace("isaac_project_bbox_missing_projection", target_prim_path=target_object.prim_path)
+                return None
+            world_bound = self._usd_bbox_cache.ComputeWorldBound(prim)
+            aligned_box = world_bound.ComputeAlignedBox()
+            min_point = aligned_box.GetMin()
+            max_point = aligned_box.GetMax()
+            corners = np.asarray(
+                [
+                    [min_point[0], min_point[1], min_point[2]],
+                    [min_point[0], min_point[1], max_point[2]],
+                    [min_point[0], max_point[1], min_point[2]],
+                    [min_point[0], max_point[1], max_point[2]],
+                    [max_point[0], min_point[1], min_point[2]],
+                    [max_point[0], min_point[1], max_point[2]],
+                    [max_point[0], max_point[1], min_point[2]],
+                    [max_point[0], max_point[1], max_point[2]],
+                ],
+                dtype=np.float32,
+            )
+            image_points = np.asarray(image_coords_from_world(corners), dtype=np.float32)
+            if image_points.ndim != 2 or image_points.shape[0] == 0 or image_points.shape[1] < 2:
+                _debug_trace(
+                    "isaac_project_bbox_invalid_points",
+                    target_prim_path=target_object.prim_path,
+                    image_points_shape=list(image_points.shape),
+                )
+                return None
+            if not np.isfinite(image_points[:, :2]).all():
+                _debug_trace(
+                    "isaac_project_bbox_nonfinite_points",
+                    target_prim_path=target_object.prim_path,
+                    min_point=[float(value) for value in min_point],
+                    max_point=[float(value) for value in max_point],
+                )
+                return None
+            x_values = image_points[:, 0]
+            y_values = image_points[:, 1]
+            return (
+                int(math.floor(float(np.min(x_values)))),
+                int(math.floor(float(np.min(y_values)))),
+                int(math.ceil(float(np.max(x_values)))),
+                int(math.ceil(float(np.max(y_values)))),
+            )
+        except Exception:  # noqa: BLE001
+            _debug_trace("isaac_project_bbox_exception", target_prim_path=target_object.prim_path)
+            return None
+
     def render_sample(
         self,
         target_object: SceneObjectRecord,
@@ -978,13 +1150,50 @@ class _IsaacYoloRenderer:
         if not callable(set_world_pose):
             raise RuntimeError("Isaac Camera.set_world_pose is unavailable.")
         set_world_pose(position=np.asarray(camera_position_xyz, dtype=np.float32), orientation=np.asarray(orientation, dtype=np.float32))
-        for _ in range(4):
-            self._sim_app.update()
+        self._wait_for_render(frame_count=10)
         rgba = getattr(self._camera, "get_rgba", lambda: None)()
         bbox_data, bbox_info = self._capture_bbox_payload()
         if rgba is None or bbox_data is None:
+            projected_bbox = None if rgba is None else self._project_world_bbox(target_object)
+            if rgba is not None and projected_bbox is not None:
+                rgb_image = _normalize_rgb_image(rgba)
+                _debug_trace(
+                    "isaac_render_sample_projected_bbox_fallback",
+                    target_prim_path=target_object.prim_path,
+                    bbox_xyxy=list(projected_bbox),
+                    rgb_shape=list(rgb_image.shape),
+                )
+                return RenderedSample(
+                    rgb_image=rgb_image,
+                    bounding_boxes=(
+                        RenderedBoundingBox(
+                            class_name=target_object.class_name,
+                            prim_path=target_object.prim_path,
+                            x_min=int(projected_bbox[0]),
+                            y_min=int(projected_bbox[1]),
+                            x_max=int(projected_bbox[2]),
+                            y_max=int(projected_bbox[3]),
+                            occlusion_ratio=None,
+                        ),
+                    ),
+                    camera_position_xyz=tuple(float(value) for value in camera_position_xyz),
+                    look_at_xyz=tuple(float(value) for value in look_at_xyz),
+                )
+            _debug_trace(
+                "isaac_render_sample_empty",
+                target_prim_path=target_object.prim_path,
+                rgba_is_none=rgba is None,
+                bbox_is_none=bbox_data is None,
+                bbox_info_keys=sorted(str(key) for key in bbox_info.keys()),
+            )
             return None
         rgb_image = _normalize_rgb_image(rgba)
+        _debug_trace(
+            "isaac_render_sample_ready",
+            target_prim_path=target_object.prim_path,
+            rgb_shape=list(rgb_image.shape),
+            bbox_rows=int(len(bbox_data)),
+        )
         boxes: list[RenderedBoundingBox] = []
         for row in bbox_data:
             semantic_id = int(row["semanticId"]) if "semanticId" in row.dtype.names else int(row[0])
@@ -1138,9 +1347,12 @@ def build_yolo_dataset(
                     f"after {attempts} attempts"
                 )
     finally:
-        close = getattr(renderer, "close", None)
-        if callable(close):
-            close()
+        # Isaac standalone terminates subsequent Python execution on SimulationApp.close().
+        # Defer cleanup to interpreter shutdown so the dataset files can still be written.
+        if not bool(getattr(renderer, "_defer_close_until_process_exit", False)):
+            close = getattr(renderer, "close", None)
+            if callable(close):
+                close()
 
     for split, records in metadata_by_split.items():
         _write_jsonl(root / "metadata" / f"{split}.jsonl", records)
@@ -1207,7 +1419,9 @@ def validate_yolo_dataset(dataset_dir: str | Path) -> dict[str, Any]:
         try:
             data_yaml = _parse_data_yaml(data_yaml_path)
             expected_names = {index: name for index, name in enumerate(YOLO_CLASS_NAMES)}
-            if data_yaml.get("path", "") != root.as_posix():
+            actual_data_root = _normalize_dataset_root_text(data_yaml.get("path", ""), base_root=root)
+            expected_data_root = _normalize_dataset_root_text(root.as_posix())
+            if actual_data_root != expected_data_root:
                 summary["data_yaml_errors"].append(f"data.yaml path mismatch: {data_yaml.get('path')!r}")
             for key, expected in (("train", "images/train"), ("val", "images/val"), ("test", "images/test")):
                 if data_yaml.get(key) != expected:
