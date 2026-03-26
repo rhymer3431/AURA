@@ -1,4 +1,4 @@
-const DEFAULT_DESKTOP_API_BASE = "http://127.0.0.1:8095";
+const DEFAULT_DESKTOP_API_BASE = "http://127.0.0.1:18095";
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");

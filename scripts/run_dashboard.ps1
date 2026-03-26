@@ -95,7 +95,7 @@ function Resolve-BackendHealthUrl {
     )
 
     $HostValue = "127.0.0.1"
-    $PortValue = "8095"
+    $PortValue = "18095"
     for ($Index = 0; $Index -lt $Values.Count; $Index += 1) {
         $Value = [string]$Values[$Index]
         if ($Value -eq "--host" -and $Index + 1 -lt $Values.Count) {
@@ -130,7 +130,7 @@ function Resolve-BackendBinding {
     )
 
     $HostValue = "127.0.0.1"
-    $PortValue = 8095
+    $PortValue = 18095
     for ($Index = 0; $Index -lt $Values.Count; $Index += 1) {
         $Value = [string]$Values[$Index]
         if ($Value -eq "--host" -and $Index + 1 -lt $Values.Count) {

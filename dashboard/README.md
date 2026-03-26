@@ -12,10 +12,10 @@
 
 이 런처는 다음을 함께 실행합니다.
 
-- Python `aiohttp` dashboard backend (`http://127.0.0.1:8095`)
+- Python `aiohttp` dashboard backend (`http://127.0.0.1:18095`)
 - Tauri desktop app (`npm run tauri:dev`)
 
-런처는 이제 backend `http://127.0.0.1:8095/api/bootstrap` 가 준비된 뒤에 Tauri를 시작합니다. 따라서 full-stack 실행에서는 백엔드가 아직 뜨지 않은 순간의 Vite mock fallback으로 대시보드가 먼저 고정되는 문제를 줄입니다.
+런처는 이제 backend `http://127.0.0.1:18095/api/bootstrap` 가 준비된 뒤에 Tauri를 시작합니다. 따라서 full-stack 실행에서는 백엔드가 아직 뜨지 않은 순간의 Vite mock fallback으로 대시보드가 먼저 고정되는 문제를 줄입니다.
 
 ## Frontend-only commands
 
@@ -30,7 +30,7 @@ npm run test:run
 
 `npm run tauri:dev` now auto-selects the next available localhost port when `127.0.0.1:5173` is already occupied. Set `AURA_DASHBOARD_DEV_PORT` if you need to pin a different preferred dev port.
 
-`npm run dev` now falls back to a lightweight mock `/api` surface when the dashboard backend is not listening on `127.0.0.1:8095`. This keeps the React shell usable for UI work instead of flooding Vite with `ECONNREFUSED` proxy errors.
+`npm run dev` now falls back to a lightweight mock `/api` surface when the dashboard backend is not listening on `127.0.0.1:18095`. This keeps the React shell usable for UI work instead of flooding Vite with `ECONNREFUSED` proxy errors.
 
 For a live backend during browser development:
 
@@ -55,5 +55,5 @@ This dashboard now vendors the upstream `Dammyjay93/interface-design` frontend s
 ## Notes
 
 - 브라우저 dev server 기본 포트는 `http://127.0.0.1:5173` 이지만, 해당 포트가 이미 사용 중이면 `npm run tauri:dev` 는 다음 사용 가능한 localhost 포트로 자동 이동합니다.
-- packaged Tauri 앱은 backend를 `http://127.0.0.1:8095` 로 직접 호출합니다.
+- packaged Tauri 앱은 backend를 `http://127.0.0.1:18095` 로 직접 호출합니다.
 - Windows에서 Tauri를 실행하려면 Rust toolchain이 필요합니다.

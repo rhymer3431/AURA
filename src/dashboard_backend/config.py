@@ -9,7 +9,7 @@ from webrtc.config import DEFAULT_CORS_ORIGINS, IceServerConfig, normalize_cors_
 @dataclass(frozen=True)
 class DashboardBackendConfig:
     host: str = "127.0.0.1"
-    port: int = 8095
+    port: int = 18095
     repo_root: Path = Path(".")
     dashboard_dir: Path = Path("dashboard")
     dev_origin: str = "http://127.0.0.1:5173"

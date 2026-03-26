@@ -8,9 +8,9 @@ const mockContext: any = {
     executionModes: ["TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE"],
     launchModes: ["gui", "headless"],
     scenePresets: ["warehouse", "interior agent kujiale 3"],
-    apiBaseUrl: "http://127.0.0.1:8095",
+    apiBaseUrl: "http://127.0.0.1:18095",
     devOrigin: "",
-    webrtcBasePath: "http://127.0.0.1:8095/api/webrtc",
+    webrtcBasePath: "http://127.0.0.1:18095/api/webrtc",
   },
   state: {
     timestamp: 0,

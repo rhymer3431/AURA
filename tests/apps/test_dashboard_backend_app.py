@@ -89,15 +89,15 @@ class _FakeProcessManager:
 class _FakeControlClient:
     def __init__(self) -> None:
         self.submitted: list[str] = []
-        self.cancel_count = 0
+        self.idle_count = 0
 
     def submit_task(self, instruction: str) -> TaskRequest:
         self.submitted.append(instruction)
         return TaskRequest(command_text=instruction)
 
-    def cancel_interactive_task(self) -> RuntimeControlRequest:
-        self.cancel_count += 1
-        return RuntimeControlRequest(action="cancel_interactive_task")
+    def set_idle(self) -> RuntimeControlRequest:
+        self.idle_count += 1
+        return RuntimeControlRequest(action="set_idle")
 
     def transport_health_snapshot(self) -> dict[str, object]:
         return {"control_endpoint": "tcp://127.0.0.1:5580", "telemetry_endpoint": "tcp://127.0.0.1:5581"}
@@ -176,7 +176,7 @@ class _FakeStateAggregator:
                     "summary": "task idle" if request is None else "task active",
                     "detail": "",
                     "required": True,
-                    "metrics": {"mode": "idle" if request is None else request.planner_mode},
+                    "metrics": {"mode": "idle" if request is None else "session_active"},
                     "core": {
                         "worldStateStore": {"name": "World State Store", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
                         "decisionEngine": {"name": "Decision Engine", "status": "ok", "summary": "ready", "detail": "", "required": True, "metrics": {}},
@@ -190,10 +190,10 @@ class _FakeStateAggregator:
                     "memory": {"name": "Memory", "status": "inactive", "summary": "No active memory task", "detail": "", "required": False, "metrics": {}},
                     "s2": {
                         "name": "S2",
-                        "status": "not_required" if request is None or request.planner_mode == "pointgoal" else "ok",
+                        "status": "not_required" if request is None else "ok",
                         "summary": "",
                         "detail": "",
-                        "required": request is not None and request.planner_mode == "interactive",
+                        "required": request is not None,
                         "metrics": {},
                     },
                     "nav": {"name": "Nav", "status": "ok" if request is not None else "inactive", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
@@ -203,7 +203,7 @@ class _FakeStateAggregator:
             },
             "services": {
                 "navdp": {"name": "navdp", "status": "ok"},
-                "dual": {"name": "dual", "status": "not_required" if request is None or request.planner_mode == "pointgoal" else "ok"},
+                "dual": {"name": "dual", "status": "not_required" if request is None else "ok"},
                 "system2": next(item for item in processes if item["name"] == "system2"),
             },
             "transport": {"viewerEnabled": False if request is None else request.viewer_enabled},
@@ -226,7 +226,7 @@ def test_parse_args_exposes_dashboard_defaults() -> None:
     args = parse_args([])
 
     assert args.host == "127.0.0.1"
-    assert args.port == 8095
+    assert args.port == 18095
     assert args.allow_origin == []
     assert args.control_endpoint == "tcp://127.0.0.1:5580"
     assert args.telemetry_endpoint == "tcp://127.0.0.1:5581"
@@ -309,7 +309,6 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                     f"http://127.0.0.1:{port}/api/session/start",
                     headers={"Origin": "tauri://localhost"},
                     json={
-                        "plannerMode": "interactive",
                         "launchMode": "gui",
                         "scenePreset": "warehouse",
                         "viewerEnabled": True,
@@ -327,7 +326,8 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert response.status == 200
                 started = await response.json()
                 assert started["session"]["active"] is True
-                assert started["session"]["config"]["plannerMode"] == "interactive"
+                assert started["session"]["config"]["launchMode"] == "gui"
+                assert started["session"]["config"]["scenePreset"] == "warehouse"
                 assert started["session"]["config"]["locomotionConfig"]["actionScale"] == 0.65
                 assert started["session"]["config"]["locomotionConfig"]["onnxDevice"] == "cuda"
                 assert started["session"]["config"]["locomotionConfig"]["cmdMaxVx"] == 0.8
@@ -351,8 +351,8 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 )
                 assert response.status == 200
                 cancel_body = await response.json()
-                assert cancel_body["action"] == "cancel_interactive_task"
-                assert control_client.cancel_count == 1
+                assert cancel_body["action"] == "set_idle"
+                assert control_client.idle_count == 1
 
                 response = await client.get(
                     f"http://127.0.0.1:{port}/api/webrtc/config",
@@ -416,7 +416,6 @@ def test_dashboard_backend_returns_service_unavailable_when_process_start_fails(
                     f"http://127.0.0.1:{port}/api/session/start",
                     headers={"Origin": "tauri://localhost"},
                     json={
-                        "plannerMode": "interactive",
                         "launchMode": "gui",
                         "scenePreset": "warehouse",
                         "viewerEnabled": True,

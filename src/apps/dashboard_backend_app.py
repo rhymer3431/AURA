@@ -7,7 +7,7 @@ from pathlib import Path
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Local dashboard backend for AURA runtime control and streaming.")
     parser.add_argument("--host", type=str, default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8095)
+    parser.add_argument("--port", type=int, default=18095)
     parser.add_argument("--dashboard-dir", type=str, default="dashboard")
     parser.add_argument("--dev-origin", type=str, default="http://127.0.0.1:5173")
     parser.add_argument("--allow-origin", action="append", default=[])

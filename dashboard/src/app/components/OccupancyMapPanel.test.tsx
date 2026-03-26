@@ -110,7 +110,7 @@ vi.mock("../state", () => ({
 }));
 
 vi.mock("../network", () => ({
-  buildApiUrl: (path: string) => `http://127.0.0.1:8095${path}`,
+  buildApiUrl: (path: string) => `http://127.0.0.1:18095${path}`,
   requestJson: vi.fn().mockResolvedValue({
     available: true,
     scenePreset: "interior agent kujiale 3",

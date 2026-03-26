@@ -4,7 +4,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { buildDevApiFallbackResponse, shouldBypassApiProxy } from './src/app/devApiFallback'
 
-const DEFAULT_PROXY_TARGET = "http://127.0.0.1:8095";
+const DEFAULT_PROXY_TARGET = "http://127.0.0.1:18095";
 const DEFAULT_DEV_PORT = 5173;
 
 function trimTrailingSlash(value: string): string {

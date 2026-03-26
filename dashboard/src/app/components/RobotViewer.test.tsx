@@ -8,9 +8,9 @@ const mockDashboard = {
     plannerModes: ["interactive"],
     launchModes: ["gui"],
     scenePresets: ["warehouse"],
-    apiBaseUrl: "http://127.0.0.1:8095",
+    apiBaseUrl: "http://127.0.0.1:18095",
     devOrigin: "",
-    webrtcBasePath: "http://127.0.0.1:8095/api/webrtc",
+    webrtcBasePath: "http://127.0.0.1:18095/api/webrtc",
   },
   state: {
     timestamp: 0,

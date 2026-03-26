@@ -10,7 +10,7 @@ describe("devApiFallback", () => {
 
   it("returns bootstrap payload for the dashboard shell", () => {
     const response = buildDevApiFallbackResponse({
-      apiBaseUrl: "http://127.0.0.1:8095",
+      apiBaseUrl: "http://127.0.0.1:18095",
       method: "GET",
       requestUrl: "/api/bootstrap",
     });
@@ -18,15 +18,15 @@ describe("devApiFallback", () => {
     expect(response.status).toBe(200);
     expect(response.headers["Content-Type"]).toContain("application/json");
     expect(JSON.parse(response.body)).toMatchObject({
-      apiBaseUrl: "http://127.0.0.1:8095",
-      webrtcBasePath: "http://127.0.0.1:8095/api/webrtc",
+      apiBaseUrl: "http://127.0.0.1:18095",
+      webrtcBasePath: "http://127.0.0.1:18095/api/webrtc",
       plannerModes: ["interactive", "pointgoal"],
     });
   });
 
   it("returns a persistent SSE response for /api/events", () => {
     const response = buildDevApiFallbackResponse({
-      apiBaseUrl: "http://127.0.0.1:8095",
+      apiBaseUrl: "http://127.0.0.1:18095",
       method: "GET",
       requestUrl: "/api/events",
     });
@@ -39,7 +39,7 @@ describe("devApiFallback", () => {
 
   it("returns structured system2 mock state for /api/state", () => {
     const response = buildDevApiFallbackResponse({
-      apiBaseUrl: "http://127.0.0.1:8095",
+      apiBaseUrl: "http://127.0.0.1:18095",
       method: "GET",
       requestUrl: "/api/state",
     });
@@ -58,7 +58,7 @@ describe("devApiFallback", () => {
 
   it("returns a 503 for mutating runtime endpoints while mock mode is active", () => {
     const response = buildDevApiFallbackResponse({
-      apiBaseUrl: "http://127.0.0.1:8095",
+      apiBaseUrl: "http://127.0.0.1:18095",
       method: "POST",
       requestUrl: "/api/session/start",
     });
