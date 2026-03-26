@@ -65,6 +65,18 @@ class _FakeLogTailer:
         return []
 
 
+class _FakeSessionRequest:
+    viewer_enabled = True
+
+    @staticmethod
+    def required_process_names() -> set[str]:
+        return {"navdp", "system2", "dual", "runtime"}
+
+    @staticmethod
+    def to_public_dict() -> dict[str, object]:
+        return {"viewerEnabled": True}
+
+
 def test_state_aggregator_start_cleans_up_client_session_on_refresh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     aggregator = StateAggregator(
         DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
@@ -137,3 +149,132 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     assert state["architecture"]["mainControlServer"]["metrics"]["recoveryState"] == "REPLAN_PENDING"
     assert state["architecture"]["modules"]["s2"]["name"] == "S2"
     assert "dual" not in state["architecture"]["modules"]
+
+
+def test_state_aggregator_normalizes_system2_output_from_dual_debug() -> None:
+    process_manager = _FakeProcessManager()
+    process_manager.current_request = _FakeSessionRequest()
+    process_manager.session_started_at = 100.0
+    process_manager.snapshot = lambda: [  # type: ignore[method-assign]
+        {
+            "name": "system2",
+            "state": "running",
+            "required": True,
+            "pid": 4242,
+            "exitCode": None,
+            "startedAt": 100.0,
+            "healthUrl": "http://127.0.0.1:8080/health",
+            "stdoutLog": "tmp/system2.stdout.log",
+            "stderrLog": "tmp/system2.stderr.log",
+        }
+    ]
+
+    aggregator = StateAggregator(
+        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
+        process_manager=process_manager,
+        subscriber=_FakeSubscriber(),
+        control_client=_FakeControlClient(),
+        session_manager=_FakeSessionManager(),
+        log_tailer=_FakeLogTailer(),
+    )
+    aggregator._service_state["dual"] = {
+        "name": "dual",
+        "status": "ok",
+        "debug": {
+            "instruction": "dock at the charging station",
+            "stats": {
+                "last_s2_reason": "121, 84",
+                "last_s2_requested_stop": False,
+                "last_s2_effective_stop": False,
+                "last_s2_mode": "pixel_goal",
+                "last_s2_history_frame_ids": [17, 21],
+                "last_s2_needs_requery": False,
+                "last_s2_raw_text": "121, 84",
+                "last_s2_latency_ms": 38.5,
+            },
+            "system2_session": {
+                "instruction": "dock at the charging station",
+                "last_output": "121, 84",
+                "last_reason": "121, 84",
+                "last_history_frame_ids": [17, 21],
+                "last_decision_mode": "pixel_goal",
+                "last_needs_requery": False,
+            },
+        },
+    }
+
+    state = aggregator._build_state()
+    system2 = state["services"]["system2"]
+
+    assert system2["status"] == "ok"
+    assert system2["latencyMs"] == 38.5
+    assert system2["output"] == {
+        "rawText": "121, 84",
+        "reason": "121, 84",
+        "decisionMode": "pixel_goal",
+        "needsRequery": False,
+        "historyFrameIds": [17, 21],
+        "requestedStop": False,
+        "effectiveStop": False,
+        "instruction": "dock at the charging station",
+        "latencyMs": 38.5,
+    }
+    assert state["architecture"]["modules"]["s2"]["summary"] == "Decision pixel goal"
+
+
+def test_state_aggregator_keeps_system2_output_null_before_first_decision() -> None:
+    process_manager = _FakeProcessManager()
+    process_manager.current_request = _FakeSessionRequest()
+    process_manager.session_started_at = 100.0
+    process_manager.snapshot = lambda: [  # type: ignore[method-assign]
+        {
+            "name": "system2",
+            "state": "running",
+            "required": True,
+            "pid": 4242,
+            "exitCode": None,
+            "startedAt": 100.0,
+            "healthUrl": "http://127.0.0.1:8080/health",
+            "stdoutLog": "tmp/system2.stdout.log",
+            "stderrLog": "tmp/system2.stderr.log",
+        }
+    ]
+
+    aggregator = StateAggregator(
+        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
+        process_manager=process_manager,
+        subscriber=_FakeSubscriber(),
+        control_client=_FakeControlClient(),
+        session_manager=_FakeSessionManager(),
+        log_tailer=_FakeLogTailer(),
+    )
+    aggregator._service_state["dual"] = {
+        "name": "dual",
+        "status": "ok",
+        "debug": {
+            "instruction": "dock at the charging station",
+            "stats": {
+                "last_s2_requested_stop": False,
+                "last_s2_effective_stop": False,
+                "last_s2_mode": "wait",
+                "last_s2_history_frame_ids": [],
+                "last_s2_needs_requery": False,
+                "last_s2_raw_text": "",
+                "last_s2_latency_ms": 0.0,
+            },
+            "system2_session": {
+                "instruction": "dock at the charging station",
+                "last_output": "",
+                "last_reason": "",
+                "last_history_frame_ids": [],
+                "last_decision_mode": "wait",
+                "last_needs_requery": False,
+            },
+        },
+    }
+
+    state = aggregator._build_state()
+    system2 = state["services"]["system2"]
+
+    assert system2["status"] == "awaiting_first_decision"
+    assert system2["output"] is None

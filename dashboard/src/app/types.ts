@@ -40,6 +40,26 @@ export type ServiceSnapshot = {
   debug?: Record<string, unknown>;
 };
 
+export type System2OutputSnapshot = {
+  rawText: string;
+  reason: string;
+  decisionMode: string;
+  needsRequery: boolean;
+  historyFrameIds: number[];
+  requestedStop: boolean;
+  effectiveStop: boolean;
+  instruction: string;
+  latencyMs?: number;
+};
+
+export type System2ServiceSnapshot = {
+  name: string;
+  status: string;
+  healthUrl?: string;
+  latencyMs?: number;
+  output: System2OutputSnapshot | null;
+};
+
 export type ArchitectureNode = {
   name: string;
   status: string;
@@ -103,7 +123,7 @@ export type DashboardState = {
   services: {
     navdp?: ServiceSnapshot;
     dual?: ServiceSnapshot;
-    system2?: Record<string, unknown>;
+    system2?: System2ServiceSnapshot;
   };
   transport: Record<string, unknown>;
   logs: LogRecord[];

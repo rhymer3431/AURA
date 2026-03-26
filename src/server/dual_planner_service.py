@@ -133,6 +133,7 @@ class DualPlannerService:
         self.last_s2_mode = "wait"
         self.last_s2_history_frame_ids: tuple[int, ...] = ()
         self.last_s2_needs_requery = False
+        self.last_s2_latency_ms = 0.0
         self.s2_stop_suppressed_count = 0
         self._generation = 0
         self._active_task_id = ""
@@ -221,6 +222,7 @@ class DualPlannerService:
             self.last_s2_mode = "wait"
             self.last_s2_history_frame_ids = ()
             self.last_s2_needs_requery = False
+            self.last_s2_latency_ms = 0.0
             self.s2_stop_suppressed_count = 0
             self.initialized = True
         self.system2_session.reset(instruction)
@@ -379,6 +381,7 @@ class DualPlannerService:
             self.s2_inflight = False
             self.s2_calls += 1
             self.last_s2_ts = float(finished_at)
+            self.last_s2_latency_ms = float(result.latency_ms)
             if result.ok:
                 requested_stop = bool(result.stop or result.mode == "stop")
                 stop_suppressed = requested_stop and self.traj_version < 0
@@ -587,6 +590,7 @@ class DualPlannerService:
                     "last_s2_mode": self.last_s2_mode,
                     "last_s2_history_frame_ids": list(self.last_s2_history_frame_ids),
                     "last_s2_needs_requery": self.last_s2_needs_requery,
+                    "last_s2_latency_ms": self.last_s2_latency_ms,
                     "last_s2_raw_text": self.last_s2_raw_text[:400],
                     "s2_stop_suppressed_count": self.s2_stop_suppressed_count,
                     "s1_inflight": self.s1_inflight,

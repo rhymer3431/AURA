@@ -104,6 +104,42 @@ def test_stop_after_confirmed_trajectory_is_preserved() -> None:
     assert snapshot["stats"]["last_s2_effective_stop"] is True
 
 
+def test_debug_state_tracks_last_s2_latency_ms() -> None:
+    orchestrator = DualPlannerService(_args())
+
+    orchestrator._finish_s2(
+        S2Result(
+            mode="pixel_goal",
+            pixel_x=12,
+            pixel_y=34,
+            stop=False,
+            reason="forward",
+            source="llm",
+            raw_text="34, 12",
+            latency_ms=17.5,
+        ),
+        finished_at=124.0,
+        generation=0,
+    )
+
+    snapshot = orchestrator.debug_state()
+    assert snapshot["stats"]["last_s2_latency_ms"] == 17.5
+
+    orchestrator._finish_s2(
+        S2Result(
+            status="error",
+            error="network timeout",
+            source="llm",
+            latency_ms=9.25,
+        ),
+        finished_at=125.0,
+        generation=0,
+    )
+
+    snapshot = orchestrator.debug_state()
+    assert snapshot["stats"]["last_s2_latency_ms"] == 9.25
+
+
 def test_identical_goal_refresh_keeps_goal_version() -> None:
     orchestrator = DualPlannerService(_args())
 

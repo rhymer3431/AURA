@@ -37,6 +37,25 @@ describe("devApiFallback", () => {
     expect(response.body).toContain("event: state");
   });
 
+  it("returns structured system2 mock state for /api/state", () => {
+    const response = buildDevApiFallbackResponse({
+      apiBaseUrl: "http://127.0.0.1:8095",
+      method: "GET",
+      requestUrl: "/api/state",
+    });
+
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toMatchObject({
+      services: {
+        system2: {
+          name: "system2",
+          status: "inactive",
+          output: null,
+        },
+      },
+    });
+  });
+
   it("returns a 503 for mutating runtime endpoints while mock mode is active", () => {
     const response = buildDevApiFallbackResponse({
       apiBaseUrl: "http://127.0.0.1:8095",

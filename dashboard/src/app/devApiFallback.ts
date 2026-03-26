@@ -226,7 +226,9 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
       },
       system2: {
         name: "system2",
-        state: "inactive",
+        status: "inactive",
+        healthUrl: `${trimTrailingSlash(apiBaseUrl)}/health`,
+        output: null,
       },
     },
     transport: {
