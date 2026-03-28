@@ -13,10 +13,8 @@ function statusClasses(status: string) {
 function metricRows(node: ArchitectureNode) {
   const metrics = asRecord(node.metrics);
   return [
-    { label: "Status", value: statusLabel(node.status) },
     { label: "Required", value: node.required ? "yes" : "no" },
     { label: "Summary", value: node.summary || "idle" },
-    { label: "Detail", value: node.detail || "n/a" },
     { label: "Latency", value: formatMs(node.latencyMs, "n/a") },
     { label: "Signal", value: stringValue(metrics.recoveryState, stringValue(metrics.taskState, stringValue(metrics.activeCommandType, "n/a"))) },
   ];
@@ -34,8 +32,8 @@ function ModuleCard({
   const metrics = metricRows(node);
 
   return (
-    <div className="dashboard-panel-strong flex min-w-0 flex-1 flex-col p-3.5">
-      <div className="mb-1 flex items-center justify-between">
+    <div className="dashboard-panel-strong flex min-w-0 flex-1 flex-col p-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <Radio className="size-3.5 text-[var(--text-faint)]" />
           <span className="text-[12px] font-medium text-[var(--foreground)]">{node.name}</span>
@@ -45,18 +43,18 @@ function ModuleCard({
         </ConsoleBadge>
       </div>
 
-      <div className="dashboard-micro mb-1.5 truncate">{node.summary || "idle"}</div>
+      <div className="dashboard-micro mb-2 truncate">{node.detail || node.summary || "idle"}</div>
 
-      <div className="mb-2 grid grid-cols-3 gap-1.5 text-[10px]">
-        {metrics.slice(0, 6).map((item) => (
-          <div key={item.label} className="dashboard-field !rounded-[16px] !px-2 !py-2">
+      <div className="mb-2.5 grid grid-cols-2 gap-1.5 text-[10px]">
+        {metrics.map((item) => (
+          <div key={item.label} className="dashboard-field !rounded-[14px] !px-2 !py-2">
             <div className="dashboard-eyebrow !text-[10px] !tracking-[0.12em]">{item.label}</div>
             <div className="mt-1 truncate text-[11px] font-medium text-[var(--foreground)]">{item.value}</div>
           </div>
         ))}
       </div>
 
-      <div className="h-[28px]">
+      <div className="h-[24px]">
         <ResponsiveContainer width="100%" height="100%" minWidth={120} minHeight={32}>
           <BarChart data={latencyData.length > 0 ? latencyData : [{ t: 0, v: Number(node.latencyMs ?? 0) || 0 }]}>
             <Bar dataKey="v" fill={barColor} radius={[2, 2, 0, 0]} />
@@ -87,15 +85,15 @@ export function ExternalServicesPanel() {
   ];
 
   return (
-    <ConsolePanel>
+    <ConsolePanel className="p-4">
       <ConsoleSectionTitle
         icon={Layers3}
-        eyebrow="health matrix"
+        eyebrow="service strip"
         title="External Services"
-        description="robot gateway, main control server, and runtime modules arranged on one health surface"
-        className="mb-3.5"
+        description="gateway ingress, main control server, and the runtime modules sit on one condensed health surface."
+        className="mb-3"
       />
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <ModuleCard
             key={card.node.name}

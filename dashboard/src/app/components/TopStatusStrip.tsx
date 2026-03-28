@@ -7,7 +7,7 @@ import { ConsoleBadge } from "./console-ui";
 
 function StatusCell({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="min-w-[112px] rounded-[16px] border border-[rgba(var(--ink-rgb),0.06)] bg-[var(--surface-2)] px-3 py-2">
+    <div className="min-w-[104px] rounded-[14px] border border-[rgba(var(--ink-rgb),0.06)] bg-[var(--surface-2)] px-2.5 py-2">
       <div className="dashboard-eyebrow mb-1">{label}</div>
       <div className="text-[12px] font-medium text-[var(--foreground)]">{value}</div>
     </div>
@@ -21,7 +21,7 @@ export function TopStatusStrip() {
   const sessionConfig = state?.session.config;
 
   return (
-    <div className="dashboard-panel flex flex-wrap items-center gap-2.5 px-3.5 py-3">
+    <div className="dashboard-panel flex flex-wrap items-center gap-2 px-3 py-2.5">
       <div className="flex items-center gap-2.5 pr-1">
         <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
           {state?.session.active ? "session active" : "session idle"}

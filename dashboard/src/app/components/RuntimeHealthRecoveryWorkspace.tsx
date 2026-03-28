@@ -1,4 +1,4 @@
-import { ShieldAlert } from "lucide-react";
+import { ActivitySquare, ShieldAlert, Workflow } from "lucide-react";
 
 import { ArtifactsStoragePanel } from "./ArtifactsStoragePanel";
 import { ExternalServicesPanel } from "./ExternalServicesPanel";
@@ -16,18 +16,43 @@ export function RuntimeHealthRecoveryWorkspace() {
   const transitions = [...(state?.recoveryTransitions ?? [])].reverse();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <ExternalServicesPanel />
 
-      <div className="grid grid-cols-1 gap-6 2xl:grid-cols-12">
-        <div className="grid grid-cols-1 gap-4 2xl:col-span-7 xl:grid-cols-2">
-          <ProcessesWidget />
-          <SensorsWidget />
-          <IpcOrchestrationWidget />
-          <MainControlServerWidget />
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12 xl:items-start">
+        <div className="space-y-5 xl:col-span-8">
+          <section className="space-y-4">
+            <div className="px-1">
+              <ConsoleSectionTitle
+                icon={ActivitySquare}
+                eyebrow="core diagnostics"
+                title="Process & Sensor Health"
+                description="robot process liveness, sensor readiness, and degradation signals are grouped on the same scan line."
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <ProcessesWidget />
+              <SensorsWidget />
+            </div>
+          </section>
+
+          <section className="space-y-4">
+            <div className="px-1">
+              <ConsoleSectionTitle
+                icon={Workflow}
+                eyebrow="transport and control"
+                title="Orchestration & Main Control"
+                description="IPC, telemetry transport, and main control server nodes stay grouped as one diagnostic workflow."
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <IpcOrchestrationWidget />
+              <MainControlServerWidget />
+            </div>
+          </section>
         </div>
 
-        <div className="space-y-4 2xl:col-span-5">
+        <div className="space-y-4 self-start xl:col-span-4 xl:sticky xl:top-0">
           <ConsolePanel>
             <ConsoleSectionTitle
               icon={ShieldAlert}
