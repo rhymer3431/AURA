@@ -313,17 +313,8 @@ class LiveTargetService:
         robot_pose_xyz: np.ndarray,
         standoff_distance_m: float,
     ) -> np.ndarray:
-        nav_goal = np.asarray(robot_pose_xyz[:3], dtype=np.float32).copy()
-        target_xy = np.asarray(target_pose_xyz[:2], dtype=np.float32)
-        robot_xy = np.asarray(robot_pose_xyz[:2], dtype=np.float32)
-        delta_xy = target_xy - robot_xy
-        distance_m = float(np.linalg.norm(delta_xy))
-        if distance_m <= max(float(standoff_distance_m), 0.0) + 1.0e-6 or distance_m <= 1.0e-6:
-            nav_goal[:2] = robot_xy
-            return nav_goal
-        direction_xy = delta_xy / distance_m
-        nav_goal[:2] = target_xy - direction_xy * float(standoff_distance_m)
-        return nav_goal
+        del robot_pose_xyz, standoff_distance_m
+        return np.asarray(target_pose_xyz[:3], dtype=np.float32).copy()
 
     @staticmethod
     def _normalize_positive(value: float | None) -> float | None:

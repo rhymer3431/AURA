@@ -62,7 +62,9 @@ def test_supervisor_visible_target_task_emits_nav_to_pose_from_processed_frame()
     assert command.metadata["target_mode"] == "goto_visible_object"
     assert command.target_pose_xyz is not None
     assert float(command.metadata["raw_target_pose_xyz"][0]) > 0.0
-    assert tuple(round(float(value), 4) for value in command.target_pose_xyz) == (0.0, 0.0, 0.0)
+    assert tuple(round(float(value), 4) for value in command.target_pose_xyz) == tuple(
+        round(float(value), 4) for value in command.metadata["filtered_target_pose_xyz"]
+    )
 
 
 def test_supervisor_can_disable_memory_storage_while_processing_frames() -> None:

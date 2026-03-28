@@ -4,12 +4,14 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+import inference.vlm.system2_session as system2_module
 from common.cv2_compat import cv2
 from inference.vlm import System2Session, System2SessionConfig, parse_system2_output
 from memory.models import KeyframeRecord, MemoryContextBundle, RetrievedMemoryLine, ScratchpadState
@@ -45,10 +47,10 @@ def test_parse_system2_output_handles_right_turn() -> None:
     assert decision.needs_requery is False
 
 
-def test_parse_system2_output_handles_wait() -> None:
+def test_parse_system2_output_handles_look_down() -> None:
     decision = parse_system2_output("↓", width=640, height=480)
 
-    assert decision.mode == "wait"
+    assert decision.mode == "look_down"
     assert decision.needs_requery is True
 
 
@@ -194,3 +196,98 @@ def test_system2_session_includes_memory_context_sections(tmp_path: Path) -> Non
     assert any("Relevant memory:" in block for block in text_blocks)
     assert any("Apple seen in kitchen on the left." in block for block in text_blocks)
     assert image_count == 4
+
+
+class _FakeResponse:
+    def __init__(self, content: str) -> None:
+        self._content = content
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, object]:
+        return {"choices": [{"message": {"content": self._content}}]}
+
+
+@pytest.mark.parametrize(
+    ("final_text", "expected_mode", "expected_pixel_goal"),
+    [
+        ("321, 123", "pixel_goal", (123, 321)),
+        ("←", "yaw_left", None),
+        ("STOP", "stop", None),
+    ],
+)
+def test_system2_session_requeries_once_for_look_down(
+    monkeypatch: pytest.MonkeyPatch,
+    final_text: str,
+    expected_mode: str,
+    expected_pixel_goal: tuple[int, int] | None,
+) -> None:
+    session = System2Session(
+        System2SessionConfig(
+            endpoint="http://127.0.0.1:8080/v1/chat/completions",
+            model="mock-model",
+            mode="llm",
+        )
+    )
+    session.reset("find the loading dock")
+    session.observe(7, np.full((480, 640, 3), 127, dtype=np.uint8))
+
+    recorded_bodies: list[dict[str, object]] = []
+    responses = iter(["↓", final_text])
+
+    def _fake_post(url: str, json: dict[str, object], timeout: float) -> _FakeResponse:
+        assert url == "http://127.0.0.1:8080/v1/chat/completions"
+        assert timeout == pytest.approx(35.0)
+        recorded_bodies.append(json)
+        return _FakeResponse(next(responses))
+
+    monkeypatch.setattr(system2_module.requests, "post", _fake_post)
+
+    request = session.prepare_request()
+    result = session.execute_request(request)
+
+    assert result.ok is True
+    assert result.decision is not None
+    assert result.decision.mode == expected_mode
+    assert result.decision.pixel_goal == expected_pixel_goal
+    assert result.decision.needs_requery is False
+    assert len(recorded_bodies) == 2
+    assert [message["role"] for message in recorded_bodies[1]["messages"]] == ["system", "user", "assistant", "user"]
+    assert recorded_bodies[1]["messages"][2]["content"] == "↓"
+    initial_user_content = recorded_bodies[0]["messages"][1]["content"]
+    follow_up_user_content = recorded_bodies[1]["messages"][3]["content"]
+    initial_current_image = initial_user_content[-1]["image_url"]["url"]
+    follow_up_image = follow_up_user_content[-1]["image_url"]["url"]
+    assert initial_current_image == follow_up_image
+
+
+def test_system2_session_falls_back_to_wait_when_follow_up_is_unresolved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = System2Session(
+        System2SessionConfig(
+            endpoint="http://127.0.0.1:8080/v1/chat/completions",
+            model="mock-model",
+            mode="llm",
+        )
+    )
+    session.reset("find the loading dock")
+    session.observe(8, np.full((480, 640, 3), 64, dtype=np.uint8))
+
+    responses = iter(["↓", "↓"])
+
+    def _fake_post(url: str, json: dict[str, object], timeout: float) -> _FakeResponse:
+        del url, json, timeout
+        return _FakeResponse(next(responses))
+
+    monkeypatch.setattr(system2_module.requests, "post", _fake_post)
+
+    request = session.prepare_request()
+    result = session.execute_request(request)
+
+    assert result.ok is True
+    assert result.decision is not None
+    assert result.decision.mode == "wait"
+    assert result.decision.pixel_goal is None
+    assert result.decision.needs_requery is True

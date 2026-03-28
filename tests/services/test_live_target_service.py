@@ -31,7 +31,7 @@ def _observation(
     )
 
 
-def test_live_target_service_smooths_positions_and_applies_object_standoff() -> None:
+def test_live_target_service_smooths_positions_and_targets_filtered_object_pose() -> None:
     service = LiveTargetService(LiveTargetConfig(ema_alpha_xy=0.5, default_object_standoff_m=0.9))
     service.activate_target(target_mode="goto_visible_object", target_class="apple")
     service.ingest_observations(
@@ -46,12 +46,12 @@ def test_live_target_service_smooths_positions_and_applies_object_standoff() -> 
     assert snapshot is not None
     assert snapshot.track_id == "apple_1"
     assert tuple(round(float(value), 4) for value in snapshot.filtered_target_pose_xyz) == (2.2, 0.0, 0.4)
-    assert tuple(round(float(value), 4) for value in snapshot.nav_goal_pose_xyz) == (1.3, 0.0, 0.0)
+    assert tuple(round(float(value), 4) for value in snapshot.nav_goal_pose_xyz) == (2.2, 0.0, 0.4)
     assert snapshot.pose_source == "filtered_track"
     assert snapshot.command_metadata()["target_mode"] == "goto_visible_object"
 
 
-def test_live_target_service_rejects_depth_jumps_and_holds_position_inside_standoff() -> None:
+def test_live_target_service_rejects_depth_jumps_and_targets_person_pose_inside_old_standoff() -> None:
     service = LiveTargetService(LiveTargetConfig(ema_alpha_xy=0.5, max_depth_jump_m=0.5, default_person_standoff_m=1.2))
     service.activate_target(target_mode="follow_person", target_track_id="person_1")
     service.ingest_observations(
@@ -65,7 +65,7 @@ def test_live_target_service_rejects_depth_jumps_and_holds_position_inside_stand
 
     assert snapshot is not None
     assert tuple(round(float(value), 4) for value in snapshot.raw_target_pose_xyz) == (0.8, 0.1, 0.0)
-    assert tuple(round(float(value), 4) for value in snapshot.nav_goal_pose_xyz) == (0.0, 0.0, 0.0)
+    assert tuple(round(float(value), 4) for value in snapshot.nav_goal_pose_xyz) == (0.8, 0.1, 0.0)
     assert snapshot.visible is True
 
 

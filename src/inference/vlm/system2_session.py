@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import io
 import re
 import threading
@@ -14,11 +15,11 @@ import requests
 from common.cv2_compat import cv2
 from memory.models import MemoryContextBundle
 
-DecisionMode = Literal["pixel_goal", "stop", "yaw_left", "yaw_right", "wait"]
+DecisionMode = Literal["pixel_goal", "stop", "yaw_left", "yaw_right", "look_down", "wait"]
 
 _TURN_LEFT_TOKENS = ("←", "turn left", "left")
 _TURN_RIGHT_TOKENS = ("→", "turn right", "right")
-_WAIT_TOKENS = ("↓", "lookdown", "look down", "tilt down")
+_LOOK_DOWN_TOKENS = ("↓", "lookdown", "look down", "tilt down")
 
 
 def build_vlm_endpoint(url: str) -> str:
@@ -149,10 +150,10 @@ def parse_system2_output(
             needs_requery=False,
         )
 
-    if _first_token_index(lowered, _WAIT_TOKENS) >= 0:
+    if _first_token_index(lowered, _LOOK_DOWN_TOKENS) >= 0:
         return System2Decision(
-            mode="wait",
-            reason=text or "WAIT",
+            mode="look_down",
+            reason=text or "LOOK_DOWN",
             raw_text=text,
             history_frame_ids=tuple(history_frame_ids),
             needs_requery=True,
@@ -237,34 +238,57 @@ class System2Session:
         if self.config.mode == "mock":
             return self._execute_mock(request)
 
-        start = time.perf_counter()
         try:
-            resp = requests.post(
-                self.config.endpoint,
-                json=request.body,
-                timeout=float(self.config.timeout_sec),
-            )
-            resp.raise_for_status()
-            body = resp.json()
-            raw_text = extract_chat_content(body)
-            decision = parse_system2_output(
-                raw_text,
+            first_round = self._execute_llm_round(
+                request.body,
                 width=int(request.width),
                 height=int(request.height),
                 history_frame_ids=tuple(request.history_frame_ids),
             )
-            latency_ms = (time.perf_counter() - start) * 1000.0
+            if not first_round.ok or first_round.decision is None or first_round.decision.mode != "look_down":
+                return first_round
+
+            follow_up_body = self._build_follow_up_body(request=request, first_round=first_round)
+            second_round = self._execute_llm_round(
+                follow_up_body,
+                width=int(request.width),
+                height=int(request.height),
+                history_frame_ids=tuple(request.history_frame_ids),
+            )
+            total_latency_ms = float(first_round.latency_ms + second_round.latency_ms)
+            if not second_round.ok or second_round.decision is None:
+                return System2SessionResult(
+                    ok=False,
+                    latency_ms=total_latency_ms,
+                    error=str(second_round.error),
+                    source=str(second_round.source),
+                )
+
+            final_decision = second_round.decision
+            if final_decision.mode in {"look_down", "wait"}:
+                return System2SessionResult(
+                    ok=True,
+                    decision=System2Decision(
+                        mode="wait",
+                        reason=str(final_decision.reason or "system2_follow_up_unresolved"),
+                        raw_text=str(final_decision.raw_text),
+                        history_frame_ids=tuple(request.history_frame_ids),
+                        needs_requery=True,
+                    ),
+                    latency_ms=total_latency_ms,
+                    source="llm",
+                )
+
             return System2SessionResult(
                 ok=True,
-                decision=decision,
-                latency_ms=float(latency_ms),
+                decision=final_decision,
+                latency_ms=total_latency_ms,
                 source="llm",
             )
         except Exception as exc:  # noqa: BLE001
-            latency_ms = (time.perf_counter() - start) * 1000.0
             return System2SessionResult(
                 ok=False,
-                latency_ms=float(latency_ms),
+                latency_ms=0.0,
                 error=f"{type(exc).__name__}: {exc}",
                 source="llm",
             )
@@ -311,6 +335,12 @@ class System2Session:
         else:
             indices = np.unique(np.linspace(0, upper, sample_count, dtype=np.int32)).tolist()
         return [self._frames[index] for index in indices]
+
+    def _lookup_frame_locked(self, frame_id: int) -> _ObservedFrame | None:
+        for frame in reversed(self._frames):
+            if int(frame.frame_id) == int(frame_id):
+                return frame
+        return self._frames[-1] if self._frames else None
 
     def _build_request_body(
         self,
@@ -399,6 +429,75 @@ class System2Session:
                 },
             ],
         }
+
+    def _build_follow_up_body(self, *, request: System2Request, first_round: System2SessionResult) -> dict[str, Any]:
+        if first_round.decision is None:
+            raise RuntimeError("System2 follow-up requires a successful first-round decision.")
+        with self._lock:
+            current = self._lookup_frame_locked(int(request.frame_id))
+        if current is None:
+            raise RuntimeError(f"Missing observed frame for follow-up: {request.frame_id}")
+
+        base_body = copy.deepcopy(request.body)
+        base_messages = list(base_body.get("messages", []))
+        if len(base_messages) < 2:
+            raise RuntimeError("System2 request body is missing required initial messages.")
+
+        follow_up_content = [
+            {
+                "type": "text",
+                "text": (
+                    "You previously answered '↓'. Re-evaluate with this follow-up observation "
+                    "and return the final navigation decision now."
+                ),
+            },
+            {"type": "text", "text": f"Follow-up observation (same frame {current.frame_id}):"},
+            {"type": "image_url", "image_url": {"url": self._encode_image(current.image_bgr)}},
+        ]
+        base_messages.append({"role": "assistant", "content": str(first_round.decision.raw_text)})
+        base_messages.append({"role": "user", "content": follow_up_content})
+        base_body["messages"] = base_messages
+        return base_body
+
+    def _execute_llm_round(
+        self,
+        body: dict[str, Any],
+        *,
+        width: int,
+        height: int,
+        history_frame_ids: tuple[int, ...],
+    ) -> System2SessionResult:
+        start = time.perf_counter()
+        try:
+            resp = requests.post(
+                self.config.endpoint,
+                json=body,
+                timeout=float(self.config.timeout_sec),
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            raw_text = extract_chat_content(payload)
+            decision = parse_system2_output(
+                raw_text,
+                width=int(width),
+                height=int(height),
+                history_frame_ids=tuple(history_frame_ids),
+            )
+            latency_ms = (time.perf_counter() - start) * 1000.0
+            return System2SessionResult(
+                ok=True,
+                decision=decision,
+                latency_ms=float(latency_ms),
+                source="llm",
+            )
+        except Exception as exc:  # noqa: BLE001
+            latency_ms = (time.perf_counter() - start) * 1000.0
+            return System2SessionResult(
+                ok=False,
+                latency_ms=float(latency_ms),
+                error=f"{type(exc).__name__}: {exc}",
+                source="llm",
+            )
 
     def _execute_mock(self, request: System2Request) -> System2SessionResult:
         start = time.perf_counter()

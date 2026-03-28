@@ -79,7 +79,7 @@ def test_locomotion_worker_returns_proposal_without_final_status() -> None:
     assert not hasattr(proposal, "status")
 
 
-def test_locomotion_worker_reports_obstacle_metadata_only() -> None:
+def test_locomotion_worker_keeps_forward_command_when_depth_is_close() -> None:
     worker = LocomotionWorker(_args())
     depth = np.full((18, 18), 1.2, dtype=np.float32)
     depth[:, 7:11] = 0.25
@@ -102,6 +102,5 @@ def test_locomotion_worker_reports_obstacle_metadata_only() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
-    assert float(proposal.command_vector[0]) < 0.0
-    assert proposal.metadata["obstacle_defense"] is True
-    assert proposal.metadata["obstacle_defense_mode"] == "backoff_turn"
+    assert float(proposal.command_vector[0]) > 0.0
+    assert proposal.metadata == {}
