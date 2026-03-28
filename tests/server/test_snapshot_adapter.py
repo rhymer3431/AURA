@@ -62,7 +62,11 @@ def _snapshot() -> WorldStateSnapshot:
         ),
         planning=PlanningStateSnapshot(
             last_s2_result={"goal_version": 2},
-            active_nav_plan={"plan_version": 4},
+            active_nav_plan={
+                "plan_version": 4,
+                "trajectory_point_count": 2,
+                "trajectory_world": [[1.0, 2.0, 0.0], [1.5, 2.4, 0.0]],
+            },
             plan_version=4,
             goal_version=2,
             traj_version=3,
@@ -80,7 +84,11 @@ def _snapshot() -> WorldStateSnapshot:
             last_command_decision={"source": "manual"},
             last_action_status={"state": "running"},
             active_overrides={"safety_override": False},
-            locomotion_proposal_summary={"goal_distance_m": 1.5, "yaw_error_rad": 0.04},
+            locomotion_proposal_summary={
+                "goal_distance_m": 1.5,
+                "yaw_error_rad": 0.04,
+                "command_vector": [0.12, -0.03, 0.2],
+            },
             active_command_type="NAV_TO_POSE",
             active_target={"action_type": "NAV_TO_POSE", "target_track_id": "track-1"},
         ),
@@ -147,6 +155,9 @@ def test_snapshot_adapter_preserves_legacy_runtime_contract() -> None:
     assert payload["planner"]["activeInstruction"] == "go to apple"
     assert payload["planner"]["routeState"]["pixelGoal"] == [24, 18]
     assert payload["planner"]["recoveryState"] == "REPLAN_PENDING"
+    assert payload["planner"]["navTrajectoryWorld"] == [[1.0, 2.0, 0.0], [1.5, 2.4, 0.0]]
+    assert payload["planner"]["navTrajectoryPointCount"] == 2
+    assert payload["planner"]["commandVector"] == [0.12, -0.03, 0.2]
     assert payload["sensor"]["frameId"] == 11
     assert payload["sensor"]["stale"] is True
     assert payload["perception"]["detectorBackend"] == "stub"
@@ -173,6 +184,8 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
 
     assert state["runtime"]["modes"]["executionMode"] == "NAV"
     assert state["runtime"]["lastStatusEvent"]["state"] == "running"
+    assert state["runtime"]["navTrajectoryPointCount"] == 2
+    assert state["runtime"]["commandVector"] == [0.12, -0.03, 0.2]
     assert state["perception"]["detectorCapability"]["status"] == "ready"
     assert state["transport"]["frameSeq"] == 7
 

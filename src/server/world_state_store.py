@@ -244,6 +244,10 @@ class WorldStateStore:
                 "goal_version": int(update.goal_version),
                 "traj_version": int(update.traj_version),
                 "trajectory_point_count": int(update.trajectory_world.shape[0]),
+                "trajectory_world": [
+                    [float(point[0]), float(point[1]), float(point[2]) if len(point) >= 3 else 0.0]
+                    for point in np.asarray(update.trajectory_world, dtype=np.float32)
+                ],
                 "stop": bool(update.stop),
                 "used_cached_traj": bool(update.used_cached_traj),
                 "planner_control_reason": planner_control_reason,

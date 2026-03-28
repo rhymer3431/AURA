@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from schemas.world_state import WorldStateSnapshot
@@ -7,8 +8,36 @@ from schemas.world_state import WorldStateSnapshot
 
 class SnapshotAdapter:
     @staticmethod
+    def _nav_trajectory_world(world_state: WorldStateSnapshot) -> list[list[float]]:
+        raw_points = world_state.planning.active_nav_plan.get("trajectory_world", [])
+        compact: list[list[float]] = []
+        if isinstance(raw_points, list):
+            for point in raw_points:
+                if isinstance(point, list) and len(point) >= 2:
+                    x = float(point[0])
+                    y = float(point[1])
+                    z = float(point[2]) if len(point) >= 3 else 0.0
+                    compact.append([x, y, z])
+        return compact
+
+    @staticmethod
+    def _command_vector(world_state: WorldStateSnapshot) -> list[float]:
+        raw_vector = world_state.execution.locomotion_proposal_summary.get("command_vector", [])
+        if isinstance(raw_vector, list) and len(raw_vector) >= 3:
+            try:
+                return [float(raw_vector[0]), float(raw_vector[1]), float(raw_vector[2])]
+            except (TypeError, ValueError):
+                return []
+        return []
+
+    @staticmethod
     def to_legacy_runtime_payload(snapshot: WorldStateSnapshot | None) -> dict[str, object]:
         world_state = WorldStateSnapshot() if snapshot is None else snapshot
+        nav_trajectory_world = SnapshotAdapter._nav_trajectory_world(world_state)
+        command_vector = SnapshotAdapter._command_vector(world_state)
+        command_speed_mps = None
+        if len(command_vector) >= 2:
+            command_speed_mps = math.hypot(command_vector[0], command_vector[1])
         planner = {
             "planVersion": int(world_state.planning.plan_version),
             "goalVersion": int(world_state.planning.goal_version),
@@ -22,6 +51,10 @@ class SnapshotAdapter:
             "routeState": dict(world_state.planning.route_state),
             "goalDistanceM": world_state.execution.locomotion_proposal_summary.get("goal_distance_m"),
             "yawErrorRad": world_state.execution.locomotion_proposal_summary.get("yaw_error_rad"),
+            "navTrajectoryWorld": nav_trajectory_world,
+            "navTrajectoryPointCount": int(world_state.planning.active_nav_plan.get("trajectory_point_count", len(nav_trajectory_world)) or 0),
+            "commandVector": command_vector,
+            "commandSpeedMps": command_speed_mps,
             "actionStatus": None if not world_state.execution.last_action_status else dict(world_state.execution.last_action_status),
             "activeCommandType": str(world_state.execution.active_command_type),
             "globalRouteWaypointIndex": int(world_state.planning.global_route.get("waypoint_index", 0) or 0),

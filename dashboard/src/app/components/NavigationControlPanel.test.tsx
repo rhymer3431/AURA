@@ -66,6 +66,10 @@ function buildState() {
       staleSec: 0.4,
       goalDistanceM: 1.25,
       plannerYawDeltaRad: 0.12,
+      navTrajectoryWorld: [[1.0, 2.0, 0.0], [1.5, 2.4, 0.0], [1.9, 2.8, 0.0]],
+      navTrajectoryPointCount: 3,
+      commandVector: [0.18, -0.04, 0.22],
+      commandSpeedMps: 0.184,
       recoveryState: "NORMAL",
       recoveryReason: "clear",
       activeCommandType: "NAV_TO_POSE",
@@ -137,6 +141,9 @@ describe("NavigationControlPanel", () => {
     render(<NavigationControlPanel />);
 
     expect(screen.getByText("System2 Output")).toBeInTheDocument();
+    expect(screen.getByText("Trajectory Points")).toBeInTheDocument();
+    expect(screen.getByText("(1.00, 2.00, 0.00) -> (1.50, 2.40, 0.00) -> (1.90, 2.80, 0.00)")).toBeInTheDocument();
+    expect(screen.getByText("[0.18, -0.04, 0.22]")).toBeInTheDocument();
     expect(screen.getAllByText("120, 80").length).toBeGreaterThan(0);
     expect(screen.getByText("pixel_goal")).toBeInTheDocument();
     expect(screen.getByText("46ms")).toBeInTheDocument();

@@ -15,6 +15,7 @@ from dashboard_backend.config import DashboardBackendConfig
 from dashboard_backend.state import StateAggregator
 from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (
+    ExecutionStateSnapshot,
     PlanningStateSnapshot,
     RuntimeStateSnapshot,
     SafetyStateSnapshot,
@@ -121,7 +122,16 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
                         plan_version=4,
                         planner_mode="NAV",
                         active_instruction="dock",
+                        active_nav_plan={
+                            "trajectory_point_count": 2,
+                            "trajectory_world": [[0.0, 0.0, 0.0], [0.6, 0.1, 0.0]],
+                        },
                         route_state={"pixelGoal": [10, 20]},
+                    ),
+                    execution=ExecutionStateSnapshot(
+                        locomotion_proposal_summary={
+                            "command_vector": [0.2, 0.0, 0.1],
+                        }
                     ),
                     safety=SafetyStateSnapshot(
                         stale=True,
@@ -144,6 +154,8 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     assert state["runtime"]["modes"]["executionMode"] == "NAV"
     assert state["runtime"]["activeInstruction"] == "dock"
     assert state["runtime"]["recoveryState"] == "REPLAN_PENDING"
+    assert state["runtime"]["navTrajectoryPointCount"] == 2
+    assert state["runtime"]["commandVector"] == [0.2, 0.0, 0.1]
     assert state["transport"]["viewerPublish"] is True
     assert state["architecture"]["gateway"]["name"] == "Robot Gateway"
     assert state["architecture"]["mainControlServer"]["metrics"]["recoveryState"] == "REPLAN_PENDING"

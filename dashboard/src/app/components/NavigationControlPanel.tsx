@@ -18,6 +18,54 @@ function Badge({ color, children }: { color: "green" | "blue" | "amber"; childre
   );
 }
 
+function formatVector(value: unknown): string {
+  if (!Array.isArray(value) || value.length < 3) {
+    return "n/a";
+  }
+  const [vx, vy, wz] = value;
+  if (
+    typeof vx !== "number"
+    || typeof vy !== "number"
+    || typeof wz !== "number"
+    || Number.isNaN(vx)
+    || Number.isNaN(vy)
+    || Number.isNaN(wz)
+  ) {
+    return "n/a";
+  }
+  return `[${vx.toFixed(2)}, ${vy.toFixed(2)}, ${wz.toFixed(2)}]`;
+}
+
+function formatTrajectoryPreview(value: unknown): string {
+  if (!Array.isArray(value) || value.length === 0) {
+    return "n/a";
+  }
+  const preview = value
+    .slice(0, 3)
+    .map((point) => {
+      if (!Array.isArray(point) || point.length < 2) {
+        return null;
+      }
+      const [x, y, z = 0] = point;
+      if (
+        typeof x !== "number"
+        || typeof y !== "number"
+        || typeof z !== "number"
+        || Number.isNaN(x)
+        || Number.isNaN(y)
+        || Number.isNaN(z)
+      ) {
+        return null;
+      }
+      return `(${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`;
+    })
+    .filter((item): item is string => item !== null);
+  if (preview.length === 0) {
+    return "n/a";
+  }
+  return preview.join(" -> ");
+}
+
 export function NavigationControlPanel() {
   const { history, state } = useDashboard();
   const runtime = asRecord(state?.runtime);
@@ -35,6 +83,8 @@ export function NavigationControlPanel() {
     system2Service?.status,
     state?.session.active ? "awaiting_first_decision" : "inactive",
   );
+  const navTrajectoryWorld = asArray(runtime.navTrajectoryWorld);
+  const commandVector = asArray(runtime.commandVector);
   const phaseTone =
     currentPhase === "trajectory"
       ? "green"
@@ -120,6 +170,30 @@ export function NavigationControlPanel() {
         </div>
         <div className="flex items-center gap-1.5 dashboard-micro">
           recovery: <span className="text-[var(--foreground)]">{recoveryState}</span>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 gap-2.5 text-[11px] md:grid-cols-4">
+        <div className="dashboard-field md:col-span-2">
+          <div className="dashboard-eyebrow mb-1">NavDP Trajectory</div>
+          <div className="dashboard-mono break-words text-[var(--foreground)]">
+            {formatTrajectoryPreview(navTrajectoryWorld)}
+          </div>
+        </div>
+        <div className="dashboard-field">
+          <div className="dashboard-eyebrow mb-1">Trajectory Points</div>
+          <div className="dashboard-mono text-[16px] font-medium text-[var(--foreground)]">
+            {String(runtime.navTrajectoryPointCount ?? navTrajectoryWorld.length ?? 0)}
+          </div>
+        </div>
+        <div className="dashboard-field">
+          <div className="dashboard-eyebrow mb-1">Locomotion Velocity</div>
+          <div className="dashboard-mono break-words text-[var(--foreground)]">
+            {formatVector(commandVector)}
+          </div>
+          <div className="mt-1 dashboard-micro">
+            linear {formatMeters(runtime.commandSpeedMps, "n/a")}
+          </div>
         </div>
       </div>
 
