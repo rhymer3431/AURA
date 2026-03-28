@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
+import numpy as np
+
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from ipc.messages import ActionCommand, ActionStatus
 from runtime.planning_session import TrajectoryUpdate
