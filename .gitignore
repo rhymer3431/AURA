@@ -26,4 +26,11 @@ datasets/
 agents.md
 _cudart_extract/
 .claude/
+!.claude/
+!.claude/skills/
+!.claude/skills/interface-design/
+!.claude/skills/interface-design/SKILL.md
+!.claude/skills/interface-design/references/
+!.claude/skills/interface-design/references/snowui-dashboard.md
+!.claude/skills/interface-design/references/snowui-design-system.md
 .gitignore

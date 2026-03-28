@@ -3,155 +3,172 @@
 ## Intent
 - Human: 로봇 런타임을 모니터링하고 장애 징후를 빠르게 판독해야 하는 운영자/개발자
 - Primary job: 현재 세션 상태, gateway/telemetry, planner, memory, diagnostics를 한 화면에서 빠르게 스캔
-- Feel: quiet SnowUI settings workspace translated into an operations console, calm and minimal, organized rather than flashy
+- Feel: bright robotics operations board, readable at a glance, large-paneled, calm but not muted, technical without looking like a chat workspace
 
 ## Domain
 - control room
 - runtime telemetry
 - field diagnostics
 - sensor fusion
-- lab notebook
-- command arbitration
-- safety rail
-- instrument sheet
-- system checklist
+- vision workstation
+- process lane
+- sensor rack
+- orchestration console
+- safety checkpoint
 
 ## Color World
-- clean off-white canvas
-- frost and cloud working surfaces
-- graphite ink and quiet gray hairlines
-- mist blue telemetry accents
-- pale lilac diagnostic cards
-- soft mint status lamps
-- muted coral fault annotations
-- charcoal action pills
+- warm white canvas
+- fog-gray panel shells
+- white instrument modules
+- planner ice-blue KPI tiles
+- perception lilac KPI tiles
+- runtime mint state lights
+- live coral badges
+- slate ink for metrics and labels
 
 ## Signature
-- SnowUI-style triptych workbench compressed for operations: tight left navigation, dense central task surface, and a slim right support rail that stays readable without inflating the shell
+- a top KPI ribbon feeding into one dominant live-view workbench, with a stacked right support column and a clearly separated left navigation rail
 
 ## Defaults Replaced
-- Default template admin shell -> compact SnowUI-derived header and sidebar framing
-- Loud colored UI accents -> neutral shell with semantic color reserved for runtime states
-- Large soft dashboard cards -> organized settings-style work surface with larger white blocks and quieter internal grouping
-- Generic body typography -> `NanumSquareRound` for UI with `IBM Plex Mono` for machine-readable data
+- Quiet settings workspace shell -> explicit operations-board region hierarchy
+- Same-plane monochrome cards -> layered fog shells with white inner modules
+- Tiny neutral stat pills -> wide pastel KPI tiles with large black values
+- Claude-like sidebar/header restraint -> visible navigation rail, breadcrumb strip, and strong workbench focus
+- Generic body typography -> `Pretendard` for UI with `IBM Plex Mono` reserved for telemetry and machine-readable data
 
 ## Tokens
 - Base spacing: 4px
 - Radius scale:
-  - Micro: 4px
-  - Small: 8px
-  - Control: 12px
-  - Capsule: 16px
-  - Panel: 24px
+  - Micro: 8px
+  - Small: 14px
+  - Control: 16px
+  - Tile: 24px
+  - Panel: 30px
 - Depth:
-  - Borders-first
-  - Hairline dividers are allowed at 0.5px
-  - No heavy shadows in standard dashboard flow
-  - Inset regions use `rgba(0, 0, 0, 0.04)` to `rgba(0, 0, 0, 0.06)` style fills instead of shadow
+  - Panel-cluster first
+  - Low-contrast borders plus soft shadows for major shells
+  - Inner white modules can use lighter lift than the outer fog shell
+  - Avoid glassy or ultra-flat shells that erase region ownership
 - Typography:
-  - UI: NanumSquareRound
+  - UI: Pretendard
   - Data: IBM Plex Mono
-  - Core sizes: 12px, 14px, 16px, 24px
-  - Default weight: 400
+  - Core sizes: 13px, 14px, 16px, 24px, 44px
+  - Default weight: 500 for labels, 700 for KPI values and section titles
 - Border language:
-  - Divider: rgba(0, 0, 0, 0.10)
-  - Quiet border: rgba(24, 33, 37, 0.08)
+  - Divider: rgba(15, 23, 42, 0.08)
+  - Panel border: rgba(15, 23, 42, 0.05)
+  - Module border: rgba(15, 23, 42, 0.06)
   - Semantic emphasis only when state matters
 - Surface language:
-  - Canvas: soft chalk, not pure white
-  - Panels: porcelain and fog surfaces with subtle separation
-  - Utility fills: graphite alpha, not bright brand tints
+  - Canvas: warm white
+  - Shells: fog-gray rounded work surfaces
+  - Modules: white cards nested inside shells
+  - Utility fills: pale neutral or semantic pastel, never dark chat-like capsules
 - Color usage:
-  - Black/graphite is valid for primary action emphasis
-  - Semantic colors stay desaturated and low-contrast first, decorative only as a last resort
-  - Telemetry cyan, emerald, amber, coral, violet remain available as status families, but each tone should stay muted and minimal
+  - Use pastel families for KPI grouping when those families repeat across the page
+  - Use green states, red live badges, and amber warnings as operational signals
+  - Black/slate text should stay crisp inside pastel tiles and white modules
+  - Decorative gradients are unnecessary; the product should read through region color and surface scale
 
 ## Reusable Patterns
 
 ### Shell Navigation
-- Sidebar width: 196px to 208px
+- Sidebar width: 220px to 236px
 - Collapsed sidebar width: 80px
-- Item height: 36px to 40px
-- Active state: soft neutral pill, not a loud filled block
-- Section labels: 11px to 12px, low-contrast, compact
-- Use SnowUI-style grouping: brand top, navigation center, account/utilities bottom
-- Desktop may introduce a right-side support rail when width allows; treat it as secondary context, not primary work area
+- Item height: 40px to 44px
+- Active state: pale highlighted row with comfortable horizontal padding
+- Section labels: 12px, visible muted slate, not ultra-faint
+- Use grouping: brand top, section labels and nav in the middle, utility anchor at the bottom
+- The rail can own a distinct background tone from the main canvas
 
 ### Top Bar
-- Height should stay visually shallow and compact: 56px to 60px target
+- Height target: 56px to 64px
 - Breadcrumb, search, and action icons live on one horizontal band
-- Use bottom divider or same-plane separation instead of elevated card treatment
-- Search control is a rounded capsule with inline shortcut/meta chip
-- Search width target: 180px to 220px in compact desktop layouts
-- Primary content tabs can sit directly under the top bar or page header as a second navigation band
+- Use a simple strip with breadcrumb and utilities; the bar should support the page, not dominate it
+- Avoid composer-like search capsules and shortcut chips as the main visual motif
+- Primary content tabs can sit below the page header when needed, but the KPI row should remain the first major visual block
 
 ### Panel Frame
-- Outer panel: 18px to 20px radius
-- Padding: 14px to 20px
-- Border: 0.5px to 1px low-contrast graphite
-- Background: near-white porcelain, not pure white
-- Do not stack unnecessary shadows to separate adjacent panels
+- Outer panel: 28px to 32px radius
+- Padding: 18px to 24px
+- Border: 1px low-contrast slate
+- Background: fog shell, with white modules nested where detail density increases
+- Use soft lift to separate major shells when they sit on the same canvas row
 
 ### KPI Card
-- Prefer quiet stat blocks over loud marketing cards
-- Value: 22px to 28px depending on density
-- Meta: mono 11px to 12px
-- Accent rail is optional, not mandatory
-- If color appears, it should encode runtime state or service health
-- On narrower work surfaces, cards should stack before becoming cramped four-column tiles; on compact desktop widths, four cards in one row are preferred when each card can stay above ~190px
+- Use wide pastel tiles as the page's first-read telemetry row
+- Value: 40px to 48px
+- Meta: 13px to 14px, mono only when the value is machine-formatted
+- Delta or trend can sit at the far edge in smaller text
+- Tile families should repeat consistently:
+  - planner blue
+  - perception lilac
+  - services ice
+  - runtime mint or neutral family as needed
+- On narrower work surfaces, stack before squeezing below readable tile width
 
 ### Data Strip
 - Font: IBM Plex Mono 11px
-- Background: soft inset graphite/porcelain tone
-- Border radius: 12px to 14px
+- Background: pale module inset
+- Border radius: 14px to 16px
 - Padding: 8px 12px
 
-### Page Intro Card
-- A large white card can sit above the main work area to orient the user
-- Layout: left icon/title/summary, right-side quick actions or status
-- Use this as a context card, not as a marketing hero
-- Follow with compact metadata fields on a consistent grid; keep intro-to-body spacing tight enough that the first actionable panel is visible without scrolling on common desktop heights
+### Live Workbench
+- The live-view panel should dominate the main canvas
+- Layout: header row, media stage, compact inference footer
+- Use outer fog shell plus a white inner stage around the media frame
+- Header should support:
+  - title
+  - live badge
+  - overlay toggle
+  - utility action
+- The stage should feel operational and large enough to inspect detections, not like a decorative preview
 
 ### Section Tabs
-- Tabs are text-first with understated active underline or pill treatment
+- Tabs are text-first with clear active emphasis
 - Keep them horizontally aligned and scrollable on smaller widths
 - Tabs should switch sibling pages within the same navigation group
 
-### Support Rail
-- Width: 248px to 272px when present
-- Sections are stacked lists with quiet headings
-- Good content: recent events, runtime alerts, active modules, quick context
-- Do not place primary controls here; it is awareness space
+### Right Support Column
+- Width: 340px to 400px when present
+- Use stacked fog shells with smaller white modules inside
+- Good content:
+  - process composition
+  - sensor input state
+  - active services
+  - pipeline summaries
+- This column supports the workbench; it should not visually outrank the live-view panel
 
 ### Search Capsule
-- Width: 180px to 220px in compact top bars
-- Height: 30px to 34px
-- Fill: quiet neutral alpha
-- Embedded shortcut chip uses hairline border and 12px text
+- Use only when the page truly needs search
+- Avoid making capsule search a defining motif for the dashboard shell
+- If present, match the larger rounded system and keep it secondary to telemetry and work panels
 
 ### Utility Icon Group
 - Icon size: 16px to 20px
 - Container padding stays light
-- Icons should feel aligned and quiet, never like decorative badges
+- Icons should feel aligned and precise, never like decorative badges
 
 ### Status Badge
 - Height: 22px to 24px
 - Font: IBM Plex Mono 11px medium
-- Dot + label, or tight pill label for compact contexts
-- Use one of: cyan, emerald, amber, coral, violet, slate
-- Avoid oversized rounded chips unless they communicate a strong status
+- Dot + label, or compact pill label for compact contexts
+- Use one of: mint, amber, coral, slate
+- Live or critical states can be more visible than the rest of the shell
 
 ## Validation
 - Spacing stays on the 4px grid
-- Quiet surface hierarchy remains consistent before adding color
-- Hairline borders and inset fills should do most of the structural work
+- Region hierarchy is obvious without squinting:
+  - navigation rail
+  - KPI ribbon
+  - main live workbench
+  - right support column
+- KPI tiles use stable family colors and crisp value typography
+- Major shells read as intentional groups, not as flat workspace cards
 - Data readouts use mono where scan alignment matters
-- Navigation, tabs, and support rail should stay compact, not drift back into bulky admin templates
-- First screen on 1280px-wide desktop should expose page title, status badges, KPI row, and the first primary work panel without needing to scroll
+- First screen on 1440px-wide desktop should expose breadcrumb strip, page heading, KPI row, live workbench, and at least the top of the right support column without scrolling
 - No new random hex values inside components when a token or pattern already exists
 
 ## Reference
-- External reference: SnowUI design-system board for variables, colors, spacing, text styles, and component taxonomy
-- External reference: SnowUI dashboard canvas in the linked Figma file
-- Additional visual reference: the provided SnowUI settings-layout screenshot with left nav, tab band, centered settings surface, and right support rail
-- Rule: borrow structure, density, and restraint from SnowUI; keep AURA's telemetry semantics and operator-console purpose
+- Primary visual reference: the approved AURA Pipeline Overview screenshot supplied with the task
+- Rule: keep AURA's telemetry semantics and operator-console purpose while matching the screenshot's large-panel hierarchy, pastel KPI row, and live-workbench composition

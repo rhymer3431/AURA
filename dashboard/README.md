@@ -47,7 +47,10 @@ This dashboard now vendors the upstream `Dammyjay93/interface-design` frontend s
 - Codex project entrypoint: `.claude/skills/interface-design/SKILL.md`
 - Vendored internal `.claude` paths are kept for upstream compatibility, but the local wrapper and workflow text are adapted for Codex.
 - Project design memory path: `dashboard/.interface-design/system.md`
-- Added SnowUI design-system reference: `.claude/skills/interface-design/references/snowui-design-system.md`
+- Local target references live at:
+  - `.claude/skills/interface-design/references/snowui-design-system.md`
+  - `.claude/skills/interface-design/references/snowui-dashboard.md`
+  - The filenames are retained for compatibility, but the content is adapted to the approved AURA Pipeline Overview dashboard target.
 - Default audit/extract targets: `dashboard/src`, `dashboard/src/styles`, `dashboard/guidelines/Guidelines.md`
 - This integration is repo-local only. It does not install anything into `~/.codex/skills`.
 - Start a new Codex session or restart Codex after pulling these files so local skill discovery can reload.

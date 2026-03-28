@@ -1,86 +1,113 @@
-# Craft in Action
+# Craft In Action
 
-This shows how the subtle layering principle translates to real decisions. Learn the thinking, not the code. Your values will differ — the approach won't.
-
----
-
-## The Subtle Layering Mindset
-
-Before looking at any example, internalize this: **you should barely notice the system working.**
-
-When you look at Vercel's dashboard, you don't think "nice borders." You just understand the structure. When you look at Supabase, you don't think "good surface elevation." You just know what's above what. The craft is invisible — that's how you know it's working.
+This example shows how the approved AURA Pipeline Overview target should translate into concrete decisions. Learn the reasoning, not the literal numbers.
 
 ---
 
-## Example: Dashboard with Sidebar and Dropdown
+## The Board Mindset
 
-### The Surface Decisions
+Before looking at any example, internalize this: the operator should understand the page in one glance.
 
-**Why so subtle?** Each elevation jump should be only a few percentage points of lightness. You can barely see the difference in isolation. But when surfaces stack, the hierarchy emerges. This is the Vercel/Supabase way — whisper-quiet shifts that you feel rather than see.
+The page should read in big beats:
 
-**What NOT to do:** Don't make dramatic jumps between elevations. That's jarring. Don't use different hues for different levels. Keep the same hue, shift only lightness.
+1. Where am I in the app?
+2. What is the robot doing right now?
+3. What is the main live surface I should watch?
+4. Which support modules tell me whether the system is healthy?
 
-### The Border Decisions
-
-**Why rgba, not solid colors?** Low opacity borders blend with their background. A low-opacity white border on a dark surface is barely there — it defines the edge without demanding attention. Solid hex borders look harsh in comparison.
-
-**The test:** Look at your interface from arm's length. If borders are the first thing you notice, reduce opacity. If you can't find where regions end, increase slightly.
-
-### The Sidebar Decision
-
-**Why same background as canvas, not different?**
-
-Many dashboards make the sidebar a different color. This fragments the visual space — now you have "sidebar world" and "content world."
-
-Better: Same background, subtle border separation. The sidebar is part of the app, not a separate region. Vercel does this. Supabase does this. The border is enough.
-
-### The Dropdown Decision
-
-**Why surface-200, not surface-100?**
-
-The dropdown floats above the card it emerged from. If both were surface-100, the dropdown would blend into the card — you'd lose the sense of layering. Surface-200 is just light enough to feel "above" without being dramatically different.
-
-**Why border-overlay instead of border-default?**
-
-Overlays (dropdowns, popovers) often need slightly more definition because they're floating in space. A touch more border opacity helps them feel contained without being harsh.
+If the answer hides behind whisper-light shells or chat-style controls, the hierarchy is wrong.
 
 ---
 
-## Example: Form Controls
+## Example: Pipeline Overview
 
-### Input Background Decision
+### The Navigation Decision
 
-**Why darker, not lighter?**
+**Why a dedicated rail, not a disappearing sidebar?**
 
-Inputs are "inset" — they receive content, they don't project it. A slightly darker background signals "type here" without needing heavy borders. This is the alternative-background principle.
+The operator needs stable orientation. A distinct left rail with section labels and a highlighted active row grounds the dashboard immediately. It should feel like an app region, not like content floating on a blank canvas.
 
-### Focus State Decision
+### The KPI Decision
 
-**Why subtle focus states?**
+**Why pastel tiles instead of neutral stat cards?**
 
-Focus needs to be visible, but you don't need a glowing ring or dramatic color. A noticeable increase in border opacity is enough for a clear state change. Subtle-but-noticeable — the same principle as surfaces.
+The top row carries the fastest telemetry read. Each tile belongs to a telemetry family, so the family color should appear at the tile level, not only in a tiny badge. The large number does the first read. The small delta does the second.
+
+### The Main Workbench Decision
+
+**Why one dominant center panel?**
+
+The live robot view is the main job surface. Treat it as the hero workstation:
+
+- large rounded shell
+- white inner stage
+- concise header controls
+- compact inference footer
+
+If the live view is just one card among many, the page loses its operational center.
+
+### The Right Column Decision
+
+**Why stacked support modules instead of more KPI cards?**
+
+The right column is secondary but still essential. Process composition, sensor readiness, and health modules support the main workbench. Stacking them in one column keeps the main live view dominant while preserving quick glanceability.
+
+### The Surface Decision
+
+**Why fog shell plus white module?**
+
+This creates readable grouping without going dark or flat:
+
+- warm canvas for the page
+- fog shell for major sections
+- white modules for detailed content
+
+The result is brighter and more legible than a monochrome workspace shell.
 
 ---
 
-## Adapt to Context
+## Example: Control Treatment
 
-Your product might need:
-- Warmer hues (slight yellow/orange tint)
-- Cooler hues (blue-gray base)
-- Different lightness progression
-- Light mode (principles invert — higher elevation = shadow, not lightness)
+### Live Badge Decision
 
-**The principle is constant:** barely different, still distinguishable. The values adapt to context.
+**Why should live state be visibly red?**
+
+Live state is not decorative. It is an operational condition. Let it stand out as a small but clear coral/red pill near the panel title.
+
+### Sensor State Decision
+
+**Why white buttons with green state dots?**
+
+They read like compact instrument modules. The white body keeps them readable; the green dot carries readiness without turning the whole module green.
+
+### Toggle Decision
+
+**Why keep overlay toggles secondary?**
+
+Controls like overlay toggles matter, but they should not compete with the camera stage. Let them sit in the header row as secondary utilities.
+
+---
+
+## Adapt To Context
+
+Your product may need:
+
+- denser right-column modules
+- larger or smaller KPI rows
+- alternate telemetry families
+- different media surfaces besides a camera frame
+
+The principle stays the same: the operator should understand the board in a glance, and the main workstation should remain visually dominant.
 
 ---
 
 ## The Craft Check
 
-Apply the squint test to your work:
+Apply these checks to your work:
 
-1. Blur your eyes or step back
-2. Can you still perceive hierarchy?
-3. Is anything jumping out at you?
-4. Can you tell where regions begin and end?
+1. Can you identify the navigation rail, KPI ribbon, main workbench, and right support column immediately?
+2. Do the KPI tiles read faster than the lower modules?
+3. Is the live-view panel clearly the main working surface?
+4. Does the page feel like an operations board rather than a workspace shell or chat product?
 
-If hierarchy is visible and nothing is harsh — the subtle layering is working.
+If any answer is "no", fix the hierarchy before presenting.

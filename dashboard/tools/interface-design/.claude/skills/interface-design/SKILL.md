@@ -7,6 +7,20 @@ description: This skill is for interface design — dashboards, admin panels, ap
 
 Build interface design with craft and consistency.
 
+## Local AURA Adaptation
+
+When this skill is used through this repository's wrapper for `dashboard/`, the approved AURA dashboard target overrides any generic quiet-workspace instincts.
+
+- Treat the local wrapper and `dashboard/.interface-design/system.md` as the primary source of visual direction.
+- Do not default to Claude-like workspace shells, same-plane monochrome cards, or barely-there sidebar separation.
+- Prefer bright operator-board hierarchy:
+  - dedicated navigation rail
+  - breadcrumb strip
+  - pastel KPI ribbon
+  - dominant live-view workbench
+  - stacked right support column
+- References to Vercel, Supabase, Linear, or other examples in this skill are craft examples, not the target look for this repository.
+
 ## Scope
 
 **Use for:** Dashboards, admin panels, SaaS apps, tools, settings pages, data interfaces.

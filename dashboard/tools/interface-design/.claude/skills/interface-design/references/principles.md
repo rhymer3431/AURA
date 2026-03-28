@@ -22,7 +22,7 @@ Don't invent new colors. Map everything to these primitives.
 
 ### Surface Elevation Hierarchy
 
-Surfaces stack. A dropdown sits above a card which sits above the page. Build a numbered system:
+Surfaces still stack, but operator dashboards often need stronger regional grouping than generic workspace apps. A dropdown sits above a module which sits inside a shell which sits on the page.
 
 ```
 Level 0: Base background (the app canvas)
@@ -32,23 +32,28 @@ Level 3: Nested dropdowns, stacked overlays
 Level 4: Highest elevation (rare)
 ```
 
-In dark mode, higher elevation = slightly lighter. In light mode, higher elevation = slightly lighter or uses shadow. The principle: **elevated surfaces need visual distinction from what's beneath them.**
+In dark mode, higher elevation = slightly lighter. In light mode, higher elevation can use lighter fill, border separation, or soft shadow. The principle: **elevated surfaces need clear visual distinction from what's beneath them.**
 
-### The Subtlety Principle
+### The Readable Separation Principle
 
-This is where most interfaces fail. Study Vercel, Supabase, Linear — their surfaces are **barely different** but still distinguishable. Their borders are **light but not invisible**.
+This is where many dashboards fail. The AI default is either:
 
-**For surfaces:** The difference between elevation levels should be subtle — a few percentage points of lightness, not dramatic jumps. In dark mode, surface-100 might be 7% lighter than base, surface-200 might be 9%, surface-300 might be 12%. You can barely see it, but you feel it.
+- everything on one quiet plane, or
+- every card loudly outlined
 
-**For borders:** Borders should define regions without demanding attention. Use low opacity (0.05-0.12 alpha for dark mode, slightly higher for light). The border should disappear when you're not looking for it, but be findable when you need to understand the structure.
+Good operator UI lands in the middle: region ownership is immediately readable, but the page is still refined.
 
-**The test:** Squint at your interface. You should still perceive the hierarchy — what's above what, where regions begin and end. But no single border or surface should jump out at you. If borders are the first thing you notice, they're too strong. If you can't find where one region ends and another begins, they're too subtle.
+**For surfaces:** Elevation differences should be visible enough to separate navigation, shell panels, and inner modules. In bright dashboards, that may mean warm canvas + fog shell + white module instead of one barely changing neutral.
+
+**For borders:** Borders should define regions without turning into wireframes. Use low opacity for inner modules and slightly stronger definition for major shells when needed.
+
+**The test:** Glance at your interface. You should immediately perceive navigation, KPI summary, main workbench, and support modules. If everything merges into one workspace plane, increase separation. If borders are all you see, reduce them.
 
 **Common AI mistakes to avoid:**
 - Borders that are too visible (1px solid gray instead of subtle rgba)
-- Surface jumps that are too dramatic (going from dark to light instead of dark to slightly-less-dark)
-- Using different hues for different surfaces (gray card on blue background)
-- Harsh dividers where subtle borders would do
+- Surface jumps that are arbitrary instead of region-driven
+- Using pastel colors randomly instead of assigning them to repeated families
+- Hiding major region changes behind overly subtle shells
 
 ### Text Hierarchy via Tokens
 
@@ -88,7 +93,7 @@ Different areas of your app might need different base surfaces:
 
 - **Marketing pages** — might use darker/richer backgrounds
 - **Dashboard/app** — might use neutral working backgrounds
-- **Sidebar** — might differ from main canvas
+- **Sidebar** — may intentionally differ from the main canvas when stable orientation matters
 
 The surface hierarchy works the same way — it just starts from a different base.
 
@@ -136,13 +141,13 @@ The key is having a system: small radius for inputs and buttons, medium for card
 
 Match your depth approach to your design direction. Choose ONE and commit:
 
-**Borders-only (flat)** — Clean, technical, dense. Works for utility-focused tools where information density matters more than visual lift. Linear, Raycast, and many developer tools use almost no shadows — just subtle borders to define regions.
+**Borders-only (flat)** — Clean, technical, dense. Best when the product truly benefits from a tight utility feel.
 
 **Subtle single shadows** — Soft lift without complexity. A simple `0 1px 3px rgba(0,0,0,0.08)` can be enough. Works for approachable products that want gentle depth.
 
 **Layered shadows** — Rich, premium, dimensional. Multiple shadow layers create realistic depth. Stripe and Mercury use this approach. Best for cards that need to feel like physical objects.
 
-**Surface color shifts** — Background tints establish hierarchy without any shadows. A card at `#fff` on a `#f8fafc` background already feels elevated.
+**Surface color shifts** — Background families establish hierarchy without dramatic effects. A fog shell around white modules often works better for operations dashboards than a page full of identical cards.
 
 ```css
 /* Borders-only approach */
@@ -163,7 +168,7 @@ border: 0.5px solid var(--border);
 
 ## Card Layouts
 
-Monotonous card layouts are lazy design. A metric card doesn't have to look like a plan card doesn't have to look like a settings card.
+Monotonous card layouts are lazy design. A KPI tile should not look like a process list card should not look like a live-view workstation panel.
 
 Design each card's internal structure for its specific content — but keep the surface treatment consistent: same border weight, shadow depth, corner radius, padding scale, typography.
 
@@ -222,7 +227,12 @@ Screens need grounding. A data table floating in space feels like a component de
 - **Location indicator** — breadcrumbs, page title, or active nav state
 - **User context** — who's logged in, what workspace/org
 
-When building sidebars, consider using the same background as the main content area. Rely on a subtle border for separation rather than different background colors.
+When building sidebars, choose deliberately:
+
+- same background as the canvas when the UI should feel extremely unified
+- a dedicated rail background when stable orientation matters more than minimalist blending
+
+For operations dashboards, a dedicated rail is often the better default.
 
 ## Dark Mode
 

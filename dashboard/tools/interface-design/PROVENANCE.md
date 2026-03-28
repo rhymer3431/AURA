@@ -18,4 +18,5 @@
 - Codex loads the project-local wrapper at `.claude/skills/interface-design/SKILL.md`.
 - The vendored snapshot keeps the upstream `.claude` and `.claude-plugin` paths for compatibility and provenance, but the content is adapted for Codex use in this repository.
 - The wrapper constrains this skill to dashboard frontend work and maps the design memory file to `dashboard/.interface-design/system.md`.
+- The local reference files under `.claude/skills/interface-design/references/` keep their historical filenames for compatibility, but their content is adapted to the approved AURA Pipeline Overview dashboard target.
 - No global installation under `~/.codex/skills` is part of this integration.
