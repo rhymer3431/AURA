@@ -1,17 +1,20 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Bot,
-  Eye,
+  Activity,
   FileText,
-  LayoutDashboard,
   Map,
-  Navigation,
-  Radio,
-  Scan,
-  Settings,
+  MonitorPlay,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export type DashboardPageId =
+  | "live-loop"
+  | "spatial-memory-map"
+  | "runtime-health-recovery"
+  | "logs-replay"
+  | "session-config";
+
+type LegacyDashboardPageId =
   | "pipeline-overview"
   | "planner-control"
   | "perception-memory"
@@ -21,6 +24,18 @@ export type DashboardPageId =
   | "logs-events"
   | "execution-modes"
   | "artifacts-storage";
+
+const legacyPageRedirects: Record<LegacyDashboardPageId, DashboardPageId> = {
+  "pipeline-overview": "live-loop",
+  "planner-control": "live-loop",
+  "perception-memory": "live-loop",
+  "occupancy-map": "spatial-memory-map",
+  "ipc-viewer": "live-loop",
+  "external-services": "runtime-health-recovery",
+  "logs-events": "logs-replay",
+  "execution-modes": "session-config",
+  "artifacts-storage": "runtime-health-recovery",
+};
 
 export type DashboardPage = {
   id: DashboardPageId;
@@ -35,84 +50,51 @@ export type DashboardNavSection = {
   items: DashboardPage[];
 };
 
-export const DEFAULT_DASHBOARD_PAGE: DashboardPageId = "pipeline-overview";
+export const DEFAULT_DASHBOARD_PAGE: DashboardPageId = "live-loop";
 
 export const dashboardNavSections: DashboardNavSection[] = [
   {
-    title: "Dashboards",
+    title: "Operations",
     items: [
       {
-        id: "pipeline-overview",
-        label: "Pipeline Overview",
-        description: "운영 파이프라인 핵심 신호와 라이브 비전, 프로세스 구성을 한 화면에서 확인합니다.",
-        groupTitle: "Dashboards",
-        icon: LayoutDashboard,
+        id: "live-loop",
+        label: "Live Loop",
+        description: "로봇 시점, 인지 루프, 판단, 이동 명령을 한 화면에서 폐루프로 관찰합니다.",
+        groupTitle: "Operations",
+        icon: MonitorPlay,
       },
       {
-        id: "planner-control",
-        label: "Planner & Control",
-        description: "planning context, recovery state, command arbitration을 집중해서 확인합니다.",
-        groupTitle: "Dashboards",
-        icon: Navigation,
-      },
-      {
-        id: "perception-memory",
-        label: "Perception & Memory",
-        description: "snapshot-backed Perception / Memory 모듈 상태를 분리해서 봅니다.",
-        groupTitle: "Dashboards",
-        icon: Scan,
-      },
-      {
-        id: "occupancy-map",
-        label: "Occupancy Map",
-        description: "맵 기반 occupancy 뷰에서 현재 로봇 위치와 전역 경로를 실시간으로 겹쳐 봅니다.",
-        groupTitle: "Dashboards",
+        id: "spatial-memory-map",
+        label: "Spatial Memory & Map",
+        description: "occupancy map 위에서 현재 pose, waypoint progress, 기억된 객체와 장소를 공간적으로 확인합니다.",
+        groupTitle: "Operations",
         icon: Map,
       },
+      {
+        id: "runtime-health-recovery",
+        label: "Runtime Health & Recovery",
+        description: "process, service, transport, recovery state machine과 safe-stop 원인을 한 페이지에서 진단합니다.",
+        groupTitle: "Operations",
+        icon: Activity,
+      },
     ],
   },
   {
-    title: "Monitoring",
+    title: "Analysis",
     items: [
       {
-        id: "ipc-viewer",
-        label: "IPC & Viewer",
-        description: "WebRTC 뷰어, gateway ingress, telemetry mirror 상태를 전용 페이지에서 확인합니다.",
-        groupTitle: "Monitoring",
-        icon: Eye,
-      },
-      {
-        id: "external-services",
-        label: "External Services",
-        description: "외부 서비스와 주요 모듈의 health, latency mirror를 한 번에 봅니다.",
-        groupTitle: "Monitoring",
-        icon: Radio,
-      },
-      {
-        id: "logs-events",
-        label: "Logs & Events",
-        description: "시스템 로그와 이벤트 스트림을 별도 페이지에서 길게 확인합니다.",
-        groupTitle: "Monitoring",
+        id: "logs-replay",
+        label: "Logs & Replay",
+        description: "event stream과 프레임 단위 cognition trace를 함께 검색하고 replay 관점으로 점검합니다.",
+        groupTitle: "Analysis",
         icon: FileText,
       },
-    ],
-  },
-  {
-    title: "Configuration",
-    items: [
       {
-        id: "execution-modes",
-        label: "Execution Modes",
-        description: "runtime entry mode와 현재 세션 설정을 별도 화면에서 비교합니다.",
-        groupTitle: "Configuration",
-        icon: Bot,
-      },
-      {
-        id: "artifacts-storage",
-        label: "Artifacts & Storage",
-        description: "runtime artifacts, endpoints, raw process logs 같은 구현 진단 정보를 모아 봅니다.",
-        groupTitle: "Configuration",
-        icon: Settings,
+        id: "session-config",
+        label: "Session & Mode Config",
+        description: "launch mode, scene preset, locomotion config, task control을 한 곳에서 관리합니다.",
+        groupTitle: "Analysis",
+        icon: SlidersHorizontal,
       },
     ],
   },
@@ -128,9 +110,14 @@ export function parseDashboardPageId(value: string | null | undefined): Dashboar
     .replace(/^#/, "")
     .replace(/^\//, "")
     .replace(/\/+$/, "");
-  return normalized in dashboardPages
-    ? (normalized as DashboardPageId)
-    : DEFAULT_DASHBOARD_PAGE;
+
+  if (normalized in dashboardPages) {
+    return normalized as DashboardPageId;
+  }
+  if (normalized in legacyPageRedirects) {
+    return legacyPageRedirects[normalized as LegacyDashboardPageId];
+  }
+  return DEFAULT_DASHBOARD_PAGE;
 }
 
 export function dashboardPageHash(pageId: DashboardPageId): string {

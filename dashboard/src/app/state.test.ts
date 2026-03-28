@@ -33,7 +33,7 @@ describe("dashboard state helpers", () => {
     ).toThrow("locomotion config must contain numeric values");
   });
 
-  it("hydrates state history from runtime and service snapshots", () => {
+  it("hydrates state history from latency breakdown and module snapshots", () => {
     const next = dashboardReducer(
       {
         bootstrap: null,
@@ -83,13 +83,24 @@ describe("dashboard state helpers", () => {
           },
           transport: {},
           logs: [],
+          selectedTargetSummary: null,
+          latencyBreakdown: {
+            frameAgeMs: 12,
+            perceptionLatencyMs: null,
+            memoryLatencyMs: null,
+            s2LatencyMs: 131,
+            navLatencyMs: 49,
+            locomotionLatencyMs: null,
+          },
+          cognitionTrace: [],
+          recoveryTransitions: [],
         },
       },
     );
 
     expect(next.history.stale[next.history.stale.length - 1]).toEqual({ t: 100, v: 0.4 });
     expect(next.history.goalDistance[next.history.goalDistance.length - 1]).toEqual({ t: 100, v: 2.3 });
-    expect(next.history.navLatency[next.history.navLatency.length - 1]).toEqual({ t: 100, v: 48 });
-    expect(next.history.s2Latency[next.history.s2Latency.length - 1]).toEqual({ t: 100, v: 130 });
+    expect(next.history.navLatency[next.history.navLatency.length - 1]).toEqual({ t: 100, v: 49 });
+    expect(next.history.s2Latency[next.history.s2Latency.length - 1]).toEqual({ t: 100, v: 131 });
   });
 });

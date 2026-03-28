@@ -80,6 +80,7 @@ export function OccupancyMapPanel() {
   const activeScenePreset = state?.session.config?.scenePreset ?? form.scenePreset;
   const runtime = asRecord(state?.runtime);
   const sensors = asRecord(state?.sensors);
+  const selectedTarget = state?.selectedTargetSummary;
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +125,12 @@ export function OccupancyMapPanel() {
   const robotCanvas = mapWorldToCanvas(mapData, robotPose.length >= 2 ? [robotPose[0], robotPose[1]] : null);
   const goalCanvas = mapWorldToCanvas(mapData, routeGoal);
   const activeWaypointCanvas = mapWorldToCanvas(mapData, activeWaypoint);
+  const selectedTargetCanvas = mapWorldToCanvas(
+    mapData,
+    selectedTarget?.worldPose && selectedTarget.worldPose.length >= 2
+      ? [selectedTarget.worldPose[0], selectedTarget.worldPose[1]]
+      : null,
+  );
   const routeCanvas = useMemo(() => polyline.map((point) => mapWorldToCanvas(mapData, point)).filter((point): point is CanvasPoint => point !== null), [mapData, polyline]);
 
   const svgRoutePoints = routeCanvas.map((point) => `${point.x},${point.y}`).join(" ");
@@ -235,6 +242,12 @@ export function OccupancyMapPanel() {
                         <circle r={4} fill="var(--signal-cyan)" stroke="var(--surface-strong)" strokeWidth={1.5} />
                       </g>
                     )}
+                    {selectedTargetCanvas !== null && (
+                      <g transform={`translate(${selectedTargetCanvas.x},${selectedTargetCanvas.y})`}>
+                        <circle r={10} fill="none" stroke="var(--signal-coral)" strokeWidth={2.5} />
+                        <circle r={3} fill="var(--signal-coral)" />
+                      </g>
+                    )}
                     {robotCanvas !== null && (
                       <g transform={`translate(${robotCanvas.x},${robotCanvas.y}) rotate(${headingDeg})`}>
                         <circle r={12} fill="var(--tone-emerald-border)" />
@@ -261,6 +274,12 @@ export function OccupancyMapPanel() {
                     <span className="size-2 rotate-45 bg-[var(--foreground)]" />
                     final goal
                   </div>
+                  {selectedTargetCanvas !== null ? (
+                    <div className="inline-flex items-center gap-2 rounded-full bg-[var(--tone-coral-bg)] px-3 py-1.5">
+                      <span className="size-2 rounded-full bg-[var(--signal-coral)]" />
+                      selected target
+                    </div>
+                  ) : null}
                 </div>
               </div>
             )}
@@ -322,6 +341,12 @@ export function OccupancyMapPanel() {
                 <div className="mb-1 text-[var(--text-tertiary)]">Active waypoint</div>
                 <div className="font-medium text-[var(--foreground)]">
                   {activeWaypoint ? `${activeWaypoint[0].toFixed(2)}, ${activeWaypoint[1].toFixed(2)}` : "none"}
+                </div>
+              </div>
+              <div className="rounded-[16px] bg-[var(--surface-2)] px-3 py-2.5">
+                <div className="mb-1 text-[var(--text-tertiary)]">Selected target</div>
+                <div className="font-medium text-[var(--foreground)]">
+                  {selectedTarget?.worldPose ? `${selectedTarget.worldPose[0].toFixed(2)}, ${selectedTarget.worldPose[1].toFixed(2)}` : "none"}
                 </div>
               </div>
             </div>

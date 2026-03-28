@@ -93,6 +93,58 @@ export type DashboardArchitecture = {
   };
 };
 
+export type SelectedTargetSummary = {
+  className: string;
+  trackId: string;
+  bbox?: [number, number, number, number];
+  confidence?: number;
+  depthM?: number;
+  navGoalPixel?: [number, number];
+  worldPose?: [number, number, number];
+  source: string;
+};
+
+export type LatencyBreakdown = {
+  frameAgeMs: number | null;
+  perceptionLatencyMs: number | null;
+  memoryLatencyMs: number | null;
+  s2LatencyMs: number | null;
+  navLatencyMs: number | null;
+  locomotionLatencyMs: number | null;
+};
+
+export type CognitionTraceRecord = {
+  timestamp?: number | null;
+  frameId: number;
+  taskId: string;
+  mode: string;
+  detectionCount: number;
+  trackedDetectionCount: number;
+  selectedTarget: string;
+  memoryObjectCount: number;
+  memoryPlaceCount: number;
+  s2RawText: string;
+  s2DecisionMode: string;
+  s2NeedsRequery: boolean;
+  system2PixelGoal: [number, number] | null;
+  planVersion: number;
+  goalVersion: number;
+  trajVersion: number;
+  activeCommandType: string;
+  actionStatus: string;
+  actionReason?: string;
+  recoveryState: string;
+  recoveryReason: string;
+};
+
+export type RecoveryTransition = {
+  from: string;
+  to: string;
+  reason: string;
+  timestamp?: number | null;
+  retryCount: number;
+};
+
 export type DashboardState = {
   timestamp?: number;
   session: {
@@ -127,6 +179,10 @@ export type DashboardState = {
   };
   transport: Record<string, unknown>;
   logs: LogRecord[];
+  selectedTargetSummary: SelectedTargetSummary | null;
+  latencyBreakdown: LatencyBreakdown;
+  cognitionTrace: CognitionTraceRecord[];
+  recoveryTransitions: RecoveryTransition[];
 };
 
 export type BootstrapData = {

@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 
-import { PipelineFlow } from "./PipelineFlow";
+import { CognitionLoopLane } from "./CognitionLoopLane";
 
 const mockDashboard = {
   bootstrap: null,
@@ -124,18 +124,14 @@ vi.mock("../state", () => ({
   useDashboard: () => mockDashboard,
 }));
 
-describe("PipelineFlow", () => {
-  it("renders the closed-loop stages with the new labels", () => {
-    render(<PipelineFlow />);
+describe("CognitionLoopLane", () => {
+  it("changes the selected stage when a stage card is clicked", () => {
+    const onSelectStageId = vi.fn();
 
-    expect(screen.getByText("Cognition Loop Lane")).toBeInTheDocument();
-    expect(screen.getByText("Gateway")).toBeInTheDocument();
-    expect(screen.getByText("Perception")).toBeInTheDocument();
-    expect(screen.getByText("Memory")).toBeInTheDocument();
-    expect(screen.getByText("S2")).toBeInTheDocument();
-    expect(screen.getByText("Nav")).toBeInTheDocument();
-    expect(screen.getByText("Locomotion")).toBeInTheDocument();
-    expect(screen.getByText("Command Resolver")).toBeInTheDocument();
-    expect(screen.queryByText("Dual Server")).not.toBeInTheDocument();
+    render(<CognitionLoopLane selectedStageId="gateway" onSelectStageId={onSelectStageId} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /s2/i }));
+
+    expect(onSelectStageId).toHaveBeenCalledWith("s2");
   });
 });

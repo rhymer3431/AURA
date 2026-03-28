@@ -1,11 +1,36 @@
-import { useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Maximize2, SignalHigh, Video, Zap } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Eye,
+  EyeOff,
+  Focus,
+  Maximize2,
+  SignalHigh,
+  Video,
+  Zap,
+} from "lucide-react";
 
 import { useDashboard } from "../state";
 import { useWebRTCViewer } from "../hooks/useWebRTCViewer";
 import { asArray, asRecord, formatMs, numberValue, stringValue } from "../selectors";
 import { buildApiUrl } from "../network";
-import { ConsolePanel } from "./console-ui";
+import { ConsoleBadge, ConsolePanel } from "./console-ui";
+
+type ViewerDetection = {
+  key: string;
+  trackId: string;
+  className: string;
+  confidence: number | null;
+  depthM: number | null;
+  bbox: number[];
+  worldPose: number[] | null;
+};
+
+type FilmstripFrame = {
+  frameId: number;
+  imageData: string | null;
+  source: string;
+  hasDecision: boolean;
+};
 
 function cssVar(name: string, fallback: string) {
   if (typeof window === "undefined") {
@@ -19,6 +44,7 @@ function drawOverlay(
   canvas: HTMLCanvasElement,
   snapshot: Record<string, unknown> | null,
   telemetry: Record<string, unknown> | null,
+  selectedTrackId: string | null,
 ) {
   const context = canvas.getContext("2d");
   if (context === null) {
@@ -40,25 +66,28 @@ function drawOverlay(
   const uiFont = cssVar("--font-ui", "sans-serif");
   const monoFont = cssVar("--font-mono", "monospace");
   const detectionColor = cssVar("--signal-emerald", "#7d8f7d");
+  const selectedColor = cssVar("--signal-coral", "#a2776c");
   const trajectoryColor = cssVar("--signal-cyan", "#82939a");
   const navGoalColor = cssVar("--signal-coral", "#a2776c");
   const systemGoalColor = cssVar("--signal-amber", "#a18a69");
 
   const detections = asArray<Record<string, unknown>>(telemetry?.detections);
   if (detections.length > 0) {
-    context.lineWidth = 2;
-    context.strokeStyle = detectionColor;
-    context.fillStyle = detectionColor;
     context.font = `12px ${uiFont}`;
-    detections.forEach((item) => {
+    detections.forEach((item, index) => {
       const bbox = asArray<number>(item.bbox_xyxy);
       if (bbox.length !== 4) {
         return;
       }
+      const trackId = stringValue(item.track_id, `detection-${index}`);
+      const isSelected = selectedTrackId !== null && trackId === selectedTrackId;
       const x = (bbox[0] / sourceWidth) * width;
       const y = (bbox[1] / sourceHeight) * height;
       const boxWidth = ((bbox[2] - bbox[0]) / sourceWidth) * width;
       const boxHeight = ((bbox[3] - bbox[1]) / sourceHeight) * height;
+      context.lineWidth = isSelected ? 3 : 2;
+      context.strokeStyle = isSelected ? selectedColor : detectionColor;
+      context.fillStyle = isSelected ? selectedColor : detectionColor;
       context.strokeRect(x, y, boxWidth, boxHeight);
       const label = stringValue(item.class_name, "object");
       const confidence = numberValue(item.confidence);
@@ -132,9 +161,35 @@ function drawOverlay(
   }
 }
 
-export function RobotViewer() {
+function captureFilmstripFrame(video: HTMLVideoElement | null): string | null {
+  if (video === null || video.videoWidth <= 0 || video.videoHeight <= 0) {
+    return null;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(Math.round(video.videoWidth / 4), 1);
+  canvas.height = Math.max(Math.round(video.videoHeight / 4), 1);
+  const context = canvas.getContext("2d");
+  if (context === null) {
+    return null;
+  }
+  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", 0.75);
+}
+
+export function RobotViewer({
+  selectedTrackId = null,
+  onSelectTrackId,
+  selectedFrameId = null,
+  onSelectFrameId,
+}: {
+  selectedTrackId?: string | null;
+  onSelectTrackId?: (trackId: string | null) => void;
+  selectedFrameId?: number | null;
+  onSelectFrameId?: (frameId: number | null) => void;
+}) {
   const { bootstrap, state } = useDashboard();
   const [showOverlay, setShowOverlay] = useState(true);
+  const [filmstrip, setFilmstrip] = useState<FilmstripFrame[]>([]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const viewerEnabled = state?.session.active === true && Boolean(state?.transport.viewerEnabled);
@@ -142,6 +197,41 @@ export function RobotViewer() {
     basePath: bootstrap?.webrtcBasePath ?? buildApiUrl("/api/webrtc"),
     enabled: viewerEnabled,
   });
+
+  const snapshot = asRecord(viewer.snapshotRef.current);
+  const telemetry = asRecord(viewer.telemetryRef.current);
+  const image = asRecord(snapshot.image);
+  const frameId = numberValue(snapshot.frame_id ?? snapshot.frameId);
+  const detections = useMemo<ViewerDetection[]>(() => {
+    return asArray<Record<string, unknown>>(telemetry.detections).map((item, index) => ({
+      key: stringValue(item.track_id, `frame-${frameId ?? -1}-detection-${index}`),
+      trackId: stringValue(item.track_id, ""),
+      className: stringValue(item.class_name, "object"),
+      confidence: numberValue(item.confidence),
+      depthM: numberValue(item.depth_m),
+      bbox: asArray<number>(item.bbox_xyxy),
+      worldPose: asArray<number>(item.world_pose_xyz),
+    }));
+  }, [frameId, telemetry.detections]);
+  const selectedTargetSummary = state?.selectedTargetSummary;
+  const effectiveSelectedTrackId = selectedTrackId ?? selectedTargetSummary?.trackId ?? null;
+  const selectedDetection =
+    detections.find((item) => effectiveSelectedTrackId !== null && item.key === effectiveSelectedTrackId)
+    ?? detections.find((item) => selectedTargetSummary?.trackId !== "" && item.trackId === selectedTargetSummary?.trackId)
+    ?? null;
+  const waitingForFrame = stringValue(snapshot.type) === "waiting_for_frame";
+  const frameSource = stringValue(snapshot.source, stringValue(state?.sensors.source, "aura_runtime"));
+  const detectorBackend = stringValue(snapshot.detector_backend, stringValue(state?.perception.detectorBackend, "unknown"));
+  const peerSessionId = stringValue(state?.transport.peerSessionId, "none");
+  const viewerStateLabel = viewer.connected ? "LIVE" : viewerEnabled ? "CONNECTING" : "OFFLINE";
+  const trackRoles = viewer.trackRoles.length > 0 ? viewer.trackRoles : asArray<string>(state?.transport.peerTrackRoles);
+  const trackLabel = trackRoles.length > 0 ? trackRoles.join(", ") : "none";
+  const decisionFrames = new Set(
+    (state?.cognitionTrace ?? [])
+      .filter((item) => item.s2DecisionMode !== "")
+      .map((item) => item.frameId),
+  );
+  const activeFilmstripFrameId = selectedFrameId ?? frameId ?? filmstrip[0]?.frameId ?? null;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -153,34 +243,56 @@ export function RobotViewer() {
       context?.clearRect(0, 0, canvas.width, canvas.height);
       return undefined;
     }
-    let frameId = 0;
+    let animationFrame = 0;
     const render = () => {
-      drawOverlay(
-        canvas,
-        (viewer.snapshotRef.current as Record<string, unknown> | null) ?? null,
-        (viewer.telemetryRef.current as Record<string, unknown> | null) ?? null,
-      );
-      frameId = window.requestAnimationFrame(render);
+      drawOverlay(canvas, snapshot, telemetry, effectiveSelectedTrackId);
+      animationFrame = window.requestAnimationFrame(render);
     };
     render();
-    return () => window.cancelAnimationFrame(frameId);
-  }, [showOverlay, viewer.snapshotRef, viewer.telemetryRef]);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [effectiveSelectedTrackId, showOverlay, snapshot, telemetry]);
 
-  const snapshot = asRecord(viewer.snapshotRef.current);
-  const telemetry = asRecord(viewer.telemetryRef.current);
-  const image = asRecord(snapshot.image);
-  const trackRoles = viewer.trackRoles.length > 0 ? viewer.trackRoles : asArray<string>(state?.transport.peerTrackRoles);
-  const detections = asArray<Record<string, unknown>>(telemetry.detections);
-  const waitingForFrame = stringValue(snapshot.type) === "waiting_for_frame";
-  const frameSource = stringValue(snapshot.source, stringValue(state?.sensors.source, "aura_runtime"));
-  const detectorBackend = stringValue(snapshot.detector_backend, stringValue(state?.perception.detectorBackend, "unknown"));
-  const peerSessionId = stringValue(state?.transport.peerSessionId, "none");
-  const viewerStateLabel = viewer.connected ? "LIVE" : viewerEnabled ? "CONNECTING" : "OFFLINE";
-  const trackLabel = trackRoles.length > 0 ? trackRoles.join(", ") : "none";
+  useEffect(() => {
+    if (frameId === null) {
+      return;
+    }
+    setFilmstrip((current) => {
+      if (current.some((item) => item.frameId === frameId)) {
+        return current;
+      }
+      const nextFrame: FilmstripFrame = {
+        frameId,
+        imageData: captureFilmstripFrame(viewer.rgbVideoRef.current),
+        source: frameSource,
+        hasDecision: decisionFrames.has(frameId),
+      };
+      return [nextFrame, ...current].slice(0, 6);
+    });
+  }, [decisionFrames, frameId, frameSource, viewer.hudVersion, viewer.rgbVideoRef]);
+
+  useEffect(() => {
+    if (effectiveSelectedTrackId === null) {
+      return;
+    }
+    const exists = detections.some((item) => item.key === effectiveSelectedTrackId);
+    if (!exists) {
+      onSelectTrackId?.(null);
+    }
+  }, [detections, effectiveSelectedTrackId, onSelectTrackId]);
+
+  useEffect(() => {
+    if (selectedFrameId === null) {
+      return;
+    }
+    const exists = filmstrip.some((item) => item.frameId === selectedFrameId);
+    if (!exists) {
+      onSelectFrameId?.(null);
+    }
+  }, [filmstrip, onSelectFrameId, selectedFrameId]);
 
   return (
-    <ConsolePanel className="h-full flex flex-col">
-      <div className="mb-4 flex items-start justify-between gap-3">
+    <ConsolePanel className="flex h-full flex-col gap-4">
+      <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           <Video className="size-4 text-[var(--text-tertiary)]" />
           <h3 className="text-[15px] font-semibold text-[var(--foreground)]">Live Robot View</h3>
@@ -192,6 +304,7 @@ export function RobotViewer() {
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             onClick={() => setShowOverlay((current) => !current)}
             className={`dashboard-button-secondary !rounded-[12px] !px-3 !py-1.5 text-[11px] ${
               showOverlay
@@ -200,7 +313,7 @@ export function RobotViewer() {
             }`}
           >
             {showOverlay ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
-            BBox Overlays
+            Overlay
           </button>
           <button type="button" aria-label="Expand viewer" className="dashboard-utility-button">
             <Maximize2 className="size-[14px]" />
@@ -208,67 +321,166 @@ export function RobotViewer() {
         </div>
       </div>
 
-      <div className="relative w-full aspect-video overflow-hidden rounded-[18px] border border-[rgba(var(--ink-rgb),0.08)] bg-[#0f1720]">
-        <video
-          ref={viewer.rgbVideoRef}
-          className="w-full h-full object-cover"
-          autoPlay
-          muted
-          playsInline
-        />
-        <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+      <div className="flex flex-wrap gap-2">
+        <ConsoleBadge tone="emerald">detections</ConsoleBadge>
+        <ConsoleBadge tone="coral">active target</ConsoleBadge>
+        <ConsoleBadge tone="amber">S2 goal</ConsoleBadge>
+        <ConsoleBadge tone="cyan">trajectory</ConsoleBadge>
+      </div>
+
+      <div className="relative aspect-video w-full overflow-hidden rounded-[18px] border border-[rgba(var(--ink-rgb),0.08)] bg-[#0f1720]">
+        <video ref={viewer.rgbVideoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+        <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 h-full w-full" />
 
         <div className="pointer-events-none absolute left-0 top-0 flex w-full items-start justify-between p-2.5">
           <div className="flex flex-col gap-1">
-            <div className="dashboard-viewer-hud">
-              CAM: {frameSource}
-            </div>
+            <div className="dashboard-viewer-hud">CAM: {frameSource}</div>
             <div className="dashboard-viewer-hud">
               FPS: {viewer.connected ? "30" : "0"} | RES: {numberValue(image.width) ?? 0}x{numberValue(image.height) ?? 0}
             </div>
           </div>
           <div className="dashboard-viewer-hud flex items-center gap-1.5">
             <SignalHigh className="size-3 text-[var(--signal-emerald)]" />
-            frame age {formatMs(state?.transport.frameAgeMs, "n/a")}
+            frame age {formatMs(state?.latencyBreakdown.frameAgeMs, "n/a")}
           </div>
         </div>
 
         {!viewerEnabled && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(var(--ink-rgb),0.52)] text-[rgba(var(--paper-rgb),0.9)] text-[13px]">
+          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(var(--ink-rgb),0.52)] text-[13px] text-[rgba(var(--paper-rgb),0.9)]">
             viewer publish disabled
           </div>
         )}
         {viewerEnabled && waitingForFrame && (
-          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(var(--ink-rgb),0.42)] text-[rgba(var(--paper-rgb),0.9)] text-[13px]">
+          <div className="absolute inset-0 flex items-center justify-center bg-[rgba(var(--ink-rgb),0.42)] text-[13px] text-[rgba(var(--paper-rgb),0.9)]">
             waiting for frame
           </div>
         )}
         {viewer.error !== "" && (
-          <div className="absolute right-3 bottom-3 left-3 rounded-lg border border-[var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-3 py-2 text-[11px] text-[var(--tone-coral-fg)]">
+          <div className="absolute bottom-3 left-3 right-3 rounded-lg border border-[var(--tone-coral-border)] bg-[var(--tone-coral-bg)] px-3 py-2 text-[11px] text-[var(--tone-coral-fg)]">
             {viewer.error}
           </div>
         )}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 px-1">
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-secondary)]">
-          <div className="flex items-center gap-1.5">
-            <Zap className="size-3.5 text-[var(--signal-emerald)]" />
-            <span>
-              Inference: <span className="font-medium text-[var(--foreground)]">{detectorBackend}</span>
-            </span>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(260px,0.9fr)]">
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+            <div className="flex flex-wrap items-center gap-3 text-[11px] text-[var(--text-secondary)]">
+              <div className="flex items-center gap-1.5">
+                <Zap className="size-3.5 text-[var(--signal-emerald)]" />
+                <span>
+                  Inference: <span className="font-medium text-[var(--foreground)]">{detectorBackend}</span>
+                </span>
+              </div>
+              <div className="dashboard-inline-divider" />
+              <span>
+                Detected: <span className="font-medium text-[var(--foreground)]">{detections.length} objects</span>
+              </span>
+              <div className="dashboard-inline-divider" />
+              <span>
+                Tracks: <span className="font-medium text-[var(--foreground)]">{trackLabel}</span>
+              </span>
+            </div>
+            <div className="dashboard-mono text-[10px] text-[var(--text-tertiary)]">peer {peerSessionId}</div>
           </div>
-          <div className="dashboard-inline-divider" />
-          <span>
-            Detected: <span className="font-medium text-[var(--foreground)]">{detections.length} objects</span>
-          </span>
-          <div className="dashboard-inline-divider" />
-          <span>
-            Tracks: <span className="font-medium text-[var(--foreground)]">{trackLabel}</span>
-          </span>
+
+          <div className="grid grid-cols-1 gap-2">
+            {detections.length === 0 ? (
+              <div className="dashboard-field text-[12px] text-[var(--text-secondary)]">No detections in the current frame.</div>
+            ) : (
+              detections.map((item) => {
+                const active = effectiveSelectedTrackId !== null && item.key === effectiveSelectedTrackId;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => onSelectTrackId?.(active ? null : item.key)}
+                    className={`dashboard-field text-left transition-colors ${
+                      active ? "border-[var(--tone-coral-border)] bg-[var(--tone-coral-bg)]" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-[12px] font-medium text-[var(--foreground)]">{item.className}</div>
+                        <div className="dashboard-micro mt-1">
+                          {item.trackId || "no-track"} · conf {item.confidence?.toFixed(2) ?? "n/a"} · depth {item.depthM?.toFixed(2) ?? "n/a"}m
+                        </div>
+                      </div>
+                      <Focus className={`size-4 ${active ? "text-[var(--tone-coral-fg)]" : "text-[var(--text-faint)]"}`} />
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
-        <div className="dashboard-mono text-[10px] text-[var(--text-tertiary)]">
-          peer {peerSessionId}
+
+        <div className="space-y-3">
+          <div className="dashboard-panel-strong p-3.5">
+            <div className="dashboard-eyebrow mb-2">Selected Object Inspector</div>
+            {selectedDetection !== null || selectedTargetSummary !== null ? (
+              <div className="space-y-2 text-[11px]">
+                <div className="dashboard-field">
+                  <div className="dashboard-eyebrow mb-1">class / track</div>
+                  <div className="text-[var(--foreground)]">
+                    {selectedDetection?.className || selectedTargetSummary?.className || "unknown"} /{" "}
+                    {selectedDetection?.trackId || selectedTargetSummary?.trackId || "n/a"}
+                  </div>
+                </div>
+                <div className="dashboard-field">
+                  <div className="dashboard-eyebrow mb-1">confidence / depth</div>
+                  <div className="text-[var(--foreground)]">
+                    {selectedDetection?.confidence?.toFixed(2) ?? selectedTargetSummary?.confidence?.toFixed(2) ?? "n/a"} /{" "}
+                    {selectedDetection?.depthM?.toFixed(2) ?? selectedTargetSummary?.depthM?.toFixed(2) ?? "n/a"}m
+                  </div>
+                </div>
+                <div className="dashboard-field">
+                  <div className="dashboard-eyebrow mb-1">nav goal / world pose</div>
+                  <div className="dashboard-mono text-[var(--foreground)]">
+                    {(selectedTargetSummary?.navGoalPixel ?? []).join(", ") || "n/a"} ·{" "}
+                    {(selectedDetection?.worldPose ?? selectedTargetSummary?.worldPose ?? []).join(", ") || "n/a"}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[12px] text-[var(--text-secondary)]">Select a detection to inspect it here.</div>
+            )}
+          </div>
+
+          <div className="dashboard-panel-strong p-3.5">
+            <div className="dashboard-eyebrow mb-2">Recent Frame Strip</div>
+            <div className="grid grid-cols-3 gap-2">
+              {filmstrip.length === 0 ? (
+                <div className="col-span-3 text-[12px] text-[var(--text-secondary)]">No frame thumbnails yet.</div>
+              ) : (
+                filmstrip.map((item) => {
+                  const active = activeFilmstripFrameId === item.frameId;
+                  return (
+                    <button
+                      key={item.frameId}
+                      type="button"
+                      onClick={() => onSelectFrameId?.(active ? null : item.frameId)}
+                      className={`overflow-hidden rounded-[14px] border text-left ${
+                        active ? "border-[var(--tone-cyan-border)]" : "border-[rgba(var(--ink-rgb),0.08)]"
+                      }`}
+                    >
+                      {item.imageData ? (
+                        <img src={item.imageData} alt={`frame ${item.frameId}`} className="aspect-video w-full object-cover" />
+                      ) : (
+                        <div className="flex aspect-video items-center justify-center bg-[var(--surface-2)] text-[11px] text-[var(--text-secondary)]">
+                          frame {item.frameId}
+                        </div>
+                      )}
+                      <div className="flex items-center justify-between gap-2 px-2 py-1.5 text-[10px]">
+                        <span className="dashboard-mono text-[var(--foreground)]">#{item.frameId}</span>
+                        {item.hasDecision ? <ConsoleBadge tone="amber" className="!px-1.5 !py-0.5" dot={false}>S2</ConsoleBadge> : null}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </ConsolePanel>

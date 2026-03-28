@@ -2,22 +2,11 @@ import { useEffect, useState } from "react";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
-import { NavigationControlPanel } from "./components/NavigationControlPanel";
-import { OccupancyMapPanel } from "./components/OccupancyMapPanel";
-import { ExternalServicesPanel } from "./components/ExternalServicesPanel";
-import { RobotViewer } from "./components/RobotViewer";
-import { ControlStrip } from "./components/ControlStrip";
-import {
-  ProcessesWidget,
-  SensorsWidget,
-  PerceptionWidget,
-  MemoryWidget,
-  IpcOrchestrationWidget,
-  LogsWidget,
-} from "./components/SystemStatusWidgets";
-import { ExecutionModesPanel } from "./components/ExecutionModesPanel";
-import { ArtifactsStoragePanel } from "./components/ArtifactsStoragePanel";
-import { OverviewCanvas } from "./components/OverviewCanvas";
+import { LiveLoopWorkspace } from "./components/LiveLoopWorkspace";
+import { SpatialMemoryMapWorkspace } from "./components/SpatialMemoryMapWorkspace";
+import { RuntimeHealthRecoveryWorkspace } from "./components/RuntimeHealthRecoveryWorkspace";
+import { LogsReplayWorkspace } from "./components/LogsReplayWorkspace";
+import { SessionConfigWorkspace } from "./components/SessionConfigWorkspace";
 import {
   DEFAULT_DASHBOARD_PAGE,
   dashboardPageHash,
@@ -26,7 +15,6 @@ import {
   type DashboardPageId,
 } from "./navigation";
 import { useDashboard } from "./state";
-import { RightRail } from "./components/RightRail";
 
 function currentPageFromLocation(): DashboardPageId {
   if (typeof window === "undefined") {
@@ -36,7 +24,7 @@ function currentPageFromLocation(): DashboardPageId {
 }
 
 export default function App() {
-  const { error, state } = useDashboard();
+  const { error } = useDashboard();
   const [activePage, setActivePage] = useState<DashboardPageId>(() => currentPageFromLocation());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -93,8 +81,6 @@ export default function App() {
   }, [mobileSidebarOpen]);
 
   const page = dashboardPages[activePage];
-  const isOverviewPage = activePage === "pipeline-overview";
-  const showRightRail = !isOverviewPage;
 
   function navigateTo(pageId: DashboardPageId) {
     setMobileSidebarOpen(false);
@@ -111,68 +97,23 @@ export default function App() {
   }
 
   function renderPageContent() {
-    if (activePage === "pipeline-overview") {
-      return <OverviewCanvas />;
+    if (activePage === "live-loop") {
+      return <LiveLoopWorkspace />;
     }
-
-    if (activePage === "planner-control") {
-      return <NavigationControlPanel />;
+    if (activePage === "spatial-memory-map") {
+      return <SpatialMemoryMapWorkspace />;
     }
-
-    if (activePage === "occupancy-map") {
-      return <OccupancyMapPanel />;
+    if (activePage === "runtime-health-recovery") {
+      return <RuntimeHealthRecoveryWorkspace />;
     }
-
-    if (activePage === "perception-memory") {
-      return (
-        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
-          <PerceptionWidget />
-          <MemoryWidget />
-        </div>
-      );
+    if (activePage === "logs-replay") {
+      return <LogsReplayWorkspace />;
     }
-
-    if (activePage === "ipc-viewer") {
-      return (
-        <div className="grid grid-cols-1 gap-4 2xl:grid-cols-12">
-          <div className="2xl:col-span-8">
-            <RobotViewer />
-          </div>
-          <div className="grid grid-cols-1 gap-4 2xl:col-span-4">
-            <SensorsWidget />
-            <IpcOrchestrationWidget />
-          </div>
-        </div>
-      );
-    }
-
-    if (activePage === "external-services") {
-      return (
-        <div className="space-y-4">
-          <ExternalServicesPanel />
-          <ProcessesWidget />
-        </div>
-      );
-    }
-
-    if (activePage === "logs-events") {
-      return <LogsWidget />;
-    }
-
-    if (activePage === "execution-modes") {
-      return (
-        <div className="space-y-4">
-          <ControlStrip />
-          <ExecutionModesPanel />
-        </div>
-      );
-    }
-
-    return <ArtifactsStoragePanel />;
+    return <SessionConfigWorkspace />;
   }
 
   return (
-    <div className={`dashboard-shell ${showRightRail ? "dashboard-shell--with-rail" : "dashboard-shell--no-rail"}`}>
+    <div className="dashboard-shell dashboard-shell--no-rail">
       {mobileSidebarOpen ? (
         <button
           type="button"
@@ -181,21 +122,20 @@ export default function App() {
           onClick={() => setMobileSidebarOpen(false)}
         />
       ) : null}
-      <Sidebar activePage={activePage} isMobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} onNavigate={navigateTo} />
+      <Sidebar
+        activePage={activePage}
+        isMobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
+        onNavigate={navigateTo}
+      />
       <main className="dashboard-main">
         <TopBar page={page} onToggleSidebar={() => setMobileSidebarOpen((current) => !current)} />
         <div className="dashboard-page dashboard-scroll">
           <div className="dashboard-page-header">
             <div className="min-w-0">
-              {isOverviewPage ? (
-                <h1 className="dashboard-section-title">Overview</h1>
-              ) : (
-                <>
-                  <div className="dashboard-eyebrow">{page.groupTitle}</div>
-                  <h1 className="dashboard-page-title mt-1">{page.label}</h1>
-                  <p className="dashboard-page-caption mt-1.5 max-w-xl">{page.description}</p>
-                </>
-              )}
+              <div className="dashboard-eyebrow">{page.groupTitle}</div>
+              <h1 className="dashboard-page-title mt-1">{page.label}</h1>
+              <p className="dashboard-page-caption mt-1.5 max-w-xl">{page.description}</p>
             </div>
           </div>
 
@@ -207,11 +147,9 @@ export default function App() {
             )}
 
             {renderPageContent()}
-            {showRightRail ? <RightRail mobile className="xl:hidden" /> : null}
           </div>
         </div>
       </main>
-      {showRightRail ? <RightRail className="hidden xl:flex" /> : null}
     </div>
   );
 }

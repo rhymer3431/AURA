@@ -10,6 +10,7 @@ import React, {
 
 import type {
   BootstrapData,
+  LatencyBreakdown,
   DashboardContextValue,
   DashboardHistory,
   DashboardState,
@@ -53,6 +54,11 @@ function appendSeries(series: NumericSeries, value: number | null | undefined, t
   }
   const next = [...series, { t: timestamp, v: value }];
   return next.slice(-20);
+}
+
+function latencyValue(source: LatencyBreakdown | Record<string, unknown> | undefined, key: keyof LatencyBreakdown): number | null {
+  const candidate = source?.[key];
+  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
 }
 
 export function buildSessionPayload(form: SessionForm) {
@@ -112,8 +118,20 @@ export function dashboardReducer(model: StateModel, action: Action): StateModel 
     return { ...model, error: action.payload };
   }
   const timestamp = Math.round((action.payload.timestamp ?? Date.now() / 1000) as number);
-  const navLatency = Number((action.payload.architecture.modules.nav?.latencyMs ?? NaN) || NaN);
-  const s2Latency = Number((action.payload.architecture.modules.s2?.latencyMs ?? NaN) || NaN);
+  const navLatency = Number(
+    (
+      latencyValue(action.payload.latencyBreakdown, "navLatencyMs")
+      ?? action.payload.architecture.modules.nav?.latencyMs
+      ?? NaN
+    ) || NaN,
+  );
+  const s2Latency = Number(
+    (
+      latencyValue(action.payload.latencyBreakdown, "s2LatencyMs")
+      ?? action.payload.architecture.modules.s2?.latencyMs
+      ?? NaN
+    ) || NaN,
+  );
   const stale = Number((action.payload.runtime.staleSec ?? NaN) || NaN);
   const goalDistance = Number((action.payload.runtime.goalDistanceM ?? NaN) || NaN);
   return {

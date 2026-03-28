@@ -138,7 +138,14 @@ def _frame() -> FrameCache:
         rgb_image=np.zeros((24, 32, 3), dtype=np.uint8),
         depth_image_m=np.full((24, 32), 1.5, dtype=np.float32),
         viewer_overlay={
-            "detections": [{"class_name": "apple", "bbox_xyxy": [1, 2, 10, 12], "track_id": "track-1"}],
+            "detections": [
+                {
+                    "class_name": "apple",
+                    "bbox_xyxy": [1, 2, 10, 12],
+                    "track_id": "track-1",
+                    "depth_m": 1.5,
+                }
+            ],
             "trajectory_pixels": [[10, 12], [15, 18]],
             "active_target": {"action_type": "LOCAL_SEARCH"},
         },
@@ -169,9 +176,9 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
     state = SnapshotAdapter.to_dashboard_state(
         _snapshot(),
         processes=[{"name": "navdp", "state": "running"}],
-        services={"navdp": {"status": "ok"}},
+        services={"navdp": {"status": "ok", "latencyMs": 18.0}, "dual": {"status": "ok", "latencyMs": 24.0}},
         session_state={"timestamp": 1.0, "active": True, "startedAt": 2.0, "config": {"viewerEnabled": True}, "lastEvent": {"message": "ok"}},
-        transport_state={"frameSeq": 7, "frameAvailable": True},
+        transport_state={"frameSeq": 7, "frameAvailable": True, "frameAgeMs": 9.0},
         architecture={
             "gateway": {"state": "running"},
             "mainControlServer": {"state": "running"},
@@ -180,6 +187,8 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
         recent_logs=[{"message": "log"}],
         last_status={"state": "running"},
         detector_capability={"component": "detector", "status": "ready"},
+        cognition_trace=[{"frameId": 11}],
+        recovery_transitions=[{"from": "NORMAL", "to": "REPLAN_PENDING", "reason": "trajectory_stale", "timestamp": 1.0, "retryCount": 1}],
     )
 
     assert state["runtime"]["modes"]["executionMode"] == "NAV"
@@ -188,6 +197,46 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
     assert state["runtime"]["commandVector"] == [0.12, -0.03, 0.2]
     assert state["perception"]["detectorCapability"]["status"] == "ready"
     assert state["transport"]["frameSeq"] == 7
+    assert state["selectedTargetSummary"] == {
+        "className": "",
+        "trackId": "track-1",
+        "source": "manual",
+    }
+    assert state["latencyBreakdown"] == {
+        "frameAgeMs": 9.0,
+        "perceptionLatencyMs": None,
+        "memoryLatencyMs": None,
+        "s2LatencyMs": 24.0,
+        "navLatencyMs": 18.0,
+        "locomotionLatencyMs": None,
+    }
+    assert state["cognitionTrace"] == [{"frameId": 11}]
+    assert state["recoveryTransitions"][0]["to"] == "REPLAN_PENDING"
+
+
+def test_snapshot_adapter_normalizes_target_and_latency_summaries() -> None:
+    summary = SnapshotAdapter.selected_target_summary(_snapshot(), frame=_frame())
+    latency = SnapshotAdapter.latency_breakdown(
+        _snapshot(),
+        services={"navdp": {"latencyMs": 18.0}, "dual": {"latencyMs": 24.0}},
+        transport_state={"frameAgeMs": 9.0},
+    )
+
+    assert summary == {
+        "className": "apple",
+        "trackId": "track-1",
+        "source": "perception",
+        "bbox": [1, 2, 10, 12],
+        "depthM": 1.5,
+    }
+    assert latency == {
+        "frameAgeMs": 9.0,
+        "perceptionLatencyMs": None,
+        "memoryLatencyMs": None,
+        "s2LatencyMs": 24.0,
+        "navLatencyMs": 18.0,
+        "locomotionLatencyMs": None,
+    }
 
 
 def test_snapshot_adapter_uses_world_state_for_webrtc_payloads() -> None:

@@ -5,7 +5,7 @@ import App from "./App";
 
 const mockDashboard = {
   bootstrap: {
-    plannerModes: ["interactive", "pointgoal"],
+    executionModes: ["TALK", "NAV", "IDLE"],
     launchModes: ["gui", "headless"],
     scenePresets: ["warehouse"],
     apiBaseUrl: "http://127.0.0.1:18095",
@@ -54,10 +54,20 @@ const mockDashboard = {
     services: {},
     transport: {},
     logs: [],
+    selectedTargetSummary: null,
+    latencyBreakdown: {
+      frameAgeMs: null,
+      perceptionLatencyMs: null,
+      memoryLatencyMs: null,
+      s2LatencyMs: null,
+      navLatencyMs: null,
+      locomotionLatencyMs: null,
+    },
+    cognitionTrace: [],
+    recoveryTransitions: [],
   },
   history: { stale: [], goalDistance: [], navLatency: [], s2Latency: [] },
   form: {
-    plannerMode: "interactive" as const,
     launchMode: "gui" as const,
     scenePreset: "warehouse",
     viewerEnabled: true,
@@ -70,8 +80,6 @@ const mockDashboard = {
       cmdMaxVy: "0.3",
       cmdMaxWz: "0.8",
     },
-    goalX: "0",
-    goalY: "0",
   },
   loading: false,
   error: "",
@@ -87,50 +95,24 @@ vi.mock("./state", () => ({
   useDashboard: () => mockDashboard,
 }));
 
-vi.mock("./components/StatCards", () => ({
-  StatCards: () => <div>StatCards</div>,
+vi.mock("./components/LiveLoopWorkspace", () => ({
+  LiveLoopWorkspace: () => <div>LiveLoopWorkspace</div>,
 }));
 
-vi.mock("./components/PipelineFlow", () => ({
-  PipelineFlow: () => <div>PipelineFlow</div>,
+vi.mock("./components/SpatialMemoryMapWorkspace", () => ({
+  SpatialMemoryMapWorkspace: () => <div>SpatialMemoryMapWorkspace</div>,
 }));
 
-vi.mock("./components/NavigationControlPanel", () => ({
-  NavigationControlPanel: () => <div>NavigationControlPanel</div>,
+vi.mock("./components/RuntimeHealthRecoveryWorkspace", () => ({
+  RuntimeHealthRecoveryWorkspace: () => <div>RuntimeHealthRecoveryWorkspace</div>,
 }));
 
-vi.mock("./components/OccupancyMapPanel", () => ({
-  OccupancyMapPanel: () => <div>OccupancyMapPanel</div>,
+vi.mock("./components/LogsReplayWorkspace", () => ({
+  LogsReplayWorkspace: () => <div>LogsReplayWorkspace</div>,
 }));
 
-vi.mock("./components/ExternalServicesPanel", () => ({
-  ExternalServicesPanel: () => <div>ExternalServicesPanel</div>,
-}));
-
-vi.mock("./components/RobotViewer", () => ({
-  RobotViewer: () => <div>RobotViewer</div>,
-}));
-
-vi.mock("./components/ControlStrip", () => ({
-  ControlStrip: () => <div>ControlStrip</div>,
-}));
-
-vi.mock("./components/SystemStatusWidgets", () => ({
-  MainControlServerWidget: () => <div>MainControlServerWidget</div>,
-  ProcessesWidget: () => <div>ProcessesWidget</div>,
-  SensorsWidget: () => <div>SensorsWidget</div>,
-  PerceptionWidget: () => <div>PerceptionWidget</div>,
-  MemoryWidget: () => <div>MemoryWidget</div>,
-  IpcOrchestrationWidget: () => <div>IpcOrchestrationWidget</div>,
-  LogsWidget: () => <div>LogsWidget</div>,
-}));
-
-vi.mock("./components/ExecutionModesPanel", () => ({
-  ExecutionModesPanel: () => <div>ExecutionModesPanel</div>,
-}));
-
-vi.mock("./components/ArtifactsStoragePanel", () => ({
-  ArtifactsStoragePanel: () => <div>ArtifactsStoragePanel</div>,
+vi.mock("./components/SessionConfigWorkspace", () => ({
+  SessionConfigWorkspace: () => <div>SessionConfigWorkspace</div>,
 }));
 
 describe("App navigation", () => {
@@ -138,21 +120,30 @@ describe("App navigation", () => {
     window.history.replaceState(null, "", "/");
   });
 
-  it("renders overview by default and switches pages from the sidebar", async () => {
+  it("renders live loop by default and switches pages from the sidebar", async () => {
     render(<App />);
 
-    expect(screen.getByText("StatCards")).toBeInTheDocument();
-    expect(screen.getByText("PipelineFlow")).toBeInTheDocument();
-    expect(screen.getByText("ProcessesWidget")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByText("LiveLoopWorkspace")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Live Loop" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Planner & Control" }));
+    fireEvent.click(screen.getByRole("button", { name: "Runtime Health & Recovery" }));
 
     await waitFor(() => {
-      expect(screen.getByText("NavigationControlPanel")).toBeInTheDocument();
-      expect(screen.queryByText("PipelineFlow")).not.toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Planner & Control" })).toBeInTheDocument();
-      expect(window.location.hash).toBe("#/planner-control");
+      expect(screen.getByText("RuntimeHealthRecoveryWorkspace")).toBeInTheDocument();
+      expect(screen.queryByText("LiveLoopWorkspace")).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Runtime Health & Recovery" })).toBeInTheDocument();
+      expect(window.location.hash).toBe("#/runtime-health-recovery");
+    });
+  });
+
+  it("redirects legacy hashes to the new live loop route", async () => {
+    window.history.replaceState(null, "", "#/planner-control");
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("LiveLoopWorkspace")).toBeInTheDocument();
+      expect(window.location.hash).toBe("#/live-loop");
     });
   });
 });

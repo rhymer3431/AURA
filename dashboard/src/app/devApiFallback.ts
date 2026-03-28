@@ -245,6 +245,17 @@ function buildMockState(apiBaseUrl: string, nowMs: number) {
       },
     },
     logs: [eventLog],
+    selectedTargetSummary: null,
+    latencyBreakdown: {
+      frameAgeMs: null,
+      perceptionLatencyMs: null,
+      memoryLatencyMs: null,
+      s2LatencyMs: null,
+      navLatencyMs: null,
+      locomotionLatencyMs: null,
+    },
+    cognitionTrace: [],
+    recoveryTransitions: [],
   };
 }
 

@@ -208,6 +208,17 @@ class _FakeStateAggregator:
             },
             "transport": {"viewerEnabled": False if request is None else request.viewer_enabled},
             "logs": [{"source": "runtime", "stream": "event", "message": "ready"}],
+            "selectedTargetSummary": None,
+            "latencyBreakdown": {
+                "frameAgeMs": None,
+                "perceptionLatencyMs": None,
+                "memoryLatencyMs": None,
+                "s2LatencyMs": None,
+                "navLatencyMs": None,
+                "locomotionLatencyMs": None,
+            },
+            "cognitionTrace": [],
+            "recoveryTransitions": [],
         }
 
     def add_listener(self):
@@ -303,6 +314,10 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert payload["architecture"]["gateway"]["name"] == "Robot Gateway"
                 assert payload["architecture"]["mainControlServer"]["name"] == "Main Control Server"
                 assert payload["architecture"]["modules"]["s2"]["name"] == "S2"
+                assert payload["selectedTargetSummary"] is None
+                assert payload["latencyBreakdown"]["navLatencyMs"] is None
+                assert payload["cognitionTrace"] == []
+                assert payload["recoveryTransitions"] == []
                 events_response.close()
 
                 response = await client.post(
@@ -333,6 +348,10 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert started["session"]["config"]["locomotionConfig"]["cmdMaxVx"] == 0.8
                 assert started["architecture"]["modules"]["s2"]["status"] == "ok"
                 assert started["architecture"]["modules"]["nav"]["status"] == "ok"
+                assert "selectedTargetSummary" in started
+                assert "latencyBreakdown" in started
+                assert "cognitionTrace" in started
+                assert "recoveryTransitions" in started
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/runtime/task",

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,6 +18,7 @@ from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (
     ExecutionStateSnapshot,
     PlanningStateSnapshot,
+    RobotStateSnapshot,
     RuntimeStateSnapshot,
     SafetyStateSnapshot,
     TaskSnapshot,
@@ -27,6 +29,7 @@ from schemas.world_state import (
 class _FakeSubscriber:
     def __init__(self) -> None:
         self.listener = asyncio.Queue()
+        self._current_frame = None
 
     def add_listener(self):
         return self.listener
@@ -36,7 +39,7 @@ class _FakeSubscriber:
 
     @property
     def current_frame(self):
-        return None
+        return self._current_frame
 
     def last_frame_age_ms(self):
         return None
@@ -120,18 +123,24 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
                     mode="NAV",
                     planning=PlanningStateSnapshot(
                         plan_version=4,
+                        goal_version=5,
+                        traj_version=6,
                         planner_mode="NAV",
                         active_instruction="dock",
                         active_nav_plan={
                             "trajectory_point_count": 2,
                             "trajectory_world": [[0.0, 0.0, 0.0], [0.6, 0.1, 0.0]],
                         },
+                        system2_pixel_goal=[120, 80],
                         route_state={"pixelGoal": [10, 20]},
                     ),
                     execution=ExecutionStateSnapshot(
                         locomotion_proposal_summary={
+                            "goal_distance_m": 1.4,
                             "command_vector": [0.2, 0.0, 0.1],
-                        }
+                        },
+                        active_command_type="NAV_TO_POSE",
+                        active_target={"target_track_id": "track-1", "nav_goal_pixel": [100, 60], "source": "perception"},
                     ),
                     safety=SafetyStateSnapshot(
                         stale=True,
@@ -148,6 +157,22 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
             },
         },
     )
+    aggregator.subscriber._current_frame = SimpleNamespace(
+        seq=7,
+        viewer_overlay={
+            "detections": [
+                {
+                    "class_name": "apple",
+                    "track_id": "track-1",
+                    "bbox_xyxy": [1, 2, 10, 12],
+                    "confidence": 0.9,
+                    "depth_m": 1.5,
+                    "world_pose_xyz": [0.1, 0.2, 0.3],
+                }
+            ]
+        },
+        frame_header=SimpleNamespace(frame_id=11, timestamp_ns=1234, source="unit_test"),
+    )
     state = aggregator._build_state()
 
     assert "_runtime_snapshot" not in aggregator.__dict__
@@ -161,6 +186,12 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     assert state["architecture"]["mainControlServer"]["metrics"]["recoveryState"] == "REPLAN_PENDING"
     assert state["architecture"]["modules"]["s2"]["name"] == "S2"
     assert "dual" not in state["architecture"]["modules"]
+    assert state["selectedTargetSummary"]["trackId"] == "track-1"
+    assert state["selectedTargetSummary"]["bbox"] == [1, 2, 10, 12]
+    assert state["latencyBreakdown"]["navLatencyMs"] is None
+    assert len(state["cognitionTrace"]) == 1
+    assert state["cognitionTrace"][0]["frameId"] == -1
+    assert state["recoveryTransitions"] == []
 
 
 def test_state_aggregator_normalizes_system2_output_from_dual_debug() -> None:
@@ -290,3 +321,75 @@ def test_state_aggregator_keeps_system2_output_null_before_first_decision() -> N
 
     assert system2["status"] == "awaiting_first_decision"
     assert system2["output"] is None
+
+
+def test_state_aggregator_updates_trace_in_place_for_same_frame_and_tracks_recovery_transitions() -> None:
+    aggregator = StateAggregator(
+        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
+        process_manager=_FakeProcessManager(),
+        subscriber=_FakeSubscriber(),
+        control_client=_FakeControlClient(),
+        session_manager=_FakeSessionManager(),
+        log_tailer=_FakeLogTailer(),
+    )
+
+    def consume(current_state: str, reason: str, *, decision_mode: str) -> dict[str, object]:
+        aggregator._consume_gateway_event(
+            "health",
+            {
+                "component": "aura_runtime",
+                "details": {
+                    "worldState": WorldStateSnapshot(
+                        task=TaskSnapshot(task_id="task-1", instruction="dock", mode="NAV", state="active", command_id=7),
+                        mode="NAV",
+                        robot=RobotStateSnapshot(frame_id=44),
+                        planning=PlanningStateSnapshot(plan_version=4, goal_version=5, traj_version=6, planner_mode="NAV"),
+                        execution=ExecutionStateSnapshot(active_command_type="NAV_TO_POSE"),
+                        safety=SafetyStateSnapshot(
+                            recovery_state=RecoveryStateSnapshot(
+                                current_state=current_state,
+                                entered_at_ns=10,
+                                retry_count=1,
+                                backoff_until_ns=20,
+                                last_trigger_reason=reason,
+                            ),
+                        ),
+                    ).to_dict()
+                },
+            },
+        )
+        aggregator._service_state["dual"] = {
+            "name": "dual",
+            "status": "ok",
+            "debug": {
+                "stats": {
+                    "last_s2_mode": decision_mode,
+                    "last_s2_raw_text": "120, 80",
+                    "last_s2_reason": reason,
+                },
+                "system2_session": {
+                    "last_output": "120, 80",
+                    "last_reason": reason,
+                    "last_decision_mode": decision_mode,
+                    "last_needs_requery": False,
+                },
+            },
+        }
+        return aggregator._build_state()
+
+    first = consume("NORMAL", "clear", decision_mode="pixel_goal")
+    second = consume("SAFE_STOP", "trajectory_blocked", decision_mode="stop")
+
+    assert len(first["cognitionTrace"]) == 1
+    assert len(second["cognitionTrace"]) == 1
+    assert second["cognitionTrace"][0]["s2DecisionMode"] == "stop"
+    assert second["cognitionTrace"][0]["recoveryState"] == "SAFE_STOP"
+    assert second["recoveryTransitions"] == [
+        {
+            "from": "NORMAL",
+            "to": "SAFE_STOP",
+            "reason": "trajectory_blocked",
+            "timestamp": second["recoveryTransitions"][0]["timestamp"],
+            "retryCount": 1,
+        }
+    ]

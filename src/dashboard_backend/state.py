@@ -43,6 +43,9 @@ class StateAggregator:
         self._last_status: dict[str, object] = {}
         self._service_state: dict[str, dict[str, object]] = {}
         self._event_logs: deque[dict[str, object]] = deque(maxlen=200)
+        self._cognition_trace: deque[dict[str, object]] = deque(maxlen=200)
+        self._recovery_transitions: deque[dict[str, object]] = deque(maxlen=50)
+        self._last_recovery_signature: tuple[str, str, int] | None = None
         self._state_listeners: list[asyncio.Queue[dict[str, object]]] = []
         self._state: dict[str, object] = {}
 
@@ -557,6 +560,41 @@ class StateAggregator:
             },
         }
 
+    def _update_cognition_trace(self, entry: dict[str, object]) -> None:
+        if entry == {}:
+            return
+        frame_id = int(entry.get("frameId", -1) or -1)
+        if self._cognition_trace and int(self._cognition_trace[-1].get("frameId", -1) or -1) == frame_id:
+            changed = any(
+                self._cognition_trace[-1].get(key) != entry.get(key)
+                for key in ("s2DecisionMode", "planVersion", "trajVersion", "activeCommandType", "recoveryState")
+            )
+            if changed:
+                merged = dict(self._cognition_trace[-1])
+                merged.update(entry)
+                self._cognition_trace[-1] = merged
+            return
+        self._cognition_trace.append(dict(entry))
+
+    def _update_recovery_transitions(self, *, current_state: str, reason: str, retry_count: int, timestamp: float | None) -> None:
+        signature = (current_state, reason, retry_count)
+        if self._last_recovery_signature is None:
+            self._last_recovery_signature = signature
+            return
+        if signature == self._last_recovery_signature:
+            return
+        previous_state, _, _ = self._last_recovery_signature
+        self._recovery_transitions.append(
+            {
+                "from": previous_state,
+                "to": current_state,
+                "reason": reason,
+                "timestamp": timestamp,
+                "retryCount": retry_count,
+            }
+        )
+        self._last_recovery_signature = signature
+
     async def start(self) -> None:
         if self._client is not None:
             return
@@ -724,12 +762,31 @@ class StateAggregator:
             else list(self.session_manager.active_session.track_roles),
             "busHealth": self.control_client.transport_health_snapshot(),
         }
+        timestamp = time.time()
+        selected_target_summary = SnapshotAdapter.selected_target_summary(self._world_state, frame=frame)
+        latency_breakdown = SnapshotAdapter.latency_breakdown(
+            self._world_state,
+            services=services,
+            transport_state=transport_state,
+        )
+        trace_entry = SnapshotAdapter.cognition_trace_entry(
+            self._world_state,
+            system2_output=dict(services["system2"]["output"]) if isinstance(services["system2"].get("output"), dict) else None,
+            timestamp=timestamp,
+        )
+        self._update_cognition_trace(trace_entry)
+        self._update_recovery_transitions(
+            current_state=str(trace_entry.get("recoveryState", "")),
+            reason=str(trace_entry.get("recoveryReason", "")),
+            retry_count=int(self._world_state.safety.recovery_state.retry_count) if self._world_state is not None else 0,
+            timestamp=timestamp,
+        )
         return SnapshotAdapter.to_dashboard_state(
             self._world_state,
             processes=processes,
             services=services,
             session_state={
-                "timestamp": time.time(),
+                "timestamp": timestamp,
                 "active": request is not None,
                 "startedAt": self.process_manager.session_started_at,
                 "config": session_payload,
@@ -745,6 +802,10 @@ class StateAggregator:
             recent_logs=list(self._event_logs)[-20:],
             last_status=self._last_status,
             detector_capability=self._detector_capability,
+            selected_target_summary=selected_target_summary,
+            latency_breakdown=latency_breakdown,
+            cognition_trace=list(self._cognition_trace),
+            recovery_transitions=list(self._recovery_transitions),
         )
 
     def _broadcast_state(self) -> None:

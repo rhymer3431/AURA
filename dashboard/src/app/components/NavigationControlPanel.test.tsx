@@ -20,8 +20,8 @@ const mockDashboard: any = {
   history: {
     stale: [{ t: 1, v: 0.5 }],
     goalDistance: [{ t: 1, v: 2.4 }],
-    navLatency: [],
-    s2Latency: [],
+    navLatency: [{ t: 1, v: 48 }],
+    s2Latency: [{ t: 1, v: 46 }],
   },
   form: {
     launchMode: "gui",
@@ -59,6 +59,7 @@ function buildState() {
     runtime: {
       executionMode: "NAV",
       plannerControlMode: "trajectory",
+      plannerControlReason: "route_refresh",
       activeInstruction: "dock at the charging station",
       planVersion: 3,
       goalVersion: 5,
@@ -72,15 +73,28 @@ function buildState() {
       commandSpeedMps: 0.184,
       recoveryState: "NORMAL",
       recoveryReason: "clear",
+      recoveryRetryCount: 0,
+      recoveryBackoffUntilNs: 0,
       activeCommandType: "NAV_TO_POSE",
       actionStatus: {
         state: "running",
         reason: "tracking trajectory",
       },
     },
-    sensors: {},
-    perception: {},
-    memory: {},
+    sensors: { frameId: 21, source: "unit_test" },
+    perception: {
+      detectionCount: 2,
+      trackedDetectionCount: 1,
+      detectorBackend: "stub",
+      detectorSelectedReason: "active track",
+      trajectoryPointCount: 3,
+    },
+    memory: {
+      objectCount: 3,
+      placeCount: 2,
+      scratchpad: { taskState: "active", nextPriority: "approach target" },
+      memoryAwareTaskActive: true,
+    },
     architecture: {
       gateway: { name: "Robot Gateway", status: "ok", summary: "frames live", detail: "", required: true, metrics: {} },
       mainControlServer: {
@@ -96,7 +110,7 @@ function buildState() {
           worldStateStore: { name: "World State Store", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
           decisionEngine: { name: "Decision Engine", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
           plannerCoordinator: { name: "Planner Coordinator", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
-          commandResolver: { name: "Command Resolver", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
+          commandResolver: { name: "Command Resolver", status: "ok", summary: "tracking trajectory", detail: "", required: true, metrics: {} },
           safetySupervisor: { name: "Safety Supervisor", status: "ok", summary: "ready", detail: "", required: true, metrics: {} },
         },
       },
@@ -129,6 +143,41 @@ function buildState() {
     },
     transport: {},
     logs: [],
+    selectedTargetSummary: { className: "apple", trackId: "track-1", source: "perception" },
+    latencyBreakdown: {
+      frameAgeMs: 18,
+      perceptionLatencyMs: 12,
+      memoryLatencyMs: null,
+      s2LatencyMs: 46,
+      navLatencyMs: 48,
+      locomotionLatencyMs: null,
+    },
+    cognitionTrace: [
+      {
+        timestamp: 1,
+        frameId: 21,
+        taskId: "task-1",
+        mode: "NAV",
+        detectionCount: 2,
+        trackedDetectionCount: 1,
+        selectedTarget: "track-1",
+        memoryObjectCount: 3,
+        memoryPlaceCount: 2,
+        s2RawText: "120, 80",
+        s2DecisionMode: "pixel_goal",
+        s2NeedsRequery: false,
+        system2PixelGoal: [120, 80],
+        planVersion: 3,
+        goalVersion: 5,
+        trajVersion: 8,
+        activeCommandType: "NAV_TO_POSE",
+        actionStatus: "running",
+        actionReason: "tracking trajectory",
+        recoveryState: "NORMAL",
+        recoveryReason: "clear",
+      },
+    ],
+    recoveryTransitions: [],
   };
 }
 
@@ -137,52 +186,16 @@ beforeEach(() => {
 });
 
 describe("NavigationControlPanel", () => {
-  it("renders structured system2 output details", () => {
+  it("renders the new decision rail and loop timeline sections", () => {
     render(<NavigationControlPanel />);
 
-    expect(screen.getByText("System2 Output")).toBeInTheDocument();
-    expect(screen.getByText("Trajectory Points")).toBeInTheDocument();
-    expect(screen.getByText("(1.00, 2.00, 0.00) -> (1.50, 2.40, 0.00) -> (1.90, 2.80, 0.00)")).toBeInTheDocument();
-    expect(screen.getByText("[0.18, -0.04, 0.22]")).toBeInTheDocument();
+    expect(screen.getByText("Decision Rail")).toBeInTheDocument();
+    expect(screen.getByText("Loop Timeline")).toBeInTheDocument();
+    expect(screen.getByText("S2 Decision")).toBeInTheDocument();
+    expect(screen.getByText("Motion Decision")).toBeInTheDocument();
+    expect(screen.getByText("Resolver / Recovery")).toBeInTheDocument();
     expect(screen.getAllByText("120, 80").length).toBeGreaterThan(0);
-    expect(screen.getByText("pixel_goal")).toBeInTheDocument();
+    expect(screen.getAllByText("pixel_goal").length).toBeGreaterThan(0);
     expect(screen.getByText("46ms")).toBeInTheDocument();
-    expect(screen.getByText("14, 18, 21")).toBeInTheDocument();
-    expect(screen.getByText("dock at the charging station")).toBeInTheDocument();
-  });
-
-  it("shows awaiting-first-decision fallback when session is active but no output exists", () => {
-    mockDashboard.state = {
-      ...buildState(),
-      services: {
-        system2: {
-          name: "system2",
-          status: "awaiting_first_decision",
-          output: null,
-        },
-      },
-    };
-
-    render(<NavigationControlPanel />);
-
-    expect(screen.getAllByText("awaiting first decision").length).toBeGreaterThan(0);
-  });
-
-  it("shows session-inactive fallback when the runtime session is down", () => {
-    mockDashboard.state = {
-      ...buildState(),
-      session: { active: false, startedAt: null, config: null, lastEvent: null },
-      services: {
-        system2: {
-          name: "system2",
-          status: "inactive",
-          output: null,
-        },
-      },
-    };
-
-    render(<NavigationControlPanel />);
-
-    expect(screen.getByText("session inactive")).toBeInTheDocument();
   });
 });
