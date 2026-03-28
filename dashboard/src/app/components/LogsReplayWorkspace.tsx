@@ -31,35 +31,21 @@ export function LogsReplayWorkspace() {
       return matchesTask && matchesRecovery && matchesS2;
     });
   }, [recoveryFilter, s2Filter, state?.cognitionTrace, taskFilter]);
-  const recentMatches = [...filteredTrace].slice(-5).reverse();
-  const latestMatch = recentMatches[0] ?? null;
 
   return (
-    <div className="space-y-5">
-      <ConsolePanel className="flex flex-col gap-4">
+    <div className="space-y-6">
+      <LogsWidget />
+
+      <ConsolePanel>
         <ConsoleSectionTitle
           icon={TableProperties}
           eyebrow="frame replay"
           title="Frame Trace Table"
           description="특정 task, recovery state, S2 raw output 기준으로 프레임 단위 cognition trace를 걸러봅니다."
+          className="mb-4"
         />
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className="dashboard-field">
-            <div className="dashboard-eyebrow mb-1">matched frames</div>
-            <div className="dashboard-mono text-[15px] font-semibold text-[var(--foreground)]">{filteredTrace.length}</div>
-          </div>
-          <div className="dashboard-field">
-            <div className="dashboard-eyebrow mb-1">latest decision</div>
-            <div className="text-[12px] font-medium text-[var(--foreground)]">{latestMatch?.s2DecisionMode || "no_s2"}</div>
-          </div>
-          <div className="dashboard-field">
-            <div className="dashboard-eyebrow mb-1">latest recovery</div>
-            <div className="text-[12px] font-medium text-[var(--foreground)]">{latestMatch?.recoveryState || "clear"}</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
           <input
             className="dashboard-input"
             placeholder="filter task id"
@@ -125,44 +111,6 @@ export function LogsReplayWorkspace() {
           </table>
         </div>
       </ConsolePanel>
-
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-12 xl:items-start">
-        <div className="xl:col-span-7">
-          <ConsolePanel className="flex flex-col gap-3.5">
-            <ConsoleSectionTitle
-              icon={TableProperties}
-              eyebrow="replay pivots"
-              title="Matched Frame Summary"
-              description="현재 필터에 걸린 최신 프레임들을 빠르게 훑어보며 replay pivot을 잡습니다."
-            />
-            <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-              {recentMatches.length === 0 ? (
-                <div className="dashboard-field md:col-span-2">
-                  <div className="dashboard-eyebrow mb-1">status</div>
-                  <div className="text-[12px] text-[var(--text-secondary)]">No trace rows match the current filters.</div>
-                </div>
-              ) : (
-                recentMatches.map((item) => (
-                  <div key={`${item.frameId}-${item.planVersion}-${item.activeCommandType}-summary`} className="dashboard-field">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-[12px] font-semibold text-[var(--foreground)]">frame {item.frameId}</div>
-                      <div className="dashboard-mono text-[10px] text-[var(--text-tertiary)]">{formatTimestamp(item.timestamp ?? null)}</div>
-                    </div>
-                    <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
-                      {item.s2DecisionMode || "no_s2"} · {item.activeCommandType || item.actionStatus || "idle"} · {item.recoveryState}
-                    </div>
-                    <div className="mt-2 text-[11px] text-[var(--foreground)] break-words">{item.s2RawText || item.actionReason || item.recoveryReason || "no detail"}</div>
-                  </div>
-                ))
-              )}
-            </div>
-          </ConsolePanel>
-        </div>
-
-        <div className="xl:col-span-5">
-          <LogsWidget />
-        </div>
-      </div>
     </div>
   );
 }
