@@ -238,3 +238,27 @@ def test_planner_runtime_engine_owns_dual_goal_versions() -> None:
     assert update.goal_version == 5
     assert update.traj_version == 7
     assert update.trajectory_world.shape == (2, 3)
+
+
+def test_dual_runtime_includes_robot_pose_and_yaw_in_dual_sensor_meta() -> None:
+    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session(mode="dual")
+    state = PlannerRuntimeState(mode="dual")
+    engine = PlannerRuntimeEngine(_args(planner_mode="dual"), transport=session, state=state)
+
+    engine.start_dual_task("find the red mug")
+    _ = dual_client
+    update = engine.plan_with_observation(
+        _observation(session, 4),
+        action_command=_planner_managed_command(task_id="dual"),
+        robot_pos_world=np.asarray([1.5, -2.0, 0.25], dtype=np.float32),
+        robot_yaw=0.75,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    del update
+    assert len(dual_planner.submitted) == 1
+    submitted = dual_planner.submitted[0]
+    assert submitted.sensor_meta["rgb_source"] == "fake"
+    assert submitted.sensor_meta["depth_source"] == "fake"
+    assert submitted.sensor_meta["robot_pose_xyz"] == [1.5, -2.0, 0.25]
+    assert submitted.sensor_meta["robot_yaw_rad"] == 0.75

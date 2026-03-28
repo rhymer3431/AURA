@@ -5,6 +5,7 @@ import time
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
+import json
 
 import numpy as np
 
@@ -14,6 +15,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from memory.models import MemoryContextBundle, RetrievedMemoryLine, ScratchpadState
+from schemas.workers import NavRequest
 from server.dual_planner_service import DualPlannerService, GoalCache, S2Result, TrajectoryCache
 
 
@@ -340,3 +342,52 @@ def test_step_routes_memory_context_only_to_s2() -> None:
 
     assert captured["memory_context"] == memory_context
     assert captured["sensor_meta"] == {"frame_source": "camera"}
+
+
+def test_dual_service_forwards_pixel_goal_and_uses_robot_frame_for_s1_trajectory(monkeypatch) -> None:
+    orchestrator = DualPlannerService(_args())
+    captured: dict[str, object] = {}
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"trajectory": [[1.0, 0.0, 0.0], [2.0, 0.0, 0.0]]}
+
+    def _fake_post(url, *, files, data, timeout):  # noqa: ANN001
+        del files
+        captured["url"] = str(url)
+        captured["timeout"] = float(timeout)
+        captured["goal_data"] = json.loads(str(data["goal_data"]))
+        return _FakeResponse()
+
+    monkeypatch.setattr("server.dual_planner_service.requests.post", _fake_post)
+
+    result = orchestrator._call_s1(
+        NavRequest(
+            image_bgr=np.zeros((8, 8, 3), dtype=np.uint8),
+            depth_m=np.ones((8, 8), dtype=np.float32),
+            pixel_goal=(308, 247),
+            sensor_meta={"robot_pose_xyz": [10.0, 20.0, 0.0], "robot_yaw_rad": float(np.pi / 2.0)},
+            robot_pos_world=np.asarray([10.0, 20.0, 0.0], dtype=np.float32),
+            robot_yaw=float(np.pi / 2.0),
+            cam_pos=np.asarray([1.0, 2.0, 3.0], dtype=np.float32),
+            cam_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        )
+    )
+
+    assert result.ok is True
+    assert captured["url"] == "http://127.0.0.1:8888/pixelgoal_step"
+    assert captured["timeout"] == 5.0
+    assert captured["goal_data"] == {
+        "goal_x": [308],
+        "goal_y": [247],
+        "sensor_meta": {"robot_pose_xyz": [10.0, 20.0, 0.0], "robot_yaw_rad": float(np.pi / 2.0)},
+        "client_meta": {"dual_server": True, "rgb_shape": [8, 8, 3], "depth_shape": [8, 8]},
+    }
+    np.testing.assert_allclose(
+        result.trajectory_world,
+        np.asarray([[10.0, 21.0, 0.0], [10.0, 22.0, 0.0]], dtype=np.float32),
+        atol=1.0e-5,
+    )

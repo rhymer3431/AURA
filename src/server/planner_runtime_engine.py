@@ -105,7 +105,12 @@ class PlannerRuntimeEngine:
         if self._state.mode == "NAV":
             if getattr(self._transport, "dual_planner", None) is None:
                 raise RuntimeError("PlanningSession is not initialized.")
-            return self._run_dual(observation, action_command=action_command)
+            return self._run_dual(
+                observation,
+                action_command=action_command,
+                robot_pos_world=robot_pos_world,
+                robot_yaw=robot_yaw,
+            )
         if getattr(self._transport, "pointgoal_planner", None) is None or getattr(self._transport, "nogoal_planner", None) is None:
             raise RuntimeError("PlanningSession is not initialized.")
         if action_command is None or action_command.action_type in {"STOP", "LOOK_AT"}:
@@ -404,7 +409,14 @@ class PlannerRuntimeEngine:
             sensor_meta=observation.sensor_meta,
         )
 
-    def _run_dual(self, observation: ExecutionObservation, *, action_command: ActionCommand | None) -> TrajectoryUpdate:
+    def _run_dual(
+        self,
+        observation: ExecutionObservation,
+        *,
+        action_command: ActionCommand | None,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> TrajectoryUpdate:
         if self._state.goal.dual_instruction == "":
             return TrajectoryUpdate(
                 trajectory_world=np.zeros((0, 3), dtype=np.float32),
@@ -428,7 +440,11 @@ class PlannerRuntimeEngine:
                     frame_id=int(observation.frame_id),
                     rgb=observation.rgb,
                     depth=observation.depth,
-                    sensor_meta=dict(observation.sensor_meta),
+                    sensor_meta=self._dual_sensor_meta(
+                        observation.sensor_meta,
+                        robot_pos_world=robot_pos_world,
+                        robot_yaw=robot_yaw,
+                    ),
                     cam_pos=observation.cam_pos,
                     cam_quat=observation.cam_quat,
                     memory_context=observation.memory_context,
@@ -460,13 +476,24 @@ class PlannerRuntimeEngine:
             sensor_meta=observation.sensor_meta,
         )
 
-    def _run_interactive(self, observation: ExecutionObservation, *, action_command: ActionCommand | None) -> TrajectoryUpdate:
+    def _run_interactive(
+        self,
+        observation: ExecutionObservation,
+        *,
+        action_command: ActionCommand | None,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> TrajectoryUpdate:
         self._consume_interactive_controls()
         plan_stop = False
         if self._state.interactive.phase == "roaming":
             self._update_interactive_roaming(observation)
         else:
-            plan_stop = self._update_interactive_task(observation)
+            plan_stop = self._update_interactive_task(
+                observation,
+                robot_pos_world=robot_pos_world,
+                robot_yaw=robot_yaw,
+            )
         return self._build_update(
             frame_id=observation.frame_id,
             action_command=action_command,
@@ -610,7 +637,13 @@ class PlannerRuntimeEngine:
             last_plan_step=int(self._state.trajectory.stats.last_plan_step),
         )
 
-    def _update_interactive_task(self, observation: ExecutionObservation) -> bool:
+    def _update_interactive_task(
+        self,
+        observation: ExecutionObservation,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> bool:
         force_s2 = bool(
             self._state.trajectory.trajectory_world.shape[0] == 0
             and self._state.trajectory.planner_control_mode != "yaw_delta"
@@ -624,7 +657,11 @@ class PlannerRuntimeEngine:
                     frame_id=int(observation.frame_id),
                     rgb=observation.rgb,
                     depth=observation.depth,
-                    sensor_meta=dict(observation.sensor_meta),
+                    sensor_meta=self._dual_sensor_meta(
+                        observation.sensor_meta,
+                        robot_pos_world=robot_pos_world,
+                        robot_yaw=robot_yaw,
+                    ),
                     cam_pos=observation.cam_pos,
                     cam_quat=observation.cam_quat,
                     memory_context=observation.memory_context,
@@ -668,6 +705,21 @@ class PlannerRuntimeEngine:
             last_plan_step=int(self._state.trajectory.stats.last_plan_step),
         )
         return False
+
+    @staticmethod
+    def _dual_sensor_meta(
+        sensor_meta: dict[str, Any] | None,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> dict[str, Any]:
+        enriched = dict(sensor_meta) if isinstance(sensor_meta, dict) else {}
+        robot_pose = np.asarray(robot_pos_world, dtype=np.float32).reshape(-1)
+        if robot_pose.shape[0] >= 3 and np.all(np.isfinite(robot_pose[:3])):
+            enriched["robot_pose_xyz"] = [float(v) for v in robot_pose[:3]]
+        if np.isfinite(float(robot_yaw)):
+            enriched["robot_yaw_rad"] = float(robot_yaw)
+        return enriched
 
     def _consume_planner_latest(
         self,

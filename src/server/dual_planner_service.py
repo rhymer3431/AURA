@@ -12,7 +12,7 @@ import numpy as np
 import requests
 
 from common.cv2_compat import cv2
-from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world
+from common.geometry import normalize_navdp_trajectory, trajectory_camera_to_world, trajectory_robot_to_world
 from inference.vlm import (
     System2Session,
     System2SessionConfig,
@@ -346,12 +346,19 @@ class DualPlannerService:
             resp.raise_for_status()
             body = resp.json()
             trajectory_local = normalize_navdp_trajectory(np.asarray(body.get("trajectory"), dtype=np.float32))
-            trajectory_world = trajectory_camera_to_world(
-                trajectory_local=trajectory_local,
-                camera_pos_world=np.asarray(request.cam_pos, dtype=np.float32),
-                camera_quat_wxyz=np.asarray(request.cam_quat_wxyz, dtype=np.float32),
-                use_trajectory_z=self.use_trajectory_z,
-            )
+            if request.robot_pos_world is not None:
+                trajectory_world = trajectory_robot_to_world(
+                    trajectory_robot=trajectory_local,
+                    robot_pos_w=np.asarray(request.robot_pos_world, dtype=np.float32),
+                    robot_yaw=float(request.robot_yaw),
+                )
+            else:
+                trajectory_world = trajectory_camera_to_world(
+                    trajectory_local=trajectory_local,
+                    camera_pos_world=np.asarray(request.cam_pos, dtype=np.float32),
+                    camera_quat_wxyz=np.asarray(request.cam_quat_wxyz, dtype=np.float32),
+                    use_trajectory_z=self.use_trajectory_z,
+                )
             if trajectory_world.shape[0] == 0:
                 raise ValueError("empty trajectory from NavDP")
             latency_ms = (time.perf_counter() - start) * 1000.0
@@ -626,6 +633,8 @@ class DualPlannerService:
         s1_request: NavRequest | None = None
         s1_goal_version = -1
         s1_pixel_goal = (0, 0)
+        robot_pos_world = self._sensor_meta_robot_pose(sensor_meta)
+        robot_yaw = self._sensor_meta_robot_yaw(sensor_meta)
         generation = -1
 
         with self._lock:
@@ -703,6 +712,8 @@ class DualPlannerService:
                 depth_m=depth.copy(),
                 pixel_goal=(int(s1_pixel_goal[0]), int(s1_pixel_goal[1])),
                 sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
+                robot_pos_world=None if robot_pos_world is None else robot_pos_world.copy(),
+                robot_yaw=float(robot_yaw),
                 cam_pos=np.asarray(cam_pos, dtype=np.float32).copy(),
                 cam_quat_wxyz=np.asarray(cam_quat_wxyz, dtype=np.float32).copy(),
             )
@@ -809,3 +820,28 @@ class DualPlannerService:
             },
             "debug": debug,
         }
+
+    @staticmethod
+    def _sensor_meta_robot_pose(sensor_meta: dict[str, Any] | None) -> np.ndarray | None:
+        if not isinstance(sensor_meta, dict):
+            return None
+        raw_pose = sensor_meta.get("robot_pose_xyz")
+        try:
+            pose = np.asarray(raw_pose, dtype=np.float32).reshape(-1)
+        except Exception:  # noqa: BLE001
+            return None
+        if pose.shape[0] < 3 or not np.all(np.isfinite(pose[:3])):
+            return None
+        return pose[:3].copy()
+
+    @staticmethod
+    def _sensor_meta_robot_yaw(sensor_meta: dict[str, Any] | None) -> float:
+        if not isinstance(sensor_meta, dict):
+            return 0.0
+        try:
+            yaw = float(sensor_meta.get("robot_yaw_rad", 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+        if not np.isfinite(yaw):
+            return 0.0
+        return float(yaw)
