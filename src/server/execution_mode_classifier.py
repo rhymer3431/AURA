@@ -10,6 +10,33 @@ from services.intent_service import IntentService
 _MEMORY_TOKENS = ("봤던", "아까", "previously", "remembered", "earlier", "이전에 본", "지나쳤던")
 _EXPLORE_TOKENS = ("탐색", "둘러", "roam", "wander", "explore", "scan around", "search around", "local search")
 _NAV_TOKENS = ("가", "이동", "navigate", "move", "go to", "reach", "follow", "찾")
+_EMBODIED_NAV_TOKENS = (
+    "go to",
+    "move to",
+    "navigate to",
+    "head to",
+    "inspect",
+    "check",
+    "look for",
+    "find",
+    "fetch",
+    "bring",
+    "가서",
+    "가줘",
+    "로 가",
+    "으로 가",
+    "쪽으로 가",
+    "이동해",
+    "이동해줘",
+    "이동해 줘",
+    "확인해",
+    "확인해줘",
+    "확인해 줘",
+    "찾아",
+    "찾아줘",
+    "찾아 줘",
+    "이동",
+)
 _TALK_TOKENS = ("왜", "무엇", "설명", "explain", "tell me", "what", "why", "how")
 
 
@@ -44,6 +71,9 @@ class ExecutionModeClassifier:
 
         if parsed.target_class != "" and any(token in lowered for token in _NAV_TOKENS):
             return ModeClassification(mode="NAV", reason="target_navigation", target_class=parsed.target_class, intent_name=parsed.name)
+
+        if any(token in lowered for token in _EMBODIED_NAV_TOKENS):
+            return ModeClassification(mode="NAV", reason="embodied_instruction", target_class=parsed.target_class, intent_name=parsed.name)
 
         if any(token in lowered for token in _TALK_TOKENS):
             return ModeClassification(mode="TALK", reason="conversation", target_class=parsed.target_class, intent_name=parsed.name)
