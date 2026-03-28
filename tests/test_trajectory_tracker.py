@@ -73,3 +73,65 @@ def test_tracker_builds_pose_command_from_lookahead_target_and_segment_heading()
     np.testing.assert_allclose(target.pose_command_b[:2], np.asarray([1.0, 0.5], dtype=np.float32), atol=1.0e-4)
     assert abs(float(target.pose_command_b[2])) < 1.0e-6
     assert target.pose_command_b[3] > 0.0
+
+
+def test_tracker_handoff_preserves_projected_progress_for_small_replan() -> None:
+    tracker = _tracker()
+    loop_traj = np.asarray(
+        [[0.0, 0.0, 0.0], [0.8, 0.0, 0.0], [0.8, 0.8, 0.0], [0.0, 0.8, 0.0], [0.0, 0.05, 0.0]],
+        dtype=np.float32,
+    )
+    tracker.set_trajectory(loop_traj, plan_version=1, timestamp=0.0, reset_progress=False, seed_progress_idx=4)
+
+    handoff = tracker.compute_handoff(
+        loop_traj + np.asarray([0.0, 0.02, 0.0], dtype=np.float32),
+        position_w=np.asarray([0.0, 0.04, 0.8], dtype=np.float32),
+    )
+
+    assert handoff.reset_progress is False
+    assert handoff.seed_progress_idx == 4
+    tracker.set_trajectory(
+        loop_traj + np.asarray([0.0, 0.02, 0.0], dtype=np.float32),
+        plan_version=2,
+        timestamp=0.1,
+        reset_progress=handoff.reset_progress,
+        seed_progress_idx=handoff.seed_progress_idx,
+    )
+
+    assert tracker.progress_idx == 4
+
+
+def test_tracker_handoff_resets_progress_for_large_target_shift() -> None:
+    tracker = TrajectoryTracker(TrajectoryTrackerConfig(lookahead_distance_m=0.1))
+    tracker.set_trajectory(
+        np.asarray([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32),
+        plan_version=1,
+        timestamp=0.0,
+    )
+
+    handoff = tracker.compute_handoff(
+        np.asarray([[0.0, 0.0, 0.0], [0.9, 0.0, 0.0], [1.3, 0.0, 0.0]], dtype=np.float32),
+        position_w=np.asarray([0.0, 0.0, 0.8], dtype=np.float32),
+    )
+
+    assert handoff.reset_progress is True
+    assert handoff.seed_progress_idx is None
+    assert handoff.target_shift_m > tracker.config.handoff_reset_distance_m
+
+
+def test_tracker_handoff_resets_progress_for_large_heading_delta() -> None:
+    tracker = TrajectoryTracker(TrajectoryTrackerConfig(lookahead_distance_m=0.1))
+    tracker.set_trajectory(
+        np.asarray([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32),
+        plan_version=1,
+        timestamp=0.0,
+    )
+
+    handoff = tracker.compute_handoff(
+        np.asarray([[0.0, 0.0, 0.0], [0.4, 0.0, 0.0], [0.4, 0.4, 0.0]], dtype=np.float32),
+        position_w=np.asarray([0.0, 0.0, 0.8], dtype=np.float32),
+    )
+
+    assert handoff.reset_progress is True
+    assert handoff.seed_progress_idx is None
+    assert handoff.heading_delta_rad > tracker.config.handoff_reset_heading_rad

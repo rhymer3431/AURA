@@ -49,6 +49,8 @@ def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.Argum
     parser.add_argument("--traj-stale-timeout-sec", dest="traj_stale_timeout_sec", type=float, default=1.5)
     parser.add_argument("--cmd-accel-limit", dest="cmd_accel_limit", type=float, default=1.0)
     parser.add_argument("--cmd-yaw-accel-limit", dest="cmd_yaw_accel_limit", type=float, default=1.5)
+    parser.add_argument("--traj-handoff-reset-distance-m", dest="traj_handoff_reset_distance_m", type=float, default=0.35)
+    parser.add_argument("--traj-handoff-reset-heading-rad", dest="traj_handoff_reset_heading_rad", type=float, default=0.5)
     parser.add_argument("--obstacle-stop-distance-m", dest="obstacle_stop_distance_m", type=float, default=0.45)
     parser.add_argument(
         "--obstacle-hold-distance-m",

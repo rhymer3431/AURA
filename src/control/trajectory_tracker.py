@@ -18,6 +18,8 @@ class TrajectoryTrackerConfig:
     traj_stale_timeout_sec: float = 1.5
     cmd_accel_limit: float = 1.0
     cmd_yaw_accel_limit: float = 1.5
+    handoff_reset_distance_m: float = 0.35
+    handoff_reset_heading_rad: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,15 @@ class TrackerPoseTarget:
     stale: bool
     target_xy_world: np.ndarray
     target_yaw_world: float
+
+
+@dataclass(frozen=True)
+class TrackerHandoff:
+    reset_progress: bool
+    seed_progress_idx: int | None
+    projected_progress_idx: int
+    target_shift_m: float
+    heading_delta_rad: float
 
 
 class TrajectoryTracker:
@@ -64,20 +75,80 @@ class TrajectoryTracker:
         *,
         plan_version: int,
         timestamp: float | None = None,
+        reset_progress: bool = True,
+        seed_progress_idx: int | None = None,
     ) -> None:
-        traj = np.asarray(trajectory_world, dtype=np.float32)
-        if traj.ndim != 2 or (traj.shape[0] > 0 and traj.shape[1] < 2):
-            raise ValueError(f"trajectory_world must be [N,2+], got shape={traj.shape}")
+        traj = self._normalize_trajectory(trajectory_world)
         if traj.size == 0:
             self.clear(timestamp=timestamp)
             self._plan_version = int(plan_version)
             return
-        if traj.shape[1] == 2:
-            traj = np.concatenate([traj, np.zeros((traj.shape[0], 1), dtype=np.float32)], axis=1)
         self._trajectory_world = traj.copy()
         self._plan_version = int(plan_version)
-        self._progress_idx = 0
+        if reset_progress:
+            self._progress_idx = 0
+        else:
+            base_idx = self._progress_idx if seed_progress_idx is None else int(seed_progress_idx)
+            self._progress_idx = int(np.clip(base_idx, 0, self._trajectory_world.shape[0] - 1))
         self._last_trajectory_time = time.monotonic() if timestamp is None else float(timestamp)
+
+    def compute_handoff(
+        self,
+        trajectory_world: np.ndarray,
+        *,
+        position_w: np.ndarray,
+    ) -> TrackerHandoff:
+        new_traj = self._normalize_trajectory(trajectory_world)
+        if self._trajectory_world.shape[0] == 0 or new_traj.shape[0] == 0:
+            return TrackerHandoff(
+                reset_progress=True,
+                seed_progress_idx=None,
+                projected_progress_idx=0,
+                target_shift_m=float("inf"),
+                heading_delta_rad=float(np.pi),
+            )
+
+        robot_pos = np.asarray(position_w, dtype=np.float32).reshape(-1)
+        robot_xy = robot_pos[:2]
+        old_progress_idx = self._advanced_progress_idx(self._trajectory_world, self._progress_idx, robot_xy)
+        old_target_idx = self._select_target_idx_for(self._trajectory_world, old_progress_idx)
+        if old_target_idx < 0:
+            return TrackerHandoff(
+                reset_progress=True,
+                seed_progress_idx=None,
+                projected_progress_idx=0,
+                target_shift_m=float("inf"),
+                heading_delta_rad=float(np.pi),
+            )
+        old_target_xy = self._trajectory_world[old_target_idx, :2].astype(np.float32).copy()
+        old_target_yaw = self._select_target_yaw_for(self._trajectory_world, old_target_idx, robot_xy)
+
+        min_progress_idx = min(old_progress_idx, new_traj.shape[0] - 1)
+        projected_progress_idx = self._project_progress_idx(new_traj, robot_xy, min_idx=min_progress_idx)
+        new_target_idx = self._select_target_idx_for(new_traj, projected_progress_idx)
+        if new_target_idx < 0:
+            return TrackerHandoff(
+                reset_progress=True,
+                seed_progress_idx=None,
+                projected_progress_idx=int(projected_progress_idx),
+                target_shift_m=float("inf"),
+                heading_delta_rad=float(np.pi),
+            )
+        new_target_xy = new_traj[new_target_idx, :2].astype(np.float32).copy()
+        new_target_yaw = self._select_target_yaw_for(new_traj, new_target_idx, robot_xy)
+        target_shift_m = float(np.linalg.norm(new_target_xy - old_target_xy))
+        heading_delta_rad = abs(wrap_to_pi(float(new_target_yaw) - float(old_target_yaw)))
+        reset_progress = bool(
+            target_shift_m > float(self.config.handoff_reset_distance_m)
+            or heading_delta_rad > float(self.config.handoff_reset_heading_rad)
+        )
+        return TrackerHandoff(
+            reset_progress=reset_progress,
+            seed_progress_idx=None if reset_progress else int(projected_progress_idx),
+            projected_progress_idx=int(projected_progress_idx),
+            target_shift_m=target_shift_m,
+            heading_delta_rad=heading_delta_rad,
+        )
 
     def clear(self, *, timestamp: float | None = None) -> None:
         self._trajectory_world = np.zeros((0, 3), dtype=np.float32)
@@ -199,38 +270,93 @@ class TrajectoryTracker:
         )
 
     def _advance_progress(self, robot_xy: np.ndarray) -> None:
-        remaining = self._trajectory_world[self._progress_idx :, :2]
-        if remaining.shape[0] == 0:
-            self._progress_idx = 0
-            return
-        distances = np.linalg.norm(remaining - robot_xy.reshape(1, 2), axis=1)
-        self._progress_idx += int(np.argmin(distances))
+        self._progress_idx = self._advanced_progress_idx(self._trajectory_world, self._progress_idx, robot_xy)
 
     def _select_target_idx(self) -> int:
-        if self._trajectory_world.shape[0] == 0:
+        return self._select_target_idx_for(self._trajectory_world, self._progress_idx)
+
+    def _select_target_yaw(self, target_idx: int, robot_xy: np.ndarray) -> float:
+        return self._select_target_yaw_for(self._trajectory_world, target_idx, robot_xy)
+
+    @staticmethod
+    def _normalize_trajectory(trajectory_world: np.ndarray) -> np.ndarray:
+        traj = np.asarray(trajectory_world, dtype=np.float32)
+        if traj.ndim != 2 or (traj.shape[0] > 0 and traj.shape[1] < 2):
+            raise ValueError(f"trajectory_world must be [N,2+], got shape={traj.shape}")
+        if traj.shape[1] == 2:
+            traj = np.concatenate([traj, np.zeros((traj.shape[0], 1), dtype=np.float32)], axis=1)
+        return traj
+
+    @staticmethod
+    def _advanced_progress_idx(trajectory_world: np.ndarray, current_progress_idx: int, robot_xy: np.ndarray) -> int:
+        if trajectory_world.shape[0] == 0:
+            return 0
+        start_idx = int(np.clip(int(current_progress_idx), 0, trajectory_world.shape[0] - 1))
+        remaining = trajectory_world[start_idx:, :2]
+        if remaining.shape[0] == 0:
+            return int(trajectory_world.shape[0] - 1)
+        distances = np.linalg.norm(remaining - robot_xy.reshape(1, 2), axis=1)
+        return int(start_idx + int(np.argmin(distances)))
+
+    def _select_target_idx_for(self, trajectory_world: np.ndarray, progress_idx: int) -> int:
+        if trajectory_world.shape[0] == 0:
             return -1
-        if self._progress_idx >= self._trajectory_world.shape[0] - 1:
-            return int(self._trajectory_world.shape[0] - 1)
-        segments = np.diff(self._trajectory_world[self._progress_idx :, :2], axis=0)
+        if progress_idx >= trajectory_world.shape[0] - 1:
+            return int(trajectory_world.shape[0] - 1)
+        segments = np.diff(trajectory_world[progress_idx:, :2], axis=0)
         segment_lengths = np.linalg.norm(segments, axis=1)
         cumulative = np.concatenate(([0.0], np.cumsum(segment_lengths)))
         rel_target_idx = int(np.searchsorted(cumulative, float(self.config.lookahead_distance_m), side="left"))
-        return min(self._progress_idx + rel_target_idx, self._trajectory_world.shape[0] - 1)
+        return min(int(progress_idx) + rel_target_idx, trajectory_world.shape[0] - 1)
 
-    def _select_target_yaw(self, target_idx: int, robot_xy: np.ndarray) -> float:
-        if target_idx < 0 or self._trajectory_world.shape[0] == 0:
+    @staticmethod
+    def _select_target_yaw_for(trajectory_world: np.ndarray, target_idx: int, robot_xy: np.ndarray) -> float:
+        if target_idx < 0 or trajectory_world.shape[0] == 0:
             return 0.0
-        if self._trajectory_world.shape[0] == 1:
-            tangent_xy = self._trajectory_world[0, :2] - robot_xy[:2]
-        elif target_idx < self._trajectory_world.shape[0] - 1:
-            tangent_xy = self._trajectory_world[target_idx + 1, :2] - self._trajectory_world[target_idx, :2]
+        if trajectory_world.shape[0] == 1:
+            tangent_xy = trajectory_world[0, :2] - robot_xy[:2]
+        elif target_idx < trajectory_world.shape[0] - 1:
+            tangent_xy = trajectory_world[target_idx + 1, :2] - trajectory_world[target_idx, :2]
         else:
-            tangent_xy = self._trajectory_world[target_idx, :2] - self._trajectory_world[target_idx - 1, :2]
+            tangent_xy = trajectory_world[target_idx, :2] - trajectory_world[target_idx - 1, :2]
         if float(np.linalg.norm(tangent_xy[:2])) <= 1.0e-6:
-            tangent_xy = self._trajectory_world[target_idx, :2] - robot_xy[:2]
+            tangent_xy = trajectory_world[target_idx, :2] - robot_xy[:2]
         if float(np.linalg.norm(tangent_xy[:2])) <= 1.0e-6:
             return 0.0
         return float(np.arctan2(float(tangent_xy[1]), float(tangent_xy[0])))
+
+    @staticmethod
+    def _project_progress_idx(trajectory_world: np.ndarray, robot_xy: np.ndarray, *, min_idx: int) -> int:
+        if trajectory_world.shape[0] == 0:
+            return 0
+        lower_bound = int(np.clip(int(min_idx), 0, trajectory_world.shape[0] - 1))
+        if trajectory_world.shape[0] == 1 or lower_bound >= trajectory_world.shape[0] - 1:
+            return lower_bound
+
+        best_idx = lower_bound
+        best_dist_sq = float("inf")
+        for idx in range(lower_bound, trajectory_world.shape[0] - 1):
+            start_xy = trajectory_world[idx, :2]
+            end_xy = trajectory_world[idx + 1, :2]
+            segment = end_xy - start_xy
+            seg_len_sq = float(np.dot(segment, segment))
+            if seg_len_sq <= 1.0e-9:
+                projection = start_xy
+                t = 0.0
+            else:
+                t = float(np.clip(np.dot(robot_xy - start_xy, segment) / seg_len_sq, 0.0, 1.0))
+                projection = start_xy + (t * segment)
+            dist_sq = float(np.sum((robot_xy - projection) ** 2))
+            if dist_sq < best_dist_sq:
+                best_dist_sq = dist_sq
+                best_idx = idx + 1 if t >= (1.0 - 1.0e-4) else idx
+
+        final_distances = np.linalg.norm(trajectory_world[lower_bound:, :2] - robot_xy.reshape(1, 2), axis=1)
+        final_vertex_idx = int(lower_bound + int(np.argmin(final_distances)))
+        final_vertex_dist_sq = float(np.sum((trajectory_world[final_vertex_idx, :2] - robot_xy) ** 2))
+        if final_vertex_dist_sq < best_dist_sq:
+            return final_vertex_idx
+        return int(best_idx)
 
     def _apply_slew_limit(self, command: np.ndarray, *, now: float) -> np.ndarray:
         if self._last_command_time <= 0.0:

@@ -11,9 +11,18 @@ from locomotion.types import CommandEvaluation
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 from schemas.commands import LocomotionProposal
 
+try:
+    from control.navdp_follower import NavDPFollower, NavDPFollowerConfig
+
+    _FOLLOWER_IMPORT_ERROR = ""
+except Exception as exc:  # noqa: BLE001
+    NavDPFollower = None
+    NavDPFollowerConfig = None
+    _FOLLOWER_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
+
 
 class LocomotionWorker:
-    def __init__(self, args) -> None:
+    def __init__(self, args, *, follower=None) -> None:
         self.args = args
         self._tracker = TrajectoryTracker(
             TrajectoryTrackerConfig(
@@ -25,16 +34,24 @@ class LocomotionWorker:
                 traj_stale_timeout_sec=float(args.traj_stale_timeout_sec),
                 cmd_accel_limit=float(args.cmd_accel_limit),
                 cmd_yaw_accel_limit=float(args.cmd_yaw_accel_limit),
+                handoff_reset_distance_m=float(getattr(args, "traj_handoff_reset_distance_m", 0.35)),
+                handoff_reset_heading_rad=float(getattr(args, "traj_handoff_reset_heading_rad", 0.5)),
             )
         )
         self._last_applied_plan_version = -1
+        self._last_goal_version = -1
         self._planner_yaw_target_rad: float | None = None
         self._command = np.zeros(3, dtype=np.float32)
+        self._follower = follower
+        self._follower_init_error = ""
 
     def initialize(self, simulation_app, stage) -> None:  # noqa: ANN001
         del simulation_app, stage
 
     def shutdown(self) -> None:
+        close = getattr(self._follower, "close", None)
+        if callable(close):
+            close()
         return None
 
     def command(self) -> np.ndarray:
@@ -53,12 +70,28 @@ class LocomotionWorker:
         robot_yaw: float,
         robot_quat_wxyz: np.ndarray,
     ) -> LocomotionProposal:
-        del frame_idx, observation, robot_lin_vel_world, robot_ang_vel_world
+        del frame_idx, observation
         update = trajectory_update
         now = time.monotonic()
         if update.plan_version > self._last_applied_plan_version:
             if update.planner_control_mode in {None, "trajectory"}:
-                self._tracker.set_trajectory(update.trajectory_world, plan_version=int(update.plan_version), timestamp=now)
+                reset_progress = True
+                seed_progress_idx = None
+                goal_version = int(getattr(update, "goal_version", -1))
+                if goal_version >= 0 and goal_version == self._last_goal_version:
+                    handoff = self._tracker.compute_handoff(
+                        update.trajectory_world,
+                        position_w=np.asarray(robot_pos_world, dtype=np.float32),
+                    )
+                    reset_progress = bool(handoff.reset_progress)
+                    seed_progress_idx = handoff.seed_progress_idx
+                self._tracker.set_trajectory(
+                    update.trajectory_world,
+                    plan_version=int(update.plan_version),
+                    timestamp=now,
+                    reset_progress=reset_progress,
+                    seed_progress_idx=seed_progress_idx,
+                )
                 self._planner_yaw_target_rad = None
             else:
                 self._tracker.clear(timestamp=now)
@@ -67,6 +100,7 @@ class LocomotionWorker:
                 else:
                     self._planner_yaw_target_rad = None
             self._last_applied_plan_version = int(update.plan_version)
+            self._last_goal_version = int(getattr(update, "goal_version", -1))
 
         evaluation = self.evaluate_action(
             action_command=action_command,
@@ -74,6 +108,7 @@ class LocomotionWorker:
             robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
             robot_yaw=float(robot_yaw),
         )
+        metadata: dict[str, object] = {}
 
         if action_command is not None and action_command.action_type == "LOOK_AT":
             self._command = self._look_at_command(action_command, float(robot_yaw))
@@ -82,18 +117,19 @@ class LocomotionWorker:
         elif update.planner_control_mode in {"stop", "wait"}:
             self._command = np.zeros(3, dtype=np.float32)
         else:
-            tracker_result = self._tracker.compute_command(
-                np.asarray(robot_pos_world, dtype=np.float32),
-                np.asarray(robot_quat_wxyz, dtype=np.float32),
+            self._command, metadata = self._trajectory_command(
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_lin_vel_world=np.asarray(robot_lin_vel_world, dtype=np.float32),
+                robot_ang_vel_world=np.asarray(robot_ang_vel_world, dtype=np.float32),
+                robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
                 now=now,
-                force_stop=evaluation.force_stop,
+                evaluation=evaluation,
             )
-            self._command = tracker_result.command
         return LocomotionProposal(
             command_vector=self._command.copy(),
             trajectory_update=update,
             evaluation=evaluation,
-            metadata={},
+            metadata=metadata,
         )
 
     def empty_update(
@@ -181,3 +217,90 @@ class LocomotionWorker:
             return np.zeros(3, dtype=np.float32)
         wz = np.clip(1.5 * float(yaw_error), -float(self.args.cmd_max_wz), float(self.args.cmd_max_wz))
         return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)
+
+    def _trajectory_command(
+        self,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_lin_vel_world: np.ndarray,
+        robot_ang_vel_world: np.ndarray,
+        robot_quat_wxyz: np.ndarray,
+        now: float,
+        evaluation: CommandEvaluation,
+    ) -> tuple[np.ndarray, dict[str, object]]:
+        pose_target = self._tracker.compute_target_pose(
+            robot_pos_world,
+            robot_quat_wxyz,
+            now=now,
+            force_stop=evaluation.force_stop,
+        )
+        follower, init_error = self._ensure_follower()
+        if follower is None:
+            return self._legacy_tracker_command(
+                robot_pos_world=robot_pos_world,
+                robot_quat_wxyz=robot_quat_wxyz,
+                now=now,
+                evaluation=evaluation,
+                fallback_reason=init_error or "navdp_follower_unavailable",
+            )
+        if pose_target.stale or evaluation.force_stop:
+            return np.zeros(3, dtype=np.float32), {"trajectory_command_source": "navdp_follower"}
+        try:
+            result = follower.compute_command(
+                pose_command_b=pose_target.pose_command_b,
+                base_lin_vel_w=robot_lin_vel_world,
+                base_ang_vel_w=robot_ang_vel_world,
+                robot_quat_wxyz=robot_quat_wxyz,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return self._legacy_tracker_command(
+                robot_pos_world=robot_pos_world,
+                robot_quat_wxyz=robot_quat_wxyz,
+                now=now,
+                evaluation=evaluation,
+                fallback_reason=f"{type(exc).__name__}: {exc}",
+            )
+        return result.command, {"trajectory_command_source": "navdp_follower"}
+
+    def _legacy_tracker_command(
+        self,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_quat_wxyz: np.ndarray,
+        now: float,
+        evaluation: CommandEvaluation,
+        fallback_reason: str,
+    ) -> tuple[np.ndarray, dict[str, object]]:
+        tracker_result = self._tracker.compute_command(
+            robot_pos_world,
+            robot_quat_wxyz,
+            now=now,
+            force_stop=evaluation.force_stop,
+        )
+        metadata = {"trajectory_command_source": "legacy_tracker"}
+        if str(fallback_reason).strip() != "":
+            metadata["trajectory_fallback_reason"] = str(fallback_reason)
+        return tracker_result.command, metadata
+
+    def _ensure_follower(self):
+        if self._follower is not None:
+            return self._follower, ""
+        if self._follower_init_error != "":
+            return None, self._follower_init_error
+        if NavDPFollower is None or NavDPFollowerConfig is None:
+            self._follower_init_error = _FOLLOWER_IMPORT_ERROR or "navdp_follower_import_failed"
+            return None, self._follower_init_error
+        try:
+            self._follower = NavDPFollower(
+                NavDPFollowerConfig(
+                    policy_path="",
+                    onnx_device=str(getattr(self.args, "onnx_device", "auto")).strip().lower() or "auto",
+                    max_vx=float(self.args.cmd_max_vx),
+                    max_vy=float(self.args.cmd_max_vy),
+                    max_wz=float(self.args.cmd_max_wz),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._follower_init_error = f"{type(exc).__name__}: {exc}"
+            return None, self._follower_init_error
+        return self._follower, ""
