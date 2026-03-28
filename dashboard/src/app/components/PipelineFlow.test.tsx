@@ -79,10 +79,11 @@ describe("PipelineFlow", () => {
   it("renders the new runtime topology without legacy dual/nav labels", () => {
     render(<PipelineFlow />);
 
-    expect(screen.getByText("Runtime Architecture Flow")).toBeInTheDocument();
+    expect(screen.getByText("데이터 흐름 파이프라인")).toBeInTheDocument();
     expect(screen.getAllByText(/Robot Gateway/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Main Control/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Main Control Server Core/i)).toBeInTheDocument();
+    expect(screen.getByText(/gateway → main control server/i)).toBeInTheDocument();
+    expect(screen.getByText(/World State Store/i)).toBeInTheDocument();
     expect(screen.queryByText("Dual Server")).not.toBeInTheDocument();
     expect(screen.queryByText("Dual / S2 Path")).not.toBeInTheDocument();
     expect(screen.queryByText("NavDP Service")).not.toBeInTheDocument();

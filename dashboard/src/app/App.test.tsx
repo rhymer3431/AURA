@@ -144,7 +144,7 @@ describe("App navigation", () => {
     expect(screen.getByText("StatCards")).toBeInTheDocument();
     expect(screen.getByText("PipelineFlow")).toBeInTheDocument();
     expect(screen.getByText("ProcessesWidget")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Pipeline Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Planner & Control" }));
 

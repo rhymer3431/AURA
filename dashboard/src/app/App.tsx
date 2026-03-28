@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { motion } from "motion/react";
 
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
@@ -26,9 +25,7 @@ import {
   parseDashboardPageId,
   type DashboardPageId,
 } from "./navigation";
-import { asRecord } from "./selectors";
 import { useDashboard } from "./state";
-import { ConsoleBadge } from "./components/console-ui";
 import { RightRail } from "./components/RightRail";
 
 function currentPageFromLocation(): DashboardPageId {
@@ -39,11 +36,9 @@ function currentPageFromLocation(): DashboardPageId {
 }
 
 export default function App() {
-  const { error, refresh, state } = useDashboard();
+  const { error, state } = useDashboard();
   const [activePage, setActivePage] = useState<DashboardPageId>(() => currentPageFromLocation());
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const runtime = asRecord(state?.runtime);
-  const runtimeModes = asRecord(runtime.modes);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -98,6 +93,8 @@ export default function App() {
   }, [mobileSidebarOpen]);
 
   const page = dashboardPages[activePage];
+  const isOverviewPage = activePage === "pipeline-overview";
+  const showRightRail = !isOverviewPage;
 
   function navigateTo(pageId: DashboardPageId) {
     setMobileSidebarOpen(false);
@@ -175,7 +172,7 @@ export default function App() {
   }
 
   return (
-    <div className="dashboard-shell">
+    <div className={`dashboard-shell ${showRightRail ? "dashboard-shell--with-rail" : "dashboard-shell--no-rail"}`}>
       {mobileSidebarOpen ? (
         <button
           type="button"
@@ -186,42 +183,20 @@ export default function App() {
       ) : null}
       <Sidebar activePage={activePage} isMobileOpen={mobileSidebarOpen} onCloseMobile={() => setMobileSidebarOpen(false)} onNavigate={navigateTo} />
       <main className="dashboard-main">
-        <TopBar
-          page={page}
-          onToggleSidebar={() => setMobileSidebarOpen((current) => !current)}
-          onRefresh={() => void refresh()}
-        />
+        <TopBar page={page} onToggleSidebar={() => setMobileSidebarOpen((current) => !current)} />
         <div className="dashboard-page dashboard-scroll">
           <div className="dashboard-page-header">
-            <motion.div
-              className="min-w-0"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <div className="dashboard-eyebrow">{page.groupTitle}</div>
-              <h1 className="dashboard-page-title mt-1">{page.label}</h1>
-              <p className="dashboard-page-caption mt-1.5 max-w-xl">{page.description}</p>
-            </motion.div>
-
-            <motion.div
-              className="flex flex-wrap items-center gap-1.5"
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-            >
-              <ConsoleBadge tone={state?.session.active ? "emerald" : "amber"}>
-                {state?.session.active ? "session live" : "session idle"}
-              </ConsoleBadge>
-              <ConsoleBadge tone="cyan" dot={false}>
-                mode {String(runtime.executionMode ?? runtimeModes.executionMode ?? "IDLE")}
-              </ConsoleBadge>
-              {state?.session.config?.scenePreset ? (
-                <ConsoleBadge tone="violet" dot={false}>
-                  scene {state.session.config.scenePreset}
-                </ConsoleBadge>
-              ) : null}
-            </motion.div>
+            <div className="min-w-0">
+              {isOverviewPage ? (
+                <h1 className="dashboard-section-title">Overview</h1>
+              ) : (
+                <>
+                  <div className="dashboard-eyebrow">{page.groupTitle}</div>
+                  <h1 className="dashboard-page-title mt-1">{page.label}</h1>
+                  <p className="dashboard-page-caption mt-1.5 max-w-xl">{page.description}</p>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="dashboard-page-body">
@@ -232,11 +207,11 @@ export default function App() {
             )}
 
             {renderPageContent()}
-            <RightRail mobile className="xl:hidden" />
+            {showRightRail ? <RightRail mobile className="xl:hidden" /> : null}
           </div>
         </div>
       </main>
-      <RightRail className="hidden xl:flex" />
+      {showRightRail ? <RightRail className="hidden xl:flex" /> : null}
     </div>
   );
 }

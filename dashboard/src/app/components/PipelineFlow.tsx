@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 
 import { useDashboard } from "../state";
 import { architectureModule, architectureNode, statusTone, stringValue } from "../selectors";
-import { ConsoleBadge, ConsolePanel, ConsoleSectionTitle, toneFromStatusTone } from "./console-ui";
+import { ConsolePanel, toneFromStatusTone } from "./console-ui";
 
 export function PipelineFlow() {
   const { state } = useDashboard();
@@ -54,17 +54,15 @@ export function PipelineFlow() {
 
   return (
     <ConsolePanel className="h-full flex flex-col">
-      <ConsoleSectionTitle
-        icon={ArrowRight}
-        eyebrow="signal path"
-        title="Runtime Architecture Flow"
-        description="robot gateway → main control server → runtime modules"
-      />
+      <div className="mb-4">
+        <h3 className="text-[15px] font-semibold text-[var(--foreground)]">데이터 흐름 파이프라인</h3>
+        <p className="mt-1 text-[12px] text-[var(--text-tertiary)]">sensor capture → command vector</p>
+      </div>
 
-      <div className="flex flex-1 items-center gap-1.5 overflow-x-auto pb-2">
+      <div className="flex flex-1 items-center gap-2 overflow-x-auto pb-3">
         {stages.map((stage, index) => (
-          <div key={stage.name} className="flex shrink-0 items-center gap-1.5">
-            <div className="dashboard-panel-strong min-w-[108px] px-3 py-3.5 text-center transition-all">
+          <div key={stage.name} className="flex shrink-0 items-center gap-2">
+            <div className="dashboard-flow-card min-w-[104px] px-4 py-3 text-center">
               <span className={`mb-1.5 inline-block size-2 rounded-full ${toneClass(stage.status)}`} />
               <div className="text-[12px] font-medium whitespace-pre-line leading-tight text-[var(--foreground)]">
                 {stage.name}
@@ -78,18 +76,19 @@ export function PipelineFlow() {
         ))}
       </div>
 
-      <div className="mt-3">
-        <div className="dashboard-eyebrow mb-2">Main Control Server Core</div>
-        <div className="flex items-center gap-2.5 text-[11px] flex-wrap">
+      <div className="mt-4 flex flex-wrap items-center gap-2.5 text-[11px]">
+        <div className="dashboard-flow-note dashboard-flow-note--cyan">gateway → main control server</div>
+        <div className="dashboard-flow-note dashboard-flow-note--violet">runtime module mirror</div>
+        <div className="flex-1" />
+        <div className="flex items-center gap-2.5 flex-wrap">
           {core !== undefined &&
             Object.values(core).map((node) => (
-              <ConsoleBadge
+              <span
                 key={node.name}
-                tone={toneFromStatusTone(statusTone(node.status))}
-                className="!rounded-[14px]"
+                className={`dashboard-flow-core-chip dashboard-flow-core-chip--${toneFromStatusTone(statusTone(node.status))}`}
               >
                 {node.name}: {stringValue(node.summary, "idle")}
-              </ConsoleBadge>
+              </span>
             ))}
         </div>
       </div>

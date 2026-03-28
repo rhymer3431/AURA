@@ -165,8 +165,8 @@ describe("RobotViewer", () => {
 
     render(<RobotViewer />);
 
-    expect(screen.getByText("WEBRTC")).toBeInTheDocument();
-    expect(screen.getByText("Detected")).toBeInTheDocument();
+    expect(screen.getByText("LIVE")).toBeInTheDocument();
+    expect(screen.getByText(/Detected:/i)).toBeInTheDocument();
 
     await waitFor(() => {
       expect(strokeRect).toHaveBeenCalled();

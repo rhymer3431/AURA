@@ -3,7 +3,6 @@ import { TrendingUp, TrendingDown } from "lucide-react";
 
 import { useDashboard } from "../state";
 import { architectureNode, asRecord, coreNode, formatMs, numberValue, statusLabel, stringValue } from "../selectors";
-import { ConsoleMetricCard, type ConsoleTone } from "./console-ui";
 
 export function StatCards() {
   const { state } = useDashboard();
@@ -41,33 +40,33 @@ export function StatCards() {
       value: `${runningProcesses} / ${processTotal}`,
       change: `${(state?.processes ?? []).filter((item) => item.required).length} required`,
       trend: runningProcesses > 0 ? ("up" as const) : ("down" as const),
-      tone: "violet" as ConsoleTone,
+      bg: "var(--tone-violet-bg)",
     },
     {
       label: "Planner Phase",
       value: plannerLatencyMs === null ? stringValue(plannerCoordinator.summary, "idle") : formatMs(plannerLatencyMs, "n/a"),
       change: stringValue(plannerCoordinator.detail, plannerCoordinator.summary || "planner idle"),
       trend: plannerCoordinator.status === "ok" ? ("up" as const) : ("down" as const),
-      tone: "cyan" as ConsoleTone,
+      bg: "var(--tone-cyan-bg)",
     },
     {
       label: "Perception",
       value: `${detectionCount} det.`,
       change: `${trackedCount} tracked`,
       trend: detectionCount > 0 ? ("up" as const) : ("down" as const),
-      tone: "violet" as ConsoleTone,
+      bg: "color-mix(in srgb, var(--tone-violet-bg) 78%, white)",
     },
     {
       label: "Ext. Services",
       value: externalLatencyMs === null ? statusLabel(stringValue(serviceSnapshots[0].status, "inactive")) : formatMs(externalLatencyMs, "n/a"),
       change: serviceSnapshots.map((item) => stringValue(item.name)).filter((item) => item !== "").join(" · ") || "gateway mirror",
       trend: externalLatencyMs !== null || serviceSnapshots.some((item) => stringValue(item.status) === "ok") ? ("up" as const) : ("down" as const),
-      tone: "cyan" as ConsoleTone,
+      bg: "color-mix(in srgb, var(--tone-cyan-bg) 78%, white)",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
       {stats.map((item, index) => (
         <motion.div
           key={item.label}
@@ -76,23 +75,23 @@ export function StatCards() {
           transition={{ duration: 0.3, delay: index * 0.05, ease: [0.22, 1, 0.36, 1] }}
           whileHover={{ y: -2 }}
         >
-          <ConsoleMetricCard
-            label={item.label}
-            value={item.value}
-            tone={item.tone}
-            className="h-full"
-            valueClassName="break-all text-[22px] leading-none"
-            meta={(
-              <div className="flex items-center justify-between gap-3 pt-3 text-[11px]">
-                <span className="truncate text-[var(--text-tertiary)]">{item.change}</span>
+          <div
+            className="dashboard-kpi h-full"
+            style={{ "--kpi-surface": item.bg } as React.CSSProperties}
+          >
+            <div className="text-[14px] font-medium text-[var(--text-secondary)]">{item.label}</div>
+            <div className="mt-auto flex items-end justify-between gap-4">
+              <div className="dashboard-value break-all text-[22px] sm:text-[24px]">{item.value}</div>
+              <div className="flex items-center gap-1 text-[12px] font-medium text-[var(--text-secondary)]">
+                <span className="max-w-[108px] truncate text-right">{item.change}</span>
                 {item.trend === "up" ? (
                   <TrendingUp className="size-3.5 shrink-0 text-[var(--foreground)]" />
                 ) : (
                   <TrendingDown className="size-3.5 shrink-0 text-[var(--foreground)]" />
                 )}
               </div>
-            )}
-          />
+            </div>
+          </div>
         </motion.div>
       ))}
     </div>
