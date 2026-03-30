@@ -148,6 +148,7 @@ def test_build_arg_parser_exposes_viewer_transport_defaults():
     assert args.obstacle_hold_distance_m == 0.70
     assert args.obstacle_backoff_vx_mps == 0.18
     assert args.obstacle_recovery_hold_sec == 0.75
+    assert args.use_navdp_follower is False
     assert args.exit_on_pointgoal_failure is True
     assert args.sensor_wait_budget_ms == 0
     assert args.recovery_turn_retry_limit == 1
@@ -223,3 +224,9 @@ def test_build_launch_config_keeps_viewport_updates_when_viewer_publish_enabled(
     launch_config = build_launch_config(args)
 
     assert launch_config == {"headless": True}
+
+
+def test_build_arg_parser_accepts_use_navdp_follower_flag():
+    args = _parse_args("--use-navdp-follower")
+
+    assert args.use_navdp_follower is True

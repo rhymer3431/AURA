@@ -24,6 +24,7 @@ except Exception as exc:  # noqa: BLE001
 class LocomotionWorker:
     def __init__(self, args, *, follower=None) -> None:
         self.args = args
+        self._use_navdp_follower = bool(getattr(args, "use_navdp_follower", False))
         self._tracker = TrajectoryTracker(
             TrajectoryTrackerConfig(
                 max_vx=float(args.cmd_max_vx),
@@ -42,7 +43,7 @@ class LocomotionWorker:
         self._last_goal_version = -1
         self._planner_yaw_target_rad: float | None = None
         self._command = np.zeros(3, dtype=np.float32)
-        self._follower = follower
+        self._follower = follower if self._use_navdp_follower else None
         self._follower_init_error = ""
 
     def initialize(self, simulation_app, stage) -> None:  # noqa: ANN001
@@ -283,6 +284,8 @@ class LocomotionWorker:
         return tracker_result.command, metadata
 
     def _ensure_follower(self):
+        if not self._use_navdp_follower:
+            return None, "navdp_follower_disabled"
         if self._follower is not None:
             return self._follower, ""
         if self._follower_init_error != "":

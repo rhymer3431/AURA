@@ -11,7 +11,7 @@ from locomotion.worker import LocomotionWorker
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 
 
-def _args() -> Namespace:
+def _args(*, use_navdp_follower: bool = False) -> Namespace:
     return Namespace(
         cmd_max_vx=0.5,
         cmd_max_vy=0.3,
@@ -35,6 +35,7 @@ def _args() -> Namespace:
         obstacle_backoff_vx_mps=0.18,
         obstacle_lateral_nudge_vy_mps=0.12,
         obstacle_recovery_hold_sec=0.75,
+        use_navdp_follower=use_navdp_follower,
     )
 
 
@@ -106,9 +107,32 @@ def _trajectory_update(
     )
 
 
-def test_locomotion_worker_uses_navdp_follower_in_trajectory_mode() -> None:
+def test_locomotion_worker_defaults_to_legacy_tracker_when_navdp_follower_is_disabled() -> None:
     follower = _FakeFollower(command=np.asarray([0.21, -0.11, 0.07], dtype=np.float32))
     worker = LocomotionWorker(_args(), follower=follower)
+    proposal = worker.execute(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        trajectory_update=_trajectory_update(
+            trajectory_world=np.asarray([[0.8, 0.0, 0.0], [1.2, 0.4, 0.0]], dtype=np.float32),
+            plan_version=5,
+        ),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.asarray([0.1, 0.2, 0.3], dtype=np.float32),
+        robot_ang_vel_world=np.asarray([0.4, 0.5, 0.6], dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert proposal.metadata["trajectory_command_source"] == "legacy_tracker"
+    assert proposal.metadata["trajectory_fallback_reason"] == "navdp_follower_disabled"
+    assert follower.calls == []
+
+
+def test_locomotion_worker_uses_navdp_follower_in_trajectory_mode_when_opted_in() -> None:
+    follower = _FakeFollower(command=np.asarray([0.21, -0.11, 0.07], dtype=np.float32))
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=follower)
     proposal = worker.execute(
         frame_idx=1,
         observation=_observation(),
@@ -139,7 +163,7 @@ def test_locomotion_worker_uses_navdp_follower_in_trajectory_mode() -> None:
 
 def test_locomotion_worker_falls_back_to_legacy_tracker_when_follower_inference_fails() -> None:
     follower = _FakeFollower(error=RuntimeError("inference failed"))
-    worker = LocomotionWorker(_args(), follower=follower)
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=follower)
     proposal = worker.execute(
         frame_idx=1,
         observation=_observation(),
@@ -171,7 +195,7 @@ def test_locomotion_worker_caches_follower_init_failure(monkeypatch: pytest.Monk
             raise RuntimeError("init failed")
 
     monkeypatch.setattr("locomotion.worker.NavDPFollower", _RaisingFollower)
-    worker = LocomotionWorker(_args())
+    worker = LocomotionWorker(_args(use_navdp_follower=True))
 
     for plan_version in (7, 8):
         proposal = worker.execute(
@@ -196,7 +220,7 @@ def test_locomotion_worker_caches_follower_init_failure(monkeypatch: pytest.Monk
 
 def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
     follower = _FakeFollower()
-    worker = LocomotionWorker(_args(), follower=follower)
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=follower)
 
     look_at = worker.execute(
         frame_idx=1,
@@ -271,7 +295,7 @@ def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
 
 def test_locomotion_worker_resets_tracker_progress_when_goal_version_changes() -> None:
     follower = _FakeFollower()
-    worker = LocomotionWorker(_args(), follower=follower)
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=follower)
     loop_traj = np.asarray(
         [[0.0, 0.0, 0.0], [0.8, 0.0, 0.0], [0.8, 0.8, 0.0], [0.0, 0.8, 0.0], [0.0, 0.05, 0.0]],
         dtype=np.float32,
