@@ -31,6 +31,9 @@ class PlannerRuntimeEngine:
     def state(self) -> PlannerRuntimeState:
         return self._state
 
+    def _interactive_enabled(self) -> bool:
+        return str(getattr(self._args, "planner_mode", "")).strip().lower() == "interactive"
+
     def active_memory_instruction(self) -> str:
         return self._state.active_memory_instruction()
 
@@ -59,7 +62,7 @@ class PlannerRuntimeEngine:
         self._state.trajectory.stats = PlannerStats()
 
     def submit_interactive_instruction(self, instruction: str) -> int:
-        if self._state.mode != "interactive":
+        if not self._interactive_enabled():
             raise RuntimeError("submit_interactive_instruction requires planner-mode=interactive")
         text = str(instruction).strip()
         if text == "":
@@ -73,7 +76,7 @@ class PlannerRuntimeEngine:
             return int(interactive.pending_command_id)
 
     def cancel_interactive_task(self) -> bool:
-        if self._state.mode != "interactive":
+        if not self._interactive_enabled():
             return False
         interactive = self._state.interactive
         with interactive.lock:
@@ -102,6 +105,13 @@ class PlannerRuntimeEngine:
         robot_quat_wxyz: np.ndarray,
     ) -> TrajectoryUpdate:
         del robot_quat_wxyz
+        if self._interactive_enabled():
+            return self._run_interactive(
+                observation,
+                action_command=action_command,
+                robot_pos_world=robot_pos_world,
+                robot_yaw=robot_yaw,
+            )
         if self._state.mode == "NAV":
             if getattr(self._transport, "dual_planner", None) is None:
                 raise RuntimeError("PlanningSession is not initialized.")
@@ -502,7 +512,7 @@ class PlannerRuntimeEngine:
         )
 
     def _consume_interactive_controls(self) -> None:
-        if self._state.mode != "interactive":
+        if not self._interactive_enabled():
             return
         interactive = self._state.interactive
         with interactive.lock:
@@ -591,6 +601,7 @@ class PlannerRuntimeEngine:
         self._state.interactive.phase = "task_active"
         self._state.interactive.active_command_id = int(command_id)
         self._state.interactive.active_instruction = str(instruction)
+        self._state.goal.dual_instruction = str(instruction)
         self._state.trajectory.stale_sec = -1.0
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
@@ -830,6 +841,8 @@ class PlannerRuntimeEngine:
     def _interactive_clear_active_task(self) -> None:
         self._state.interactive.active_command_id = -1
         self._state.interactive.active_instruction = ""
+        if self._interactive_enabled():
+            self._state.goal.dual_instruction = ""
 
     def _build_update(
         self,
@@ -842,7 +855,7 @@ class PlannerRuntimeEngine:
         interactive_phase = None
         interactive_command_id = -1
         interactive_instruction = ""
-        if self._state.mode == "interactive":
+        if self._interactive_enabled():
             interactive_phase = str(self._state.interactive.phase)
             interactive_command_id = int(self._state.interactive.active_command_id)
             interactive_instruction = str(self._state.interactive.active_instruction)

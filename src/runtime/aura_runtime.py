@@ -103,6 +103,7 @@ class AuraRuntimeCommandSource:
         assert self._server is not None
         self._server.initialize(simulation_app, stage)
         self._bootstrap_mode()
+        self._seed_planner_overlay()
         self._publish_detector_capability()
         self._publish_notice(
             level="info",
@@ -117,6 +118,7 @@ class AuraRuntimeCommandSource:
     def update(self, frame_idx: int) -> None:
         if self._controller is None:
             raise RuntimeError("AuraRuntimeCommandSource.initialize() must be called before update().")
+        self._seed_planner_overlay()
 
         base_state = self._controller.get_base_state()
         robot_pose = tuple(float(v) for v in np.asarray(base_state.position_w, dtype=np.float32).reshape(-1)[:3])
@@ -231,6 +233,19 @@ class AuraRuntimeCommandSource:
         for notice in self._server.bootstrap():
             self.supervisor.bridge.publish_notice(notice)
 
+    def _seed_planner_overlay(self) -> None:
+        if self._last_viewer_overlay:
+            return
+        getter = getattr(self.planning_session, "viewer_overlay_state", None)
+        if not callable(getter):
+            return
+        state = getter()
+        if isinstance(state, dict):
+            self._last_viewer_overlay = dict(state)
+
+    def _interactive_input_loop(self) -> None:
+        return None
+
     def _command_overlay_metadata(self) -> dict[str, object]:
         command = self._active_command or self._manual_command
         if command is None:
@@ -300,7 +315,7 @@ class AuraRuntimeCommandSource:
                     telemetry_endpoint=str(getattr(self.args, "viewer_telemetry_endpoint", "")),
                     role="bridge",
                 )
-            except RuntimeError:
+            except Exception:  # noqa: BLE001
                 bus = InprocBus()
             self._runtime_io = RuntimeIo(
                 bus=bus,

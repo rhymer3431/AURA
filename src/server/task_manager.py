@@ -17,7 +17,48 @@ class TaskManager:
         self._route_state_seed: dict[str, object] = {}
 
     def bootstrap(self, *, planner_coordinator, memory_client) -> list[RuntimeNotice]:  # noqa: ANN001
-        _ = memory_client
+        instruction = str(getattr(self._args, "instruction", "")).strip()
+        raw_mode = str(getattr(self._args, "planner_mode", "")).strip().lower()
+        normalized_mode = normalize_execution_mode(raw_mode)
+
+        if raw_mode == "interactive":
+            planner_coordinator.ensure_navdp_service_ready(context="interactive startup")
+            planner_coordinator.activate_interactive_roaming("startup")
+            planner_coordinator.set_execution_mode("NAV")
+            self.mode = "NAV"
+            self._manual_command = self._planner_managed_command(task_id="interactive", source="startup:interactive")
+            self._manual_command.metadata.update({"execution_mode": "NAV", "interactive": True})
+            self._route_state_seed = {"policy": "interactive_roaming"}
+            self._task = TaskSnapshot(task_id="interactive", instruction="", mode="NAV", state="active", command_id=-1)
+            memory_client.set_planner_task(
+                instruction="",
+                planner_mode="interactive",
+                task_state="active",
+                task_id="interactive",
+                command_id=-1,
+            )
+            return []
+
+        if normalized_mode == "NAV" and instruction != "":
+            startup_label = raw_mode if raw_mode in {"dual", "nav"} else "nav"
+            planner_coordinator.ensure_navdp_service_ready(context=f"{startup_label} startup")
+            planner_coordinator.ensure_dual_service_ready(context=f"{startup_label} startup")
+            planner_coordinator.start_dual_task(instruction, mode="NAV")
+            planner_coordinator.set_execution_mode("NAV")
+            self.mode = "NAV"
+            self._manual_command = self._planner_managed_command(task_id="startup", source=f"startup:{startup_label}")
+            self._manual_command.metadata["execution_mode"] = "NAV"
+            self._route_state_seed = {}
+            self._task = TaskSnapshot(task_id="startup", instruction=instruction, mode="NAV", state="active", command_id=-1)
+            memory_client.set_planner_task(
+                instruction=instruction,
+                planner_mode="nav",
+                task_state="active",
+                task_id="startup",
+                command_id=-1,
+            )
+            return []
+
         planner_coordinator.activate_idle("startup")
         self._set_idle_state()
         return []

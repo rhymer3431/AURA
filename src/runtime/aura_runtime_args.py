@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from locomotion.args import BOOTSTRAP_ARGS, BOOTSTRAP_PARSER, add_runtime_args
+from schemas.execution_mode import normalize_execution_mode
 
 DEFAULT_DUAL_INSTRUCTION = "Navigate safely to the target and stop when complete."
 DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse and stop when you reach it."
@@ -15,6 +16,25 @@ DEFAULT_VIEWER_SHM_NAME = "g1_view_frames"
 DEFAULT_VIEWER_SHM_SLOT_SIZE = 8 * 1024 * 1024
 DEFAULT_VIEWER_SHM_CAPACITY = 8
 DEFAULT_NATIVE_VIEWER = "off"
+_PLANNER_MODE_CHOICES = (
+    "TALK",
+    "NAV",
+    "MEM_NAV",
+    "EXPLORE",
+    "IDLE",
+    "talk",
+    "nav",
+    "mem_nav",
+    "explore",
+    "idle",
+    "dual",
+    "interactive",
+    "pointgoal",
+)
+
+
+def _planner_mode_token(value: object) -> str:
+    return str(value or "").strip().lower()
 
 
 def add_subgoal_executor_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
@@ -83,7 +103,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--planner-mode",
         dest="planner_mode",
         type=str,
-        choices=("TALK", "NAV", "MEM_NAV", "EXPLORE", "IDLE", "talk", "nav", "mem_nav", "explore", "idle"),
+        choices=_PLANNER_MODE_CHOICES,
         default="IDLE",
     )
     parser.add_argument("--dual-server-url", dest="dual_server_url", type=str, default="http://127.0.0.1:8890")
@@ -139,7 +159,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def apply_demo_defaults(args: argparse.Namespace) -> argparse.Namespace:
-    if bool(getattr(args, "spawn_demo_object", False)) and str(args.planner_mode).upper() == "NAV":
+    planner_mode = normalize_execution_mode(getattr(args, "planner_mode", ""))
+    if bool(getattr(args, "spawn_demo_object", False)) and planner_mode == "NAV":
         instruction = str(getattr(args, "instruction", "")).strip()
         if instruction == "" or instruction == DEFAULT_DUAL_INSTRUCTION:
             args.instruction = DEFAULT_OBJECT_SEARCH_INSTRUCTION
@@ -147,11 +168,14 @@ def apply_demo_defaults(args: argparse.Namespace) -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    planner_mode = str(args.planner_mode).strip().upper()
+    planner_mode = normalize_execution_mode(getattr(args, "planner_mode", ""))
+    planner_mode_token = _planner_mode_token(getattr(args, "planner_mode", ""))
     if float(args.demo_object_size_m) <= 0.0:
         raise ValueError("--demo-object-size-m must be positive")
     if float(args.object_stop_radius_m) <= 0.0:
         raise ValueError("--object-stop-radius-m must be positive")
+    if planner_mode_token == "interactive" and str(args.interactive_prompt).strip() == "":
+        raise ValueError("--interactive-prompt must be non-empty")
     if int(args.interactive_idle_log_interval) <= 0:
         raise ValueError("--interactive-idle-log-interval must be positive")
     if float(args.obstacle_stop_distance_m) <= 0.0:
@@ -183,9 +207,10 @@ def validate_args(args: argparse.Namespace) -> None:
         if global_map_config != "" and not Path(global_map_config).exists():
             raise ValueError(f"--global-map-config not found: {global_map_config}")
     elif planner_mode != "MEM_NAV" and str(getattr(args, "global_map_image", "")).strip() != "":
-        raise ValueError("--global-map-image requires --planner-mode MEM_NAV")
+        raise ValueError("--global-map-image requires --planner-mode pointgoal")
     if bool(args.spawn_demo_object):
-        raise ValueError("--spawn-demo-object is not supported in the server-owned execution modes runtime")
+        if planner_mode_token not in {"dual", "nav"}:
+            raise ValueError("--spawn-demo-object requires --planner-mode dual")
     launch_mode = str(getattr(args, "launch_mode", "")).strip().lower()
     if (
         str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() == "opencv"

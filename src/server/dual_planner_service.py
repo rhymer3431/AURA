@@ -534,7 +534,7 @@ class DualPlannerService:
             )
         self._finish_s1(
             result=result,
-            goal_version=int(request.metadata.goal_version or -1),
+            goal_version=-1 if request.metadata.goal_version is None else int(request.metadata.goal_version),
             finished_at=time.time(),
             generation=int(generation),
         )

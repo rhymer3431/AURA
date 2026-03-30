@@ -76,6 +76,8 @@ class PlannerRuntimeState:
         self.mode = normalize_execution_mode(self.mode)
 
     def active_memory_instruction(self) -> str:
+        if self.mode == "NAV" and str(self.interactive.active_instruction).strip() != "":
+            return str(self.interactive.active_instruction).strip()
         if self.mode == "NAV":
             return str(self.goal.dual_instruction).strip()
         return ""
