@@ -40,10 +40,10 @@ class TaskManager:
             return []
 
         if normalized_mode == "NAV" and instruction != "":
-            startup_label = raw_mode if raw_mode in {"dual", "nav"} else "nav"
+            startup_label = raw_mode if raw_mode in {"nav"} else "nav"
             planner_coordinator.ensure_navdp_service_ready(context=f"{startup_label} startup")
-            planner_coordinator.ensure_dual_service_ready(context=f"{startup_label} startup")
-            planner_coordinator.start_dual_task(instruction, mode="NAV")
+            planner_coordinator.ensure_system2_service_ready(context=f"{startup_label} startup")
+            planner_coordinator.start_nav_task(instruction, mode="NAV")
             planner_coordinator.set_execution_mode("NAV")
             self.mode = "NAV"
             self._manual_command = self._planner_managed_command(task_id="startup", source=f"startup:{startup_label}")
@@ -227,8 +227,8 @@ class TaskManager:
 
         if classification.mode == "NAV":
             planner_coordinator.ensure_navdp_service_ready(context=f"NAV task ({source})")
-            planner_coordinator.ensure_dual_service_ready(context=f"NAV task ({source})")
-            planner_coordinator.start_dual_task(instruction, mode="NAV")
+            planner_coordinator.ensure_system2_service_ready(context=f"NAV task ({source})")
+            planner_coordinator.start_nav_task(instruction, mode="NAV")
             planner_coordinator.set_execution_mode("NAV")
             self.mode = "NAV"
             self._manual_command = self._planner_managed_command(task_id=task_id, source=f"{source}:NAV")

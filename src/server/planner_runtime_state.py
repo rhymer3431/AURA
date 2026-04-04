@@ -18,14 +18,15 @@ class GoalState:
     goal_version: int = -1
     traj_version: int = -1
     system2_pixel_goal: list[int] | None = None
-    dual_response_ts: float = field(default_factory=time.perf_counter)
-    dual_instruction: str = ""
+    system2_response_ts: float = field(default_factory=time.perf_counter)
+    nav_instruction: str = ""
 
 
 @dataclass
 class TrajectoryState:
     trajectory_world: np.ndarray = field(default_factory=lambda: np.zeros((0, 3), dtype=np.float32))
     plan_version: int = -1
+    last_plan_stamp_s: float = 0.0
     planner_control_mode: str | None = None
     planner_yaw_delta_rad: float | None = None
     planner_control_reason: str = ""
@@ -45,9 +46,9 @@ class InteractiveTaskState:
     active_instruction: str = ""
     session_plan_version: int = -1
     last_nogoal_plan_version: int = -1
-    last_dual_plan_version: int = -1
+    last_nav_plan_version: int = -1
     last_nogoal_failed_calls: int = 0
-    last_dual_failed_calls: int = 0
+    last_nav_failed_calls: int = 0
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
 
@@ -79,7 +80,7 @@ class PlannerRuntimeState:
         if self.mode == "NAV" and str(self.interactive.active_instruction).strip() != "":
             return str(self.interactive.active_instruction).strip()
         if self.mode == "NAV":
-            return str(self.goal.dual_instruction).strip()
+            return str(self.goal.nav_instruction).strip()
         return ""
 
     def set_mode(self, mode: ExecutionMode) -> None:
@@ -90,9 +91,11 @@ class PlannerRuntimeState:
         self.goal.goal_version = -1
         self.goal.traj_version = -1
         self.goal.system2_pixel_goal = None
-        self.goal.dual_instruction = ""
+        self.goal.system2_response_ts = time.perf_counter()
+        self.goal.nav_instruction = ""
         self.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
         self.trajectory.plan_version = -1
+        self.trajectory.last_plan_stamp_s = 0.0
         self.trajectory.stale_sec = -1.0
         self.trajectory.stats = PlannerStats()
         self.reset_planner_control()

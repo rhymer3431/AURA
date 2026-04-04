@@ -7,7 +7,7 @@ from typing import Literal
 from locomotion.args import BOOTSTRAP_ARGS, BOOTSTRAP_PARSER, add_runtime_args
 from schemas.execution_mode import normalize_execution_mode
 
-DEFAULT_DUAL_INSTRUCTION = "Navigate safely to the target and stop when complete."
+DEFAULT_NAV_INSTRUCTION = "Navigate safely to the target and stop when complete."
 DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse and stop when you reach it."
 DEFAULT_INTERACTIVE_PROMPT = "nl>"
 DEFAULT_VIEWER_CONTROL_ENDPOINT = "tcp://127.0.0.1:5580"
@@ -27,7 +27,6 @@ _PLANNER_MODE_CHOICES = (
     "mem_nav",
     "explore",
     "idle",
-    "dual",
     "interactive",
     "pointgoal",
 )
@@ -99,6 +98,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--launch-mode", dest="launch_mode", type=str, choices=("gui", "g1_view"), default="")
 
     parser.add_argument("--server-url", dest="server_url", type=str, default="http://127.0.0.1:8888")
+    parser.add_argument("--system2-url", dest="system2_url", type=str, default="http://127.0.0.1:15801")
     parser.add_argument(
         "--planner-mode",
         dest="planner_mode",
@@ -106,11 +106,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=_PLANNER_MODE_CHOICES,
         default="IDLE",
     )
-    parser.add_argument("--dual-server-url", dest="dual_server_url", type=str, default="http://127.0.0.1:8890")
     parser.add_argument(
         "--instruction",
         type=str,
-        default=DEFAULT_DUAL_INSTRUCTION,
+        default=DEFAULT_NAV_INSTRUCTION,
     )
     parser.add_argument("--goal-x", dest="goal_x", type=float, default=None)
     parser.add_argument("--goal-y", dest="goal_y", type=float, default=None)
@@ -128,13 +127,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--demo-object-size-m", dest="demo_object_size_m", type=float, default=0.25)
     parser.add_argument("--object-stop-radius-m", dest="object_stop_radius_m", type=float, default=0.8)
     parser.add_argument("--plan-interval-frames", dest="plan_interval_frames", type=int, default=3)
-    parser.add_argument("--dual-request-gap-frames", dest="dual_request_gap_frames", type=int, default=3)
     parser.add_argument("--safety-timeout-sec", dest="safety_timeout_sec", type=float, default=20.0)
     parser.add_argument("--s1-period-sec", dest="s1_period_sec", type=float, default=0.2)
     parser.add_argument("--s2-period-sec", dest="s2_period_sec", type=float, default=1.0)
     parser.add_argument("--goal-ttl-sec", dest="goal_ttl_sec", type=float, default=3.0)
     parser.add_argument("--traj-ttl-sec", dest="traj_ttl_sec", type=float, default=1.5)
     parser.add_argument("--traj-max-stale-sec", dest="traj_max_stale_sec", type=float, default=4.0)
+    parser.add_argument("--internvla-forward-step-m", dest="internvla_forward_step_m", type=float, default=0.25)
+    parser.add_argument("--internvla-turn-step-deg", dest="internvla_turn_step_deg", type=float, default=20.0)
+    parser.add_argument("--internvla-action-timeout-s", dest="internvla_action_timeout_s", type=float, default=1.5)
+    parser.add_argument("--internvla-goal-depth-window", dest="internvla_goal_depth_window", type=int, default=11)
+    parser.add_argument("--internvla-goal-depth-min", dest="internvla_goal_depth_min", type=float, default=0.1)
+    parser.add_argument("--internvla-goal-depth-max", dest="internvla_goal_depth_max", type=float, default=6.0)
     parser.add_argument("--timeout-sec", dest="timeout_sec", type=float, default=5.0)
     parser.add_argument("--reset-timeout-sec", dest="reset_timeout_sec", type=float, default=15.0)
     parser.add_argument("--retry", type=int, default=1)
@@ -162,7 +166,7 @@ def apply_demo_defaults(args: argparse.Namespace) -> argparse.Namespace:
     planner_mode = normalize_execution_mode(getattr(args, "planner_mode", ""))
     if bool(getattr(args, "spawn_demo_object", False)) and planner_mode == "NAV":
         instruction = str(getattr(args, "instruction", "")).strip()
-        if instruction == "" or instruction == DEFAULT_DUAL_INSTRUCTION:
+        if instruction == "" or instruction == DEFAULT_NAV_INSTRUCTION:
             args.instruction = DEFAULT_OBJECT_SEARCH_INSTRUCTION
     return args
 
@@ -209,8 +213,8 @@ def validate_args(args: argparse.Namespace) -> None:
     elif planner_mode != "MEM_NAV" and str(getattr(args, "global_map_image", "")).strip() != "":
         raise ValueError("--global-map-image requires --planner-mode pointgoal")
     if bool(args.spawn_demo_object):
-        if planner_mode_token not in {"dual", "nav"}:
-            raise ValueError("--spawn-demo-object requires --planner-mode dual")
+        if planner_mode_token not in {"nav"}:
+            raise ValueError("--spawn-demo-object requires --planner-mode nav")
     launch_mode = str(getattr(args, "launch_mode", "")).strip().lower()
     if (
         str(getattr(args, "native_viewer", DEFAULT_NATIVE_VIEWER)).strip().lower() == "opencv"
@@ -227,6 +231,14 @@ def resolve_launch_mode(args: argparse.Namespace) -> Literal["gui", "g1_view", "
     if raw_mode == "g1_view":
         return "g1_view"
     return "headless" if bool(getattr(args, "headless", False)) else "gui"
+
+
+def build_launch_config(args) -> dict[str, bool]:  # noqa: ANN001
+    launch_config = {"headless": bool(args.headless)}
+    viewer_publish = bool(getattr(args, "viewer_publish", False))
+    if bool(args.headless) and not viewer_publish:
+        launch_config["disable_viewport_updates"] = True
+    return launch_config
 
 
 def apply_launch_mode_defaults(args: argparse.Namespace) -> argparse.Namespace:
@@ -246,7 +258,7 @@ def apply_launch_mode_defaults(args: argparse.Namespace) -> argparse.Namespace:
 __all__ = [
     "BOOTSTRAP_ARGS",
     "BOOTSTRAP_PARSER",
-    "DEFAULT_DUAL_INSTRUCTION",
+    "DEFAULT_NAV_INSTRUCTION",
     "DEFAULT_INTERACTIVE_PROMPT",
     "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
     "DEFAULT_VIEWER_CONTROL_ENDPOINT",
@@ -259,6 +271,7 @@ __all__ = [
     "apply_launch_mode_defaults",
     "apply_demo_defaults",
     "build_arg_parser",
+    "build_launch_config",
     "resolve_launch_mode",
     "validate_args",
 ]

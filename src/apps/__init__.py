@@ -4,12 +4,12 @@ from importlib import import_module
 
 
 _EXPORTS = {
-    "create_dual_server_app": ("apps.dual_server_app", "create_app"),
     "create_navdp_server_app": ("apps.navdp_server_app", "create_app"),
-    "dual_server_main": ("apps.dual_server_app", "main"),
+    "create_system2_app": ("apps.system2_app", "create_app"),
     "navdp_server_main": ("apps.navdp_server_app", "main"),
-    "parse_dual_args": ("apps.dual_server_app", "parse_args"),
+    "system2_main": ("apps.system2_app", "main"),
     "parse_navdp_args": ("apps.navdp_server_app", "parse_args"),
+    "parse_system2_args": ("apps.system2_app", "parse_args"),
     "frame_bridge_main": ("apps.frame_bridge_app", "main"),
     "frame_bridge_editor_attach": ("apps.frame_bridge_editor_app", "attach_current_stage"),
     "editor_depth_viewer_main": ("apps.editor_depth_viewer_entry", "main"),

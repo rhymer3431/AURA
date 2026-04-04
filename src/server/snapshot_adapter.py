@@ -159,7 +159,7 @@ class SnapshotAdapter:
         services = {} if services is None else services
         transport_state = {} if transport_state is None else transport_state
         nav_service = dict(services.get("navdp", {})) if isinstance(services.get("navdp"), dict) else {}
-        dual_service = dict(services.get("dual", {})) if isinstance(services.get("dual"), dict) else {}
+        system2_service = dict(services.get("system2", {})) if isinstance(services.get("system2"), dict) else {}
         detector_report = dict(world_state.perception.detector_runtime_report)
         memory_summary = dict(world_state.memory.summary)
         locomotion_summary = dict(world_state.execution.locomotion_proposal_summary)
@@ -171,7 +171,7 @@ class SnapshotAdapter:
             "memoryLatencyMs": SnapshotAdapter._optional_float(
                 memory_summary.get("latency_ms", memory_summary.get("latencyMs"))
             ),
-            "s2LatencyMs": SnapshotAdapter._optional_float(dual_service.get("latencyMs")),
+            "s2LatencyMs": SnapshotAdapter._optional_float(system2_service.get("latencyMs")),
             "navLatencyMs": SnapshotAdapter._optional_float(nav_service.get("latencyMs")),
             "locomotionLatencyMs": SnapshotAdapter._optional_float(
                 locomotion_summary.get("latency_ms", locomotion_summary.get("latencyMs"))

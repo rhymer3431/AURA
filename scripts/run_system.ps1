@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "nav", "s2", "dual", "runtime")]
+    [ValidateSet("all", "nav", "s2", "runtime")]
     [string]$Component = "all",
     [int]$StartupTimeoutSec = 180,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -21,17 +21,14 @@ $DefaultCondaEnv = "fa2-cu130-py312"
 $DefaultIsaacPython = "C:\isaac-sim\python.bat"
 
 $NavEntryModule = "apps.navdp_server_app"
-$DualEntryModule = "apps.dual_server_app"
+$System2EntryModule = "apps.system2_app"
 $RuntimeEntryModule = "runtime.aura_runtime"
 
 $NavPort = if ($env:NAVDP_PORT) { [int]$env:NAVDP_PORT } else { 8888 }
 $System2Host = if ($env:INTERNVLA_HOST) { $env:INTERNVLA_HOST } else { "127.0.0.1" }
-$System2Port = if ($env:INTERNVLA_PORT) { [int]$env:INTERNVLA_PORT } else { 8080 }
-$DualHost = if ($env:DUAL_SERVER_HOST) { $env:DUAL_SERVER_HOST } else { "127.0.0.1" }
-$DualPort = if ($env:DUAL_SERVER_PORT) { [int]$env:DUAL_SERVER_PORT } else { 8890 }
-$NavBaseUrl = if ($env:DUAL_NAVDP_URL) { $env:DUAL_NAVDP_URL } else { "http://127.0.0.1:$NavPort" }
-$System2BaseUrl = if ($env:DUAL_VLM_URL) { $env:DUAL_VLM_URL } else { "http://$System2Host`:$System2Port" }
-$DualBaseUrl = "http://$DualHost`:$DualPort"
+$System2Port = if ($env:INTERNVLA_PORT) { [int]$env:INTERNVLA_PORT } else { 15801 }
+$NavBaseUrl = "http://127.0.0.1:$NavPort"
+$System2BaseUrl = "http://$System2Host`:$System2Port"
 $CondaExe = if ($env:AURA_CONDA_EXE) { $env:AURA_CONDA_EXE } else { $DefaultCondaExe }
 $CondaEnv = if ($env:AURA_CONDA_ENV) { $env:AURA_CONDA_ENV } else { $DefaultCondaEnv }
 $IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
@@ -508,7 +505,7 @@ function Build-RuntimeLaunchArgs {
     $PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "IDLE" }
     $LaunchMode = if ($env:G1_POINTGOAL_LAUNCH_MODE) { $env:G1_POINTGOAL_LAUNCH_MODE } else { "" }
     $ServerUrl = if ($env:G1_POINTGOAL_SERVER_URL) { $env:G1_POINTGOAL_SERVER_URL } else { $NavBaseUrl }
-    $DualServerUrl = if ($env:G1_POINTGOAL_DUAL_SERVER_URL) { $env:G1_POINTGOAL_DUAL_SERVER_URL } else { $DualBaseUrl }
+    $System2Url = if ($env:G1_POINTGOAL_SYSTEM2_URL) { $env:G1_POINTGOAL_SYSTEM2_URL } else { $System2BaseUrl }
     $ViewerControlEndpoint = if ($env:G1_POINTGOAL_VIEWER_CONTROL_ENDPOINT) { $env:G1_POINTGOAL_VIEWER_CONTROL_ENDPOINT } else { "tcp://127.0.0.1:5580" }
     $ViewerTelemetryEndpoint = if ($env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT) { $env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT } else { "tcp://127.0.0.1:5581" }
     $ViewerShmName = if ($env:G1_POINTGOAL_VIEWER_SHM_NAME) { $env:G1_POINTGOAL_VIEWER_SHM_NAME } else { "g1_view_frames" }
@@ -563,8 +560,8 @@ function Build-RuntimeLaunchArgs {
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--server-url"))) {
         $RuntimeArgs += @("--server-url", $ServerUrl)
     }
-    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--dual-server-url"))) {
-        $RuntimeArgs += @("--dual-server-url", $DualServerUrl)
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--system2-url"))) {
+        $RuntimeArgs += @("--system2-url", $System2Url)
     }
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--viewer-control-endpoint"))) {
         $RuntimeArgs += @("--viewer-control-endpoint", $ViewerControlEndpoint)
@@ -637,22 +634,31 @@ function Invoke-S2Component {
         [string[]]$Arguments = @()
     )
 
-    $ModelPath = if ($env:INTERNVLA_MODEL_PATH) { $env:INTERNVLA_MODEL_PATH } else { "artifacts/models/InternVLA-N1-System2.Q4_K_M.gguf" }
-    $MmprojPath = if ($env:INTERNVLA_MMPROJ_PATH) { $env:INTERNVLA_MMPROJ_PATH } else { "artifacts/models/InternVLA-N1-System2.mmproj-Q8_0.gguf" }
-    $ChatTemplateFile = if ($env:INTERNVLA_CHAT_TEMPLATE_FILE) { $env:INTERNVLA_CHAT_TEMPLATE_FILE } else { "scripts/internvla_system2_chat_template.jinja" }
+    $ModelPath = if ($env:INTERNVLA_LLAMA_MODEL_PATH) { $env:INTERNVLA_LLAMA_MODEL_PATH } elseif ($env:INTERNVLA_MODEL_PATH) { $env:INTERNVLA_MODEL_PATH } else { "artifacts/models/InternVLA-N1-System2.Q4_K_M.gguf" }
+    $MmprojPath = if ($env:INTERNVLA_LLAMA_MMPROJ_PATH) { $env:INTERNVLA_LLAMA_MMPROJ_PATH } elseif ($env:INTERNVLA_MMPROJ_PATH) { $env:INTERNVLA_MMPROJ_PATH } else { "artifacts/models/InternVLA-N1-System2.mmproj-Q8_0.gguf" }
+    $PromptModelPath = if ($env:INTERNVLA_PROMPT_MODEL_PATH) { $env:INTERNVLA_PROMPT_MODEL_PATH } else { "" }
     $LlamaServer = if ($env:LLAMA_SERVER_EXE) { $env:LLAMA_SERVER_EXE } else { "llama-server" }
     $ContextSize = if ($env:INTERNVLA_CTX_SIZE) { [int]$env:INTERNVLA_CTX_SIZE } else { 8192 }
     $GpuLayers = if ($env:INTERNVLA_GPU_LAYERS) { $env:INTERNVLA_GPU_LAYERS } else { "auto" }
     $PromptCache = if ($env:INTERNVLA_PROMPT_CACHE) { $env:INTERNVLA_PROMPT_CACHE } else { "off" }
-    $CacheRamMiB = if ($env:INTERNVLA_CACHE_RAM_MIB) { [int]$env:INTERNVLA_CACHE_RAM_MIB } else { 0 }
-    $Parallel = if ($env:INTERNVLA_PARALLEL) { [int]$env:INTERNVLA_PARALLEL } else { 1 }
-    $ThreadsHttp = if ($env:INTERNVLA_THREADS_HTTP) { [int]$env:INTERNVLA_THREADS_HTTP } else { 1 }
-    $ImageMaxTokens = if ($env:INTERNVLA_IMAGE_MAX_TOKENS) { [int]$env:INTERNVLA_IMAGE_MAX_TOKENS } else { 0 }
-    $ReasoningBudget = if ($env:INTERNVLA_REASONING_BUDGET) { [int]$env:INTERNVLA_REASONING_BUDGET } else { 0 }
+    $CacheTypeK = if ($env:INTERNVLA_LLAMA_CACHE_TYPE_K) { $env:INTERNVLA_LLAMA_CACHE_TYPE_K } else { "q8_0" }
+    $CacheTypeV = if ($env:INTERNVLA_LLAMA_CACHE_TYPE_V) { $env:INTERNVLA_LLAMA_CACHE_TYPE_V } else { "q8_0" }
+    $NumHistory = if ($env:INTERNVLA_NUM_HISTORY) { [int]$env:INTERNVLA_NUM_HISTORY } else { 4 }
+    $PlanStepGap = if ($env:INTERNVLA_PLAN_STEP_GAP) { [int]$env:INTERNVLA_PLAN_STEP_GAP } else { 4 }
+    $LlamaThreads = if ($env:INTERNVLA_LLAMA_THREADS) { $env:INTERNVLA_LLAMA_THREADS } else { "" }
+    $MainGpu = if ($env:INTERNVLA_LLAMA_MAIN_GPU) { [int]$env:INTERNVLA_LLAMA_MAIN_GPU } else { 0 }
+    $LlamaFlashAttn = if ($env:INTERNVLA_LLAMA_FLASH_ATTN) { $env:INTERNVLA_LLAMA_FLASH_ATTN } else { "on" }
+    $ChatLoraPath = if ($env:INTERNVLA_LLAMA_CHAT_LORA_PATH) { $env:INTERNVLA_LLAMA_CHAT_LORA_PATH } else { "" }
+    $ChatLoraScale = if ($env:INTERNVLA_LLAMA_CHAT_LORA_SCALE) { $env:INTERNVLA_LLAMA_CHAT_LORA_SCALE } else { "1.0" }
+    $ChatSystemPrompt = if ($env:INTERNVLA_CHAT_SESSION_SYSTEM_PROMPT) { $env:INTERNVLA_CHAT_SESSION_SYSTEM_PROMPT } else { "" }
+    $LlamaUrl = if ($env:INTERNVLA_LLAMA_URL) { $env:INTERNVLA_LLAMA_URL } else { "http://127.0.0.1:$($System2Port + 1)" }
 
     $ResolvedModelPath = Resolve-ProjectPath $ModelPath
     $ResolvedMmprojPath = Resolve-ProjectPath $MmprojPath
-    $ResolvedChatTemplateFile = Resolve-ProjectPath $ChatTemplateFile
+    $ResolvedPromptModelPath = $null
+    if (-not [string]::IsNullOrWhiteSpace($PromptModelPath)) {
+        $ResolvedPromptModelPath = Resolve-ProjectPath $PromptModelPath
+    }
     $ResolvedLlamaServerPath = Resolve-LlamaServerPath $LlamaServer
 
     if (-not (Test-Path -LiteralPath $ResolvedModelPath)) {
@@ -660,9 +666,6 @@ function Invoke-S2Component {
     }
     if (-not (Test-Path -LiteralPath $ResolvedMmprojPath)) {
         throw "InternVLA mmproj not found: $ResolvedMmprojPath"
-    }
-    if (-not (Test-Path -LiteralPath $ResolvedChatTemplateFile)) {
-        $ResolvedChatTemplateFile = $null
     }
     if ($null -eq $ResolvedLlamaServerPath -or -not (Test-Path -LiteralPath $ResolvedLlamaServerPath)) {
         throw "llama-server executable not found. Set LLAMA_SERVER_EXE."
@@ -679,79 +682,40 @@ function Invoke-S2Component {
         }
     }
 
+    Write-Host "[AURA_SYSTEM] starting S2 module on $System2Host`:$System2Port"
     $GpuLayerArg = if ($GpuLayers -eq "auto") { "-1" } else { $GpuLayers }
-    $ServerArgs = @(
+    $WrapperArgs = @(
         "--host", $System2Host,
         "--port", [string]$System2Port,
-        "--model", $ResolvedModelPath,
-        "--mmproj", $ResolvedMmprojPath,
-        "--ctx-size", [string]$ContextSize,
-        "--gpu-layers", [string]$GpuLayerArg,
-        "--cache-ram", [string]$CacheRamMiB,
-        "--parallel", [string]$Parallel,
-        "--threads-http", [string]$ThreadsHttp,
-        "--reasoning-budget", [string]$ReasoningBudget
+        "--llama-cpp-root", (Split-Path -Parent $ResolvedLlamaServerPath),
+        "--llama-server-path", $ResolvedLlamaServerPath,
+        "--llama-model-path", $ResolvedModelPath,
+        "--llama-mmproj-path", $ResolvedMmprojPath,
+        "--llama-url", $LlamaUrl,
+        "--llama-ctx-size", [string]$ContextSize,
+        "--llama-gpu-layers", [string]$GpuLayerArg,
+        "--llama-main-gpu", [string]$MainGpu,
+        "--llama-flash-attn", $LlamaFlashAttn,
+        "--llama-cache-type-k", $CacheTypeK,
+        "--llama-cache-type-v", $CacheTypeV,
+        "--llama-cache-prompt", $PromptCache,
+        "--num-history", [string]$NumHistory,
+        "--plan-step-gap", [string]$PlanStepGap
     )
-    if ($PromptCache -eq "on") {
-        $ServerArgs += @("--cache-prompt")
+    if (-not [string]::IsNullOrWhiteSpace($LlamaThreads)) {
+        $WrapperArgs += @("--llama-threads", $LlamaThreads)
     }
-    else {
-        $ServerArgs += @("--no-cache-prompt")
+    if ($null -ne $ResolvedPromptModelPath -and (Test-Path -LiteralPath $ResolvedPromptModelPath)) {
+        $WrapperArgs += @("--prompt-model-path", $ResolvedPromptModelPath)
     }
-    if ($ImageMaxTokens -gt 0) {
-        $ServerArgs += @("--image-max-tokens", [string]$ImageMaxTokens)
+    if (-not [string]::IsNullOrWhiteSpace($ChatLoraPath)) {
+        $ResolvedChatLoraPath = Resolve-ProjectPath $ChatLoraPath
+        $WrapperArgs += @("--llama-chat-lora-path", $ResolvedChatLoraPath, "--llama-chat-lora-scale", $ChatLoraScale)
     }
-    if ($null -ne $ResolvedChatTemplateFile) {
-        $ServerArgs += @("--chat-template-file", $ResolvedChatTemplateFile)
+    if (-not [string]::IsNullOrWhiteSpace($ChatSystemPrompt)) {
+        $WrapperArgs += @("--chat-session-system-prompt", $ChatSystemPrompt)
     }
-
-    Write-Host "[AURA_SYSTEM] starting S2 module on $System2Host`:$System2Port"
-    Push-Location $RepoDir
-    try {
-        & $ResolvedLlamaServerPath @ServerArgs @Arguments
-        return $LASTEXITCODE
-    }
-    finally {
-        Pop-Location
-    }
-}
-
-function Invoke-DualComponent {
-    param(
-        [string[]]$Arguments = @()
-    )
-
-    $VLMModel = if ($env:DUAL_VLM_MODEL) { $env:DUAL_VLM_MODEL } else { "InternVLA-N1-System2.Q4_K_M.gguf" }
-    $VLMTemperature = if ($env:DUAL_VLM_TEMPERATURE) { $env:DUAL_VLM_TEMPERATURE } else { "0.2" }
-    $VLMTopK = if ($env:DUAL_VLM_TOP_K) { $env:DUAL_VLM_TOP_K } else { "40" }
-    $VLMTopP = if ($env:DUAL_VLM_TOP_P) { $env:DUAL_VLM_TOP_P } else { "0.95" }
-    $VLMMinP = if ($env:DUAL_VLM_MIN_P) { $env:DUAL_VLM_MIN_P } else { "0.05" }
-    $VLMRepeatPenalty = if ($env:DUAL_VLM_REPEAT_PENALTY) { $env:DUAL_VLM_REPEAT_PENALTY } else { "1.1" }
-    $VLMNumHistory = if ($env:DUAL_VLM_NUM_HISTORY) { $env:DUAL_VLM_NUM_HISTORY } else { "8" }
-    $VLMMaxImagesPerRequest = if ($env:DUAL_VLM_MAX_IMAGES_PER_REQUEST) { $env:DUAL_VLM_MAX_IMAGES_PER_REQUEST } else { "3" }
-    $S2Mode = if ($env:DUAL_S2_MODE) { $env:DUAL_S2_MODE } else { "auto" }
-    $VLMTimeoutSec = if ($env:DUAL_VLM_TIMEOUT_SEC) { $env:DUAL_VLM_TIMEOUT_SEC } else { "35" }
-    $S2BackoffMaxSec = if ($env:DUAL_S2_BACKOFF_MAX_SEC) { $env:DUAL_S2_BACKOFF_MAX_SEC } else { "30" }
-
-    Write-Host "[AURA_SYSTEM] starting Main Control S2/Nav bridge on $DualHost`:$DualPort"
-    $DualArgs = @(
-        "--host", $DualHost,
-        "--port", [string]$DualPort,
-        "--navdp-url", $NavBaseUrl,
-        "--vlm-url", $System2BaseUrl,
-        "--vlm-model", $VLMModel,
-        "--vlm-temperature", $VLMTemperature,
-        "--vlm-top-k", $VLMTopK,
-        "--vlm-top-p", $VLMTopP,
-        "--vlm-min-p", $VLMMinP,
-        "--vlm-repeat-penalty", $VLMRepeatPenalty,
-        "--vlm-num-history", $VLMNumHistory,
-        "--vlm-max-images-per-request", $VLMMaxImagesPerRequest,
-        "--s2-mode", $S2Mode,
-        "--vlm-timeout-sec", $VLMTimeoutSec,
-        "--s2-failure-backoff-max-sec", $S2BackoffMaxSec
-    ) + $Arguments
-    return Invoke-CondaModule -EntryModule $DualEntryModule -Arguments $DualArgs
+    return Invoke-CondaModule -EntryModule $System2EntryModule -Arguments ($WrapperArgs + $Arguments)
 }
 
 function Invoke-RuntimeComponent {
@@ -806,10 +770,6 @@ function Invoke-AllComponent {
         $Processes.Add($S2Process) | Out-Null
         Wait-TcpReady -Host $System2Host -Port $System2Port -Name "S2 module" -TimeoutSec $StartupTimeoutSec -Process $S2Process
 
-        $DualProcess = Start-BackgroundSelf -Name "dual" -TargetComponent "dual"
-        $Processes.Add($DualProcess) | Out-Null
-        Wait-TcpReady -Host $DualHost -Port $DualPort -Name "Dual bridge module" -TimeoutSec $StartupTimeoutSec -Process $DualProcess
-
         return (Invoke-RuntimeComponent -Arguments $Arguments)
     }
     finally {
@@ -826,9 +786,6 @@ switch ($Component) {
     }
     "s2" {
         $ExitCode = Invoke-S2Component -Arguments $ForwardArgs
-    }
-    "dual" {
-        $ExitCode = Invoke-DualComponent -Arguments $ForwardArgs
     }
     "runtime" {
         $ExitCode = Invoke-RuntimeComponent -Arguments $ForwardArgs

@@ -94,50 +94,26 @@ class StateAggregator:
         return "unknown"
 
     @staticmethod
-    def _system2_output_snapshot(dual_service: dict[str, object]) -> dict[str, object] | None:
-        debug = dict(dual_service.get("debug", {})) if isinstance(dual_service.get("debug"), dict) else {}
-        stats = dict(debug.get("stats", {})) if isinstance(debug.get("stats"), dict) else {}
-        session = dict(debug.get("system2_session", {})) if isinstance(debug.get("system2_session"), dict) else {}
-
-        raw_text = str(session.get("last_output", "")).strip() or str(stats.get("last_s2_raw_text", "")).strip()
-        reason = str(session.get("last_reason", "")).strip() or str(stats.get("last_s2_reason", "")).strip()
-        decision_mode = str(session.get("last_decision_mode", "")).strip() or str(stats.get("last_s2_mode", "")).strip()
-        instruction = str(session.get("instruction", "")).strip() or str(debug.get("instruction", "")).strip()
-        history_frame_ids = session.get("last_history_frame_ids", stats.get("last_s2_history_frame_ids", []))
-        normalized_history = (
-            [int(item) for item in history_frame_ids]
-            if isinstance(history_frame_ids, list)
-            else []
-        )
-        needs_requery = bool(session.get("last_needs_requery", stats.get("last_s2_needs_requery", False)))
-        requested_stop = bool(stats.get("last_s2_requested_stop", False))
-        effective_stop = bool(stats.get("last_s2_effective_stop", False))
-        latency_ms_raw = stats.get("last_s2_latency_ms")
-        latency_ms = float(latency_ms_raw) if isinstance(latency_ms_raw, (int, float)) else None
-        has_output = (
-            raw_text != ""
-            or reason != ""
-            or normalized_history != []
-            or requested_stop
-            or effective_stop
-            or decision_mode not in {"", "wait"}
-        )
-
-        if not has_output:
+    def _system2_output_snapshot(system2_service: dict[str, object]) -> dict[str, object] | None:
+        direct_output = dict(system2_service.get("output", {})) if isinstance(system2_service.get("output"), dict) else {}
+        health = dict(system2_service.get("health", {})) if isinstance(system2_service.get("health"), dict) else {}
+        output = dict(health.get("system2_output", {})) if isinstance(health.get("system2_output"), dict) else {}
+        if output == {} and direct_output != {}:
+            output = direct_output
+        if output == {}:
             return None
-
         payload: dict[str, object] = {
-            "rawText": raw_text,
-            "reason": reason,
-            "decisionMode": decision_mode,
-            "needsRequery": needs_requery,
-            "historyFrameIds": normalized_history,
-            "requestedStop": requested_stop,
-            "effectiveStop": effective_stop,
-            "instruction": instruction,
+            "rawText": str(output.get("rawText", "")),
+            "reason": str(output.get("reason", output.get("rawText", ""))),
+            "decisionMode": str(output.get("decisionMode", "")),
+            "needsRequery": bool(output.get("needsRequery", False)),
+            "historyFrameIds": [int(item) for item in output.get("historyFrameIds", [])] if isinstance(output.get("historyFrameIds"), list) else [],
+            "requestedStop": str(output.get("decisionMode", "")) == "stop",
+            "effectiveStop": str(output.get("decisionMode", "")) == "stop",
+            "instruction": str(output.get("instruction", "")),
         }
-        if latency_ms is not None:
-            payload["latencyMs"] = latency_ms
+        if isinstance(output.get("latencyMs"), (int, float)):
+            payload["latencyMs"] = float(output["latencyMs"])
         return payload
 
     def _system2_service_state(
@@ -145,20 +121,20 @@ class StateAggregator:
         *,
         session_active: bool,
         processes: list[dict[str, object]],
-        dual_service: dict[str, object],
+        system2_service: dict[str, object],
     ) -> dict[str, object]:
         system2_process = next((item for item in processes if item.get("name") == "system2"), None)
         process_status = self._process_status(system2_process)
-        dual_status = str(dual_service.get("status", "inactive"))
-        output = self._system2_output_snapshot(dual_service)
+        service_status = str(system2_service.get("status", "inactive"))
+        output = self._system2_output_snapshot(system2_service)
 
         if not session_active:
             status = "inactive"
-        elif process_status == "failed" or dual_status in {"down", "failed"}:
+        elif process_status == "failed" or service_status in {"down", "failed"}:
             status = "down"
         elif output is None:
             status = "awaiting_first_decision"
-        elif process_status == "ok" and dual_status == "ok":
+        elif process_status == "ok" and service_status == "ok":
             status = "ok"
         else:
             status = "degraded"
@@ -184,9 +160,9 @@ class StateAggregator:
         world_state = WorldStateSnapshot() if self._world_state is None else self._world_state
         process_map = {str(item.get("name", "")): dict(item) for item in processes if isinstance(item, dict)}
         nav_service = dict(services.get("navdp", {})) if isinstance(services.get("navdp"), dict) else {}
-        dual_service = dict(services.get("dual", {})) if isinstance(services.get("dual"), dict) else {}
+        system2_service = dict(services.get("system2", {})) if isinstance(services.get("system2"), dict) else {}
         bus_health = dict(transport_state.get("busHealth", {})) if isinstance(transport_state.get("busHealth"), dict) else {}
-        system2_output = self._system2_output_snapshot(dual_service)
+        system2_output = self._system2_output_snapshot(system2_service)
 
         planner_mode = str(world_state.mode or world_state.task.mode or "")
         task_state = str(world_state.task.state or ("active" if session_active else "idle"))
@@ -200,7 +176,7 @@ class StateAggregator:
         frame_id = int(world_state.robot.frame_id)
         frame_age_ms = transport_state.get("frameAgeMs")
         nav_latency = nav_service.get("latencyMs")
-        s2_latency = dual_service.get("latencyMs")
+        s2_latency = system2_service.get("latencyMs")
         detection_enabled = bool(world_state.runtime.detection_enabled)
         memory_store = bool(world_state.runtime.memory_store)
         viewer_publish = bool(world_state.runtime.viewer_publish)
@@ -362,18 +338,18 @@ class StateAggregator:
             )
 
         system2_process = process_map.get("system2")
-        dual_status = str(dual_service.get("status", "unknown"))
+        system2_status = str(system2_service.get("status", "unknown"))
         if not system2_required:
             s2_status = "not_required"
             s2_summary = "Session inactive"
-        elif system2_output is not None and self._process_status(system2_process) == "ok" and dual_status == "ok":
+        elif system2_output is not None and self._process_status(system2_process) == "ok" and system2_status == "ok":
             s2_status = "ok"
             decision_mode = str(system2_output.get("decisionMode", "")).replace("_", " ").strip()
             s2_summary = f"Decision {decision_mode or 'ready'}"
-        elif self._process_status(system2_process) == "ok" and dual_status == "ok":
+        elif self._process_status(system2_process) == "ok" and system2_status == "ok":
             s2_status = "ok"
             s2_summary = "Standing by" if planner_mode != "NAV" else "NAV planning active"
-        elif self._process_status(system2_process) in {"failed", "down"} or dual_status in {"down", "failed"}:
+        elif self._process_status(system2_process) in {"failed", "down"} or system2_status in {"down", "failed"}:
             s2_status = "failed"
             s2_summary = "S2 path unavailable"
         else:
@@ -686,12 +662,12 @@ class StateAggregator:
             debug_url=navdp_debug_url,
             required="navdp" in required,
         )
-        dual_health_url, dual_debug_url = self.process_manager.service_urls("dual")
-        self._service_state["dual"] = await self._service_snapshot(
-            name="dual",
-            health_url=dual_health_url,
-            debug_url=dual_debug_url,
-            required="dual" in required,
+        system2_health_url, system2_debug_url = self.process_manager.service_urls("system2")
+        self._service_state["system2"] = await self._service_snapshot(
+            name="system2",
+            health_url=system2_health_url,
+            debug_url=system2_debug_url,
+            required="system2" in required,
         )
 
     async def _service_snapshot(
@@ -740,14 +716,12 @@ class StateAggregator:
         session_payload = None if request is None else request.to_public_dict()
         processes = self.process_manager.snapshot()
         frame = self.subscriber.current_frame
-        dual_service = dict(self._service_state.get("dual", {}))
         services = {
             "navdp": dict(self._service_state.get("navdp", {})),
-            "dual": dual_service,
             "system2": self._system2_service_state(
                 session_active=request is not None,
                 processes=processes,
-                dual_service=dual_service,
+                system2_service=dict(self._service_state.get("system2", {})),
             ),
         }
         transport_state = {

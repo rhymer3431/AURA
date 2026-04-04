@@ -11,24 +11,31 @@ from urllib.parse import urlparse
 import numpy as np
 import requests
 
-from adapters.dual_http import DualSystemClient, DualSystemClientConfig
 from adapters.sensors.d455_sensor import D455SensorAdapter, D455SensorAdapterConfig
-from control.async_planners import AsyncDualPlanner, AsyncNoGoalPlanner, AsyncPointGoalPlanner
+from control.async_planners import AsyncNoGoalPlanner, AsyncPointGoalPlanner
 from inference.navdp import InProcessNavDPClient, create_inprocess_navdp_client
+from inference.vlm import System2Session, System2SessionConfig
 from ipc.messages import ActionCommand
 from memory.models import MemoryContextBundle
 
 
-def _health_url(base_url: str) -> str:
-    return f"{str(base_url).rstrip('/')}/health"
+def _health_url(base_url: str, health_path: str = "/health") -> str:
+    return f"{str(base_url).rstrip('/')}/{str(health_path).lstrip('/')}"
 
 
-def _check_remote_service(base_url: str, *, timeout_sec: float, service_name: str, context: str) -> None:
+def _check_remote_service(
+    base_url: str,
+    *,
+    timeout_sec: float,
+    service_name: str,
+    context: str,
+    health_path: str = "/health",
+) -> None:
     url = str(base_url).strip()
     if url == "":
         raise RuntimeError(f"{context}: missing {service_name} base URL")
     try:
-        response = requests.get(_health_url(url), timeout=float(timeout_sec))
+        response = requests.get(_health_url(url, health_path), timeout=float(timeout_sec))
         response.raise_for_status()
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError(
@@ -82,9 +89,16 @@ def _ensure_remote_service_ready(
     launcher_args: tuple[str, ...] = (),
     launcher_processes: dict[str, subprocess.Popen[Any]] | None = None,
     startup_timeout_sec: float = 45.0,
+    health_path: str = "/health",
 ) -> None:
     try:
-        _check_remote_service(base_url, timeout_sec=timeout_sec, service_name=service_name, context=context)
+        _check_remote_service(
+            base_url,
+            timeout_sec=timeout_sec,
+            service_name=service_name,
+            context=context,
+            health_path=health_path,
+        )
         return
     except RuntimeError as initial_exc:
         if launcher_script_name is None or not _is_local_service_url(base_url):
@@ -110,7 +124,13 @@ def _ensure_remote_service_ready(
         deadline = time.time() + max(float(timeout_sec), float(startup_timeout_sec))
         while time.time() < deadline:
             try:
-                _check_remote_service(base_url, timeout_sec=timeout_sec, service_name=service_name, context=context)
+                _check_remote_service(
+                    base_url,
+                    timeout_sec=timeout_sec,
+                    service_name=service_name,
+                    context=context,
+                    health_path=health_path,
+                )
                 return
             except RuntimeError as retry_exc:
                 if launcher_proc is not None and launcher_proc.poll() is not None:
@@ -177,19 +197,18 @@ class PlanningSession:
         *,
         sensor_factory: Callable[[D455SensorAdapterConfig], D455SensorAdapter] | None = None,
         navdp_client_factory: Callable[[np.ndarray, argparse.Namespace], Any] | None = None,
-        dual_client_factory: Callable[[argparse.Namespace], DualSystemClient] | None = None,
+        system2_client_factory: Callable[[argparse.Namespace], System2Session] | None = None,
     ) -> None:
         self.args = args
         self.mode = str(getattr(args, "planner_mode", "IDLE")).strip().upper() or "IDLE"
         self.sensor_factory = sensor_factory or (lambda cfg: D455SensorAdapter(cfg))
         self.navdp_client_factory = navdp_client_factory or self._default_navdp_client_factory
-        self.dual_client_factory = dual_client_factory or self._default_dual_client_factory
+        self.system2_client_factory = system2_client_factory or self._default_system2_client_factory
         self.sensor: D455SensorAdapter | None = None
         self.navdp_client: Any | None = None
         self.pointgoal_planner: AsyncPointGoalPlanner | None = None
         self.nogoal_planner: AsyncNoGoalPlanner | None = None
-        self.dual_planner: AsyncDualPlanner | None = None
-        self._dual_client: DualSystemClient | None = None
+        self.system2_client: System2Session | None = None
         self._intrinsic = np.eye(3, dtype=np.float32)
         self.last_sensor_init_report: dict[str, Any] = {}
         self._legacy_engine = None
@@ -231,7 +250,7 @@ class PlanningSession:
         *,
         intrinsic: np.ndarray,
         navdp_client: Any | None = None,
-        dual_client: DualSystemClient | None = None,
+        system2_client: System2Session | None = None,
     ) -> None:
         self._intrinsic = np.asarray(intrinsic, dtype=np.float32).copy()
         self.navdp_client = navdp_client or self.navdp_client_factory(self._intrinsic.copy(), self.args)
@@ -247,12 +266,10 @@ class PlanningSession:
         )
         self.pointgoal_planner.start()
         self.nogoal_planner.start()
-        self._dual_client = dual_client or self.dual_client_factory(self.args)
-        self.dual_planner = AsyncDualPlanner(client=self._dual_client)
-        self.dual_planner.start()
+        self.system2_client = system2_client or self.system2_client_factory(self.args)
 
     def shutdown(self) -> None:
-        for planner in (self.pointgoal_planner, self.nogoal_planner, self.dual_planner):
+        for planner in (self.pointgoal_planner, self.nogoal_planner):
             if planner is not None:
                 planner.stop()
 
@@ -271,11 +288,12 @@ class PlanningSession:
                 launcher_script_name="run_system.ps1",
                 launcher_args=("-Component", "nav"),
                 launcher_processes=launcher_processes,
+                health_path="/health",
             )
         except RuntimeError as exc:
             raise RuntimeError(f"{exc} Suggested command: .\\scripts\\run_system.ps1 -Component nav") from exc
 
-    def ensure_dual_service_ready(
+    def ensure_system2_service_ready(
         self,
         *,
         context: str,
@@ -283,16 +301,17 @@ class PlanningSession:
     ) -> None:
         try:
             _ensure_remote_service_ready(
-                str(getattr(self.args, "dual_server_url", "")),
+                str(getattr(self.args, "system2_url", "")),
                 timeout_sec=float(getattr(self.args, "timeout_sec", 5.0)),
-                service_name="dual server",
+                service_name="System2 server",
                 context=context,
                 launcher_script_name="run_system.ps1",
-                launcher_args=("-Component", "dual"),
+                launcher_args=("-Component", "s2"),
                 launcher_processes=launcher_processes,
+                health_path="/healthz",
             )
         except RuntimeError as exc:
-            raise RuntimeError(f"{exc} Suggested command: .\\scripts\\run_system.ps1 -Component dual") from exc
+            raise RuntimeError(f"{exc} Suggested command: .\\scripts\\run_system.ps1 -Component s2") from exc
 
     def capture_observation(self, frame_id: int, *, env=None) -> ExecutionObservation | None:  # noqa: ANN001
         if self.sensor is None:
@@ -414,12 +433,11 @@ class PlanningSession:
         )
 
     @staticmethod
-    def _default_dual_client_factory(args: argparse.Namespace) -> DualSystemClient:
-        return DualSystemClient(
-            DualSystemClientConfig(
-                base_url=str(getattr(args, "dual_server_url", "http://127.0.0.1:8890")),
+    def _default_system2_client_factory(args: argparse.Namespace) -> System2Session:
+        return System2Session(
+            System2SessionConfig(
+                endpoint=str(getattr(args, "system2_url", "http://127.0.0.1:15801")),
                 timeout_sec=float(getattr(args, "timeout_sec", 5.0)),
-                reset_timeout_sec=float(getattr(args, "reset_timeout_sec", 15.0)),
-                retry=int(getattr(args, "retry", 1)),
+                language=str(getattr(args, "instruction_language", "auto")),
             )
         )

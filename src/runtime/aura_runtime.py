@@ -4,6 +4,7 @@ import os
 import time
 import traceback
 from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -23,13 +24,22 @@ from ipc.messages import (
 )
 from ipc.zmq_bus import ZmqBus
 from schemas.events import FrameEvent, WorkerMetadata
-from server.main_control_server import MainControlServer
 from server.snapshot_adapter import SnapshotAdapter
 
-from .aura_runtime_args import apply_demo_defaults, apply_launch_mode_defaults, build_arg_parser, resolve_launch_mode, validate_args
+from .aura_runtime_args import (
+    apply_demo_defaults,
+    apply_launch_mode_defaults,
+    build_arg_parser,
+    build_launch_config,
+    resolve_launch_mode,
+    validate_args,
+)
 from .planning_session import PlanningSession
 from .subgoal_executor import CommandEvaluation, SubgoalExecutor
-from .supervisor import Supervisor, SupervisorConfig
+
+if TYPE_CHECKING:
+    from server.main_control_server import MainControlServer
+    from .supervisor import Supervisor
 
 
 def _trace_runtime_event(message: str) -> None:
@@ -48,7 +58,7 @@ class AuraRuntimeCommandSource:
         self,
         args,
         *,
-        supervisor: Supervisor | None = None,
+        supervisor=None,
         planning_session: PlanningSession | None = None,
     ) -> None:
         self.args = args
@@ -63,13 +73,13 @@ class AuraRuntimeCommandSource:
         self._controller = None
         self._planning_session = planning_session or PlanningSession(args)
         self._executor = SubgoalExecutor(args)
-        self._supervisor_config = SupervisorConfig(
-            memory_db_path=str(getattr(args, "memory_db_path", "state/memory/memory.sqlite")),
-            detector_model_path=str(getattr(args, "detector_model_path", "")),
-            detector_device=str(getattr(args, "detector_device", "")),
-            memory_store=bool(getattr(args, "memory_store", True)),
-            skip_detection=bool(getattr(args, "skip_detection", False)),
-        )
+        self._supervisor_config_kwargs = {
+            "memory_db_path": str(getattr(args, "memory_db_path", "state/memory/memory.sqlite")),
+            "detector_model_path": str(getattr(args, "detector_model_path", "")),
+            "detector_device": str(getattr(args, "detector_device", "")),
+            "memory_store": bool(getattr(args, "memory_store", True)),
+            "skip_detection": bool(getattr(args, "skip_detection", False)),
+        }
         self._supervisor = supervisor
         self._runtime_io: RuntimeIo | None = None
         self._command = np.zeros(3, dtype=np.float32)
@@ -82,13 +92,20 @@ class AuraRuntimeCommandSource:
         self._pending_exit_reason = ""
         self._last_viewer_overlay: dict[str, object] = {}
         self._last_runtime_snapshot_frame = -1
-        self._server: MainControlServer | None = None
+        self._server = None
 
     @property
-    def supervisor(self) -> Supervisor:
+    def supervisor(self):
         if self._supervisor is None:
-            self._supervisor = Supervisor(config=self._supervisor_config)
+            from .supervisor import Supervisor
+
+            self._supervisor = Supervisor(config=self._create_supervisor_config())
         return self._supervisor
+
+    def _create_supervisor_config(self):
+        from .supervisor import SupervisorConfig
+
+        return SupervisorConfig(**self._supervisor_config_kwargs)
 
     @property
     def planning_session(self) -> PlanningSession:
@@ -321,10 +338,12 @@ class AuraRuntimeCommandSource:
                 bus=bus,
                 shm_ring=None,
             )
+        from .supervisor import Supervisor
+
         self._supervisor = Supervisor(
             bus=self._runtime_io.bus,
             shm_ring=self._runtime_io.shm_ring,
-            config=self._supervisor_config,
+            config=self._create_supervisor_config(),
         )
         print(
             "[AURA_RUNTIME] runtime bridge ready "
@@ -337,6 +356,8 @@ class AuraRuntimeCommandSource:
     def _ensure_control_server(self) -> None:
         if self._server is not None:
             return
+        from server.main_control_server import MainControlServer
+
         self._server = MainControlServer(
             self.args,
             supervisor=self.supervisor,
@@ -482,16 +503,6 @@ class AuraRuntimeCommandSource:
             f"plan_v={update.plan_version} plan_ok={update.stats.successful_calls} "
             f"plan_fail={update.stats.failed_calls} plan_latency_ms={update.stats.latency_ms:.1f}{route_note}{error_note}"
         )
-
-
-def build_launch_config(args) -> dict[str, bool]:
-    launch_config = {"headless": bool(args.headless)}
-    viewer_publish = bool(getattr(args, "viewer_publish", False))
-    if bool(args.headless) and not viewer_publish:
-        launch_config["disable_viewport_updates"] = True
-    return launch_config
-
-
 def main() -> int:
     try:
         args = build_arg_parser().parse_args()

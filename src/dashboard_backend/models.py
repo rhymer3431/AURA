@@ -8,7 +8,7 @@ from locomotion.constants import ACTION_SCALE
 from locomotion.paths import repo_dir, resolve_default_policy_path
 
 
-PROCESS_NAMES = ("navdp", "system2", "dual", "runtime")
+PROCESS_NAMES = ("navdp", "system2", "runtime")
 
 
 @dataclass(frozen=True)

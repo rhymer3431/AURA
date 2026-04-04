@@ -22,19 +22,6 @@ class DecisionDirective:
 
 
 @dataclass(frozen=True)
-class DualDecisionDirective:
-    force_s2: bool
-    launch_s2: bool
-    launch_s1: bool
-    goal_missing: bool
-    goal_stale: bool
-    traj_missing: bool
-    traj_stale: bool
-    discard_stale_traj: bool
-    backoff_active: bool
-
-
-@dataclass(frozen=True)
 class RecoveryEvaluation:
     recovery_state: RecoveryStateSnapshot
     event: RecoveryEvent | None = None
@@ -148,64 +135,4 @@ class DecisionEngine:
             plan_version > int(world_state.planning.plan_version)
             or goal_version > int(world_state.planning.goal_version)
             or traj_version > int(world_state.planning.traj_version)
-        )
-
-    def evaluate_dual(
-        self,
-        *,
-        now: float,
-        goal_cache,
-        traj_cache,
-        last_s1_ts: float,
-        last_s2_ts: float,
-        s1_period_sec: float,
-        s2_period_sec: float,
-        goal_ttl_sec: float,
-        traj_ttl_sec: float,
-        traj_max_stale_sec: float,
-        s2_retry_after_ts: float,
-        force_s2_pending: bool,
-        events: dict[str, object] | None = None,
-    ) -> DualDecisionDirective:
-        goal = goal_cache
-        traj = traj_cache
-        event_map = dict(events or {})
-        external_force = bool(event_map.get("force_s2", False)) or bool(event_map.get("stuck", False)) or bool(
-            event_map.get("collision_risk", False)
-        )
-        force_s2 = bool(external_force or force_s2_pending)
-        goal_missing = goal is None
-        goal_stale = bool(goal is not None and (now - float(goal.updated_at)) > float(goal_ttl_sec))
-        due_s2 = (now - float(last_s2_ts)) >= float(s2_period_sec)
-        awaiting_first_traj = bool(goal is not None and traj is None and str(goal.mode) == "pixel_goal" and not bool(goal.stop))
-        backoff_active = now < float(s2_retry_after_ts)
-        should_s2 = bool(force_s2 or goal_missing or goal_stale or due_s2)
-        if awaiting_first_traj and not force_s2:
-            should_s2 = bool(goal_missing)
-        if backoff_active and not force_s2:
-            should_s2 = False
-
-        goal_is_pixel = bool(
-            goal is not None
-            and str(goal.mode) == "pixel_goal"
-            and getattr(goal, "pixel_x", None) is not None
-            and getattr(goal, "pixel_y", None) is not None
-            and not bool(goal.stop)
-        )
-        goal_changed = bool(goal_is_pixel and (traj is None or int(traj.goal_version) != int(goal.version)))
-        traj_missing = traj is None
-        traj_stale = bool(traj is not None and (now - float(traj.updated_at)) > float(traj_ttl_sec))
-        discard_stale_traj = bool(traj is not None and (now - float(traj.updated_at)) > float(traj_max_stale_sec))
-        due_s1 = (now - float(last_s1_ts)) >= float(s1_period_sec)
-        should_s1 = bool(goal_is_pixel and (goal_changed or traj_missing or traj_stale or due_s1))
-        return DualDecisionDirective(
-            force_s2=force_s2,
-            launch_s2=should_s2,
-            launch_s1=should_s1,
-            goal_missing=goal_missing,
-            goal_stale=goal_stale,
-            traj_missing=traj_missing,
-            traj_stale=traj_stale,
-            discard_stale_traj=discard_stale_traj,
-            backoff_active=backoff_active,
         )

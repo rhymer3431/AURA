@@ -17,7 +17,6 @@ _LEGACY_MODE_MAP = {
     "explore": "EXPLORE",
     "idle": "IDLE",
     "interactive": "NAV",
-    "dual": "NAV",
     "pointgoal": "MEM_NAV",
 }
 
@@ -38,4 +37,3 @@ def is_planning_mode(mode: object) -> bool:
 
 def uses_system2(mode: object) -> bool:
     return normalize_execution_mode(mode) == "NAV"
-

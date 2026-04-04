@@ -4,14 +4,11 @@ from importlib import import_module
 
 
 _EXPORTS = {
-    "AsyncDualPlanner": ("control.async_planners", "AsyncDualPlanner"),
     "AsyncNoGoalPlanner": ("control.async_planners", "AsyncNoGoalPlanner"),
     "AsyncPointGoalPlanner": ("control.async_planners", "AsyncPointGoalPlanner"),
     "BehaviorFSM": ("control.behavior_fsm", "BehaviorFSM"),
     "BehaviorState": ("control.behavior_fsm", "BehaviorState"),
     "CriticFeedback": ("control.critic", "CriticFeedback"),
-    "DualPlannerInput": ("control.async_planners", "DualPlannerInput"),
-    "DualPlannerOutput": ("control.async_planners", "DualPlannerOutput"),
     "NoGoalPlannerInput": ("control.async_planners", "NoGoalPlannerInput"),
     "PlanCritic": ("control.critic", "PlanCritic"),
     "PlannerInput": ("control.async_planners", "PlannerInput"),

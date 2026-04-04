@@ -42,6 +42,10 @@ class LocomotionWorker:
         self._last_applied_plan_version = -1
         self._last_goal_version = -1
         self._planner_yaw_target_rad: float | None = None
+        self._planner_action_mode: str | None = None
+        self._planner_action_started_at_s: float = 0.0
+        self._planner_action_start_pos_xy: np.ndarray | None = None
+        self._planner_action_start_yaw_rad: float = 0.0
         self._command = np.zeros(3, dtype=np.float32)
         self._follower = follower if self._use_navdp_follower else None
         self._follower_init_error = ""
@@ -94,12 +98,24 @@ class LocomotionWorker:
                     seed_progress_idx=seed_progress_idx,
                 )
                 self._planner_yaw_target_rad = None
+                self._planner_action_mode = None
+                self._planner_action_start_pos_xy = None
             else:
                 self._tracker.clear(timestamp=now)
                 if update.planner_control_mode == "yaw_delta" and update.planner_yaw_delta_rad is not None:
                     self._planner_yaw_target_rad = wrap_to_pi(float(robot_yaw) + float(update.planner_yaw_delta_rad))
+                    self._planner_action_mode = None
+                    self._planner_action_start_pos_xy = None
+                elif update.planner_control_mode in {"forward", "yaw_left", "yaw_right"}:
+                    self._planner_yaw_target_rad = None
+                    self._planner_action_mode = str(update.planner_control_mode)
+                    self._planner_action_started_at_s = float(now)
+                    self._planner_action_start_pos_xy = np.asarray(robot_pos_world, dtype=np.float32).reshape(-1)[:2].copy()
+                    self._planner_action_start_yaw_rad = float(robot_yaw)
                 else:
                     self._planner_yaw_target_rad = None
+                    self._planner_action_mode = None
+                    self._planner_action_start_pos_xy = None
             self._last_applied_plan_version = int(update.plan_version)
             self._last_goal_version = int(getattr(update, "goal_version", -1))
 
@@ -115,6 +131,13 @@ class LocomotionWorker:
             self._command = self._look_at_command(action_command, float(robot_yaw))
         elif update.planner_control_mode == "yaw_delta":
             self._command = self._planner_yaw_command(float(robot_yaw))
+        elif update.planner_control_mode in {"forward", "yaw_left", "yaw_right"}:
+            self._command = self._planner_action_command(
+                planner_mode=str(update.planner_control_mode),
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+                now=now,
+            )
         elif update.planner_control_mode in {"stop", "wait"}:
             self._command = np.zeros(3, dtype=np.float32)
         else:
@@ -173,6 +196,8 @@ class LocomotionWorker:
                     yaw_error_rad=float(yaw_error),
                     reached_goal=bool(reached_goal),
                 )
+            if planner_mode in {"forward", "yaw_left", "yaw_right"}:
+                return CommandEvaluation(force_stop=False, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=False)
             if planner_mode == "wait":
                 return CommandEvaluation(force_stop=True, goal_distance_m=-1.0, yaw_error_rad=0.0, reached_goal=False)
             planner_stop = bool(trajectory_update.stop) if trajectory_update is not None else False
@@ -218,6 +243,38 @@ class LocomotionWorker:
             return np.zeros(3, dtype=np.float32)
         wz = np.clip(1.5 * float(yaw_error), -float(self.args.cmd_max_wz), float(self.args.cmd_max_wz))
         return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)
+
+    def _planner_action_command(
+        self,
+        *,
+        planner_mode: str,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+        now: float,
+    ) -> np.ndarray:
+        timeout_s = max(0.1, float(getattr(self.args, "internvla_action_timeout_s", 1.5)))
+        elapsed = float(now - self._planner_action_started_at_s)
+        if elapsed > timeout_s:
+            return np.zeros(3, dtype=np.float32)
+        if planner_mode == "forward":
+            start_xy = self._planner_action_start_pos_xy
+            if start_xy is None:
+                return np.zeros(3, dtype=np.float32)
+            target_distance = max(0.05, float(getattr(self.args, "internvla_forward_step_m", 0.25)))
+            distance = xy_distance(np.asarray(start_xy, dtype=np.float32), np.asarray(robot_pos_world, dtype=np.float32))
+            if distance >= target_distance:
+                return np.zeros(3, dtype=np.float32)
+            vx = min(float(self.args.cmd_max_vx), max(0.05, float(getattr(self.args, "obstacle_slow_forward_vx_mps", 0.08))))
+            return np.asarray([float(vx), 0.0, 0.0], dtype=np.float32)
+        if planner_mode in {"yaw_left", "yaw_right"}:
+            target_yaw = max(0.05, float(np.deg2rad(float(getattr(self.args, "internvla_turn_step_deg", 20.0)))))
+            yaw_delta = abs(float(wrap_to_pi(robot_yaw - float(self._planner_action_start_yaw_rad))))
+            if yaw_delta >= target_yaw:
+                return np.zeros(3, dtype=np.float32)
+            yaw_sign = 1.0 if planner_mode == "yaw_left" else -1.0
+            wz = min(float(self.args.cmd_max_wz), 0.5) * yaw_sign
+            return np.asarray([0.0, 0.0, float(wz)], dtype=np.float32)
+        return np.zeros(3, dtype=np.float32)
 
     def _trajectory_command(
         self,

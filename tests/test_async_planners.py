@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from control.async_planners import AsyncDualPlanner, AsyncNoGoalPlanner, DualPlannerInput, NoGoalPlannerInput
+from control.async_planners import AsyncNoGoalPlanner, NoGoalPlannerInput
 
 
 class _EmptyTrajectoryClient:
@@ -18,7 +18,7 @@ class _EmptyTrajectoryClient:
         )
 
 
-def test_async_nogoal_planner_records_empty_trajectory_failure():
+def test_async_nogoal_planner_records_empty_trajectory_failure() -> None:
     planner = AsyncNoGoalPlanner(client=_EmptyTrajectoryClient(), use_trajectory_z=False)
     planner.start()
     try:
@@ -45,131 +45,5 @@ def test_async_nogoal_planner_records_empty_trajectory_failure():
         assert success == 0
         assert failed == 1
         assert "empty trajectory" in error
-    finally:
-        planner.stop()
-
-
-class _TransientWaitingDualClient:
-    def dual_step(
-        self,
-        *,
-        rgb_image,
-        depth_image_m,
-        step_id,
-        cam_pos,
-        cam_quat_wxyz,
-        sensor_meta=None,
-        memory_context=None,
-        events=None,
-    ):  # noqa: ANN001
-        _ = rgb_image, depth_image_m, step_id, cam_pos, cam_quat_wxyz, sensor_meta, memory_context, events
-        return SimpleNamespace(
-            trajectory_world=np.zeros((0, 3), dtype=np.float32),
-            pixel_goal=None,
-            stop=False,
-            goal_version=-1,
-            traj_version=-1,
-            used_cached_traj=True,
-            stale_sec=-1.0,
-            debug={
-                "called_s2": True,
-                "called_s1": False,
-                "s2_inflight": True,
-                "s1_inflight": False,
-                "force_s2_pending": False,
-            },
-        )
-
-
-def test_async_dual_planner_treats_initial_empty_response_as_waiting():
-    planner = AsyncDualPlanner(client=_TransientWaitingDualClient())
-    planner.start()
-    try:
-        planner.submit(
-            DualPlannerInput(
-                frame_id=1,
-                rgb=np.zeros((8, 8, 3), dtype=np.uint8),
-                depth=np.ones((8, 8), dtype=np.float32),
-                sensor_meta={},
-                cam_pos=np.zeros(3, dtype=np.float32),
-                cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-                memory_context=None,
-                events={},
-            )
-        )
-
-        deadline = time.time() + 1.0
-        while time.time() < deadline:
-            success, failed, error, _latency = planner.snapshot_status()
-            if error != "":
-                break
-            time.sleep(0.01)
-
-        latest = planner.consume_latest(-1)
-        success, failed, error, _latency = planner.snapshot_status()
-
-        assert latest is None
-        assert success == 0
-        assert failed == 0
-        assert "dual_step returned no active trajectory" in error
-    finally:
-        planner.stop()
-
-
-class _YawOnlyDualClient:
-    def dual_step(
-        self,
-        *,
-        rgb_image,
-        depth_image_m,
-        step_id,
-        cam_pos,
-        cam_quat_wxyz,
-        sensor_meta=None,
-        memory_context=None,
-        events=None,
-    ):  # noqa: ANN001
-        _ = rgb_image, depth_image_m, step_id, cam_pos, cam_quat_wxyz, sensor_meta, memory_context, events
-        return SimpleNamespace(
-            trajectory_world=np.zeros((0, 3), dtype=np.float32),
-            pixel_goal=None,
-            stop=False,
-            goal_version=3,
-            traj_version=-1,
-            used_cached_traj=False,
-            stale_sec=-1.0,
-            planner_control={"mode": "yaw_delta", "yaw_delta_rad": float(np.pi / 6.0), "reason": "←"},
-            debug={},
-        )
-
-
-def test_async_dual_planner_accepts_non_trajectory_planner_control() -> None:
-    planner = AsyncDualPlanner(client=_YawOnlyDualClient())
-    planner.start()
-    try:
-        planner.submit(
-            DualPlannerInput(
-                frame_id=1,
-                rgb=np.zeros((8, 8, 3), dtype=np.uint8),
-                depth=np.ones((8, 8), dtype=np.float32),
-                sensor_meta={},
-                cam_pos=np.zeros(3, dtype=np.float32),
-                cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-                memory_context=None,
-                events={},
-            )
-        )
-
-        deadline = time.time() + 1.0
-        latest = None
-        while time.time() < deadline:
-            latest = planner.consume_latest(-1)
-            if latest is not None:
-                break
-            time.sleep(0.01)
-
-        assert latest is not None
-        assert latest.planner_control["mode"] == "yaw_delta"
-        assert latest.trajectory_world.shape == (0, 3)
     finally:
         planner.stop()

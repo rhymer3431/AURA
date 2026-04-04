@@ -6,11 +6,6 @@ from importlib import import_module
 _EXPORTS = {
     "D455SensorAdapter": ("adapters.sensors.d455_sensor", "D455SensorAdapter"),
     "D455SensorAdapterConfig": ("adapters.sensors.d455_sensor", "D455SensorAdapterConfig"),
-    "DualResetResponse": ("adapters.dual_http", "DualResetResponse"),
-    "DualStepResponse": ("adapters.dual_http", "DualStepResponse"),
-    "DualSystemClient": ("adapters.dual_http", "DualSystemClient"),
-    "DualSystemClientConfig": ("adapters.dual_http", "DualSystemClientConfig"),
-    "DualSystemClientError": ("adapters.dual_http", "DualSystemClientError"),
     "NavDPClient": ("adapters.navdp_http", "NavDPClient"),
     "NavDPClientConfig": ("adapters.navdp_http", "NavDPClientConfig"),
     "NavDPClientError": ("adapters.navdp_http", "NavDPClientError"),

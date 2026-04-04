@@ -3,21 +3,33 @@
 from .system2_session import (
     System2Decision,
     System2Request,
+    System2Result,
     System2Session,
     System2SessionConfig,
     System2SessionResult,
     build_vlm_endpoint,
+    deproject_pixel_to_camera_point,
     extract_chat_content,
+    normalized_uv_to_pixel_xy,
     parse_system2_output,
+    pixel_xy_to_normalized_uv,
+    resolve_goal_world_xy_from_pixel,
+    sample_depth_window,
 )
 
 __all__ = [
     "System2Decision",
     "System2Request",
+    "System2Result",
     "System2Session",
     "System2SessionConfig",
     "System2SessionResult",
     "build_vlm_endpoint",
+    "deproject_pixel_to_camera_point",
     "extract_chat_content",
+    "normalized_uv_to_pixel_xy",
     "parse_system2_output",
+    "pixel_xy_to_normalized_uv",
+    "resolve_goal_world_xy_from_pixel",
+    "sample_depth_window",
 ]

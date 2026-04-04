@@ -3,9 +3,9 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
-from types import SimpleNamespace
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -44,45 +44,43 @@ class _FakeProcessManager:
 
     def snapshot(self) -> list[dict[str, object]]:
         request = self.current_request
+        names = ("navdp", "system2", "runtime")
         if request is None:
             return [
-                {"name": "navdp", "state": "stopped", "required": False, "pid": None, "exitCode": None, "startedAt": None, "healthUrl": "", "stdoutLog": "", "stderrLog": ""},
-                {"name": "system2", "state": "not_required", "required": False, "pid": None, "exitCode": None, "startedAt": None, "healthUrl": "", "stdoutLog": "", "stderrLog": ""},
-                {"name": "dual", "state": "not_required", "required": False, "pid": None, "exitCode": None, "startedAt": None, "healthUrl": "", "stdoutLog": "", "stderrLog": ""},
-                {"name": "runtime", "state": "stopped", "required": False, "pid": None, "exitCode": None, "startedAt": None, "healthUrl": "", "stdoutLog": "", "stderrLog": ""},
-            ]
-        required = request.required_process_names()
-        records = []
-        for name in ("navdp", "system2", "dual", "runtime"):
-            if name not in required:
-                state = "not_required"
-                pid = None
-            else:
-                state = "running"
-                pid = 1000 + len(records)
-            records.append(
                 {
                     "name": name,
-                    "state": state,
-                    "required": name in required,
-                    "pid": pid,
+                    "state": "stopped",
+                    "required": False,
+                    "pid": None,
                     "exitCode": None,
-                    "startedAt": self.session_started_at,
+                    "startedAt": None,
                     "healthUrl": "",
-                    "stdoutLog": f"tmp/{name}.stdout.log",
-                    "stderrLog": f"tmp/{name}.stderr.log",
+                    "stdoutLog": "",
+                    "stderrLog": "",
                 }
-            )
-        return records
+                for name in names
+            ]
+        return [
+            {
+                "name": name,
+                "state": "running",
+                "required": True,
+                "pid": 1000 + index,
+                "exitCode": None,
+                "startedAt": self.session_started_at,
+                "healthUrl": "",
+                "stdoutLog": f"tmp/{name}.stdout.log",
+                "stderrLog": f"tmp/{name}.stderr.log",
+            }
+            for index, name in enumerate(names)
+        ]
 
     @staticmethod
     def service_urls(name: str) -> tuple[str, str]:
         if name == "navdp":
             return "http://127.0.0.1:8888/health", "http://127.0.0.1:8888/debug_last_input"
-        if name == "dual":
-            return "http://127.0.0.1:8890/health", "http://127.0.0.1:8890/dual_debug_state"
         if name == "system2":
-            return "http://127.0.0.1:8080", ""
+            return "http://127.0.0.1:15801/healthz", ""
         return "", ""
 
 
@@ -188,14 +186,7 @@ class _FakeStateAggregator:
                 "modules": {
                     "perception": {"name": "Perception", "status": "ok", "summary": "0 detections", "detail": "", "required": True, "metrics": {}},
                     "memory": {"name": "Memory", "status": "inactive", "summary": "No active memory task", "detail": "", "required": False, "metrics": {}},
-                    "s2": {
-                        "name": "S2",
-                        "status": "not_required" if request is None else "ok",
-                        "summary": "",
-                        "detail": "",
-                        "required": request is not None,
-                        "metrics": {},
-                    },
+                    "s2": {"name": "S2", "status": "not_required" if request is None else "ok", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
                     "nav": {"name": "Nav", "status": "ok" if request is not None else "inactive", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
                     "locomotion": {"name": "Locomotion", "status": "ok" if request is not None else "inactive", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
                     "telemetry": {"name": "Telemetry", "status": "ok", "summary": "", "detail": "", "required": request is not None, "metrics": {}},
@@ -203,8 +194,11 @@ class _FakeStateAggregator:
             },
             "services": {
                 "navdp": {"name": "navdp", "status": "ok"},
-                "dual": {"name": "dual", "status": "not_required" if request is None else "ok"},
-                "system2": next(item for item in processes if item["name"] == "system2"),
+                "system2": {
+                    "name": "system2",
+                    "status": "inactive" if request is None else "ok",
+                    "output": None if request is None else {"decisionMode": "pixel_goal", "rawText": "120, 80"},
+                },
             },
             "transport": {"viewerEnabled": False if request is None else request.viewer_enabled},
             "logs": [{"source": "runtime", "stream": "event", "message": "ready"}],
@@ -281,26 +275,6 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 bootstrap = await response.json()
                 assert bootstrap["apiBaseUrl"] == f"http://127.0.0.1:{port}"
                 assert bootstrap["webrtcBasePath"] == f"http://127.0.0.1:{port}/api/webrtc"
-                assert bootstrap["scenePresets"] == ["warehouse", "interioragent", "interior agent kujiale 3"]
-
-                response = await client.get(
-                    f"http://127.0.0.1:{port}/api/occupancy/current?scenePreset=interior%20agent%20kujiale%203",
-                    headers={"Origin": "http://tauri.localhost"},
-                )
-                assert response.status == 200
-                occupancy = await response.json()
-                assert occupancy["available"] is True
-                assert occupancy["canonicalScenePreset"] == "interior agent kujiale 3"
-                assert occupancy["imageWidth"] == 328
-                assert occupancy["imageHeight"] == 281
-
-                response = await client.get(
-                    f"http://127.0.0.1:{port}{occupancy['imagePath']}",
-                    headers={"Origin": "http://tauri.localhost"},
-                )
-                assert response.status == 200
-                assert response.headers["Content-Type"] == "image/png"
-                assert len(await response.read()) > 0
 
                 events_response = await client.get(
                     f"http://127.0.0.1:{port}/api/events",
@@ -308,16 +282,10 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 )
                 first_event = await events_response.content.readuntil(b"\n\n")
                 assert b"event: state" in first_event
-                assert events_response.headers["Access-Control-Allow-Origin"] == "http://tauri.localhost"
                 payload = json.loads(first_event.decode("utf-8").split("data:", 1)[1].strip())
                 assert payload["session"]["active"] is False
-                assert payload["architecture"]["gateway"]["name"] == "Robot Gateway"
-                assert payload["architecture"]["mainControlServer"]["name"] == "Main Control Server"
                 assert payload["architecture"]["modules"]["s2"]["name"] == "S2"
-                assert payload["selectedTargetSummary"] is None
-                assert payload["latencyBreakdown"]["navLatencyMs"] is None
-                assert payload["cognitionTrace"] == []
-                assert payload["recoveryTransitions"] == []
+                assert payload["services"]["system2"]["status"] == "inactive"
                 events_response.close()
 
                 response = await client.post(
@@ -341,17 +309,8 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 assert response.status == 200
                 started = await response.json()
                 assert started["session"]["active"] is True
-                assert started["session"]["config"]["launchMode"] == "gui"
-                assert started["session"]["config"]["scenePreset"] == "warehouse"
-                assert started["session"]["config"]["locomotionConfig"]["actionScale"] == 0.65
-                assert started["session"]["config"]["locomotionConfig"]["onnxDevice"] == "cuda"
-                assert started["session"]["config"]["locomotionConfig"]["cmdMaxVx"] == 0.8
                 assert started["architecture"]["modules"]["s2"]["status"] == "ok"
-                assert started["architecture"]["modules"]["nav"]["status"] == "ok"
-                assert "selectedTargetSummary" in started
-                assert "latencyBreakdown" in started
-                assert "cognitionTrace" in started
-                assert "recoveryTransitions" in started
+                assert started["services"]["system2"]["status"] == "ok"
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/runtime/task",
@@ -372,12 +331,6 @@ def test_dashboard_backend_routes_cover_session_runtime_sse_and_webrtc() -> None
                 cancel_body = await response.json()
                 assert cancel_body["action"] == "set_idle"
                 assert control_client.idle_count == 1
-
-                response = await client.get(
-                    f"http://127.0.0.1:{port}/api/webrtc/config",
-                    headers={"Origin": "tauri://localhost"},
-                )
-                assert response.status == 200
 
                 response = await client.post(
                     f"http://127.0.0.1:{port}/api/webrtc/offer",

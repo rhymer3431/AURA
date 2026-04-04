@@ -139,12 +139,12 @@ class ProcessManager:
     def _build_specs(self, request: DashboardSessionRequest) -> list[ProcessSpec]:
         scripts_dir = resolve_repo_path(self.config.repo_root, "scripts")
         navdp_port = self._reserve_port("127.0.0.1", 8888)
-        system2_port = self._reserve_port("127.0.0.1", 8080, reserved={navdp_port})
-        dual_port = self._reserve_port("127.0.0.1", 8890, reserved={navdp_port, system2_port})
+        system2_port = self._reserve_port("127.0.0.1", 15801, reserved={navdp_port})
+        system2_sidecar_port = self._reserve_port("127.0.0.1", system2_port + 1, reserved={navdp_port, system2_port})
         navdp_base_url = f"http://127.0.0.1:{navdp_port}"
         system2_base_url = f"http://127.0.0.1:{system2_port}"
-        dual_base_url = f"http://127.0.0.1:{dual_port}"
-        runtime_args = self._runtime_args(request, navdp_base_url=navdp_base_url, dual_base_url=dual_base_url)
+        system2_health_url = f"{system2_base_url}/healthz"
+        runtime_args = self._runtime_args(request, navdp_base_url=navdp_base_url, system2_base_url=system2_base_url)
         specs = [
             ProcessSpec(
                 name="navdp",
@@ -163,24 +163,13 @@ class ProcessManager:
                     name="system2",
                     script_path=scripts_dir / "run_system.ps1",
                     args=("-Component", "s2"),
-                    health_url=system2_base_url,
+                    health_url=system2_health_url,
                     tcp_ready_host="127.0.0.1",
                     tcp_ready_port=system2_port,
-                    env=(("INTERNVLA_HOST", "127.0.0.1"), ("INTERNVLA_PORT", str(system2_port))),
-                ),
-                ProcessSpec(
-                    name="dual",
-                    script_path=scripts_dir / "run_system.ps1",
-                    args=("-Component", "dual"),
-                    health_url=f"{dual_base_url}/health",
-                    debug_url=f"{dual_base_url}/dual_debug_state",
-                    tcp_ready_host="127.0.0.1",
-                    tcp_ready_port=dual_port,
                     env=(
-                        ("DUAL_SERVER_HOST", "127.0.0.1"),
-                        ("DUAL_SERVER_PORT", str(dual_port)),
-                        ("DUAL_NAVDP_URL", navdp_base_url),
-                        ("DUAL_VLM_URL", system2_base_url),
+                        ("INTERNVLA_HOST", "127.0.0.1"),
+                        ("INTERNVLA_PORT", str(system2_port)),
+                        ("INTERNVLA_LLAMA_URL", f"http://127.0.0.1:{system2_sidecar_port}"),
                     ),
                 ),
             ]
@@ -204,15 +193,15 @@ class ProcessManager:
         request: DashboardSessionRequest,
         *,
         navdp_base_url: str,
-        dual_base_url: str,
+        system2_base_url: str,
     ) -> list[str]:
         args = [
             "--native-viewer",
             "off",
             "--server-url",
             navdp_base_url,
-            "--dual-server-url",
-            dual_base_url,
+            "--system2-url",
+            system2_base_url,
         ]
         if request.launch_mode == "gui":
             args += ["--launch-mode", "gui"]
@@ -249,10 +238,8 @@ class ProcessManager:
             return planned.health_url, planned.debug_url
         if name == "navdp":
             return "http://127.0.0.1:8888/health", "http://127.0.0.1:8888/debug_last_input"
-        if name == "dual":
-            return "http://127.0.0.1:8890/health", "http://127.0.0.1:8890/dual_debug_state"
         if name == "system2":
-            return "http://127.0.0.1:8080", ""
+            return "http://127.0.0.1:15801/healthz", ""
         return "", ""
 
     async def _wait_ready(self, spec: ProcessSpec, managed: ManagedProcess) -> None:

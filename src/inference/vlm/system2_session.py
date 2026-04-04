@@ -1,34 +1,29 @@
 from __future__ import annotations
 
-import base64
-import copy
-import io
-import re
-import threading
-import time
 from dataclasses import dataclass
-from typing import Any, Literal
+import io
+import json
+import time
+import uuid
+from typing import Any
 
 import numpy as np
 import requests
+from PIL import Image
 
-from common.cv2_compat import cv2
-from memory.models import MemoryContextBundle
+from common.geometry import project_camera_point_to_world
 
-DecisionMode = Literal["pixel_goal", "stop", "yaw_left", "yaw_right", "look_down", "wait"]
 
-_TURN_LEFT_TOKENS = ("←", "turn left", "left")
-_TURN_RIGHT_TOKENS = ("→", "turn right", "right")
-_LOOK_DOWN_TOKENS = ("↓", "lookdown", "look down", "tilt down")
+DecisionMode = str
 
 
 def build_vlm_endpoint(url: str) -> str:
     raw = str(url).strip()
     if raw == "":
-        return "http://127.0.0.1:8080/v1/chat/completions"
-    if raw.endswith("/v1/chat/completions"):
+        return "http://127.0.0.1:15801/navigation"
+    if raw.endswith("/navigation"):
         return raw
-    return raw.rstrip("/") + "/v1/chat/completions"
+    return raw.rstrip("/") + "/navigation"
 
 
 def extract_chat_content(body: dict[str, Any]) -> str:
@@ -50,6 +45,33 @@ def extract_chat_content(body: dict[str, Any]) -> str:
     raise ValueError("Unsupported VLM content format.")
 
 
+def _image_bytes(rgb: np.ndarray) -> bytes:
+    image = np.asarray(rgb)
+    if image.ndim != 3:
+        raise ValueError(f"Expected an HxWxC RGB array, got shape {image.shape}.")
+    if image.shape[2] == 4:
+        image = image[:, :, :3]
+    if np.issubdtype(image.dtype, np.floating):
+        if float(image.max(initial=0.0)) <= 1.0:
+            image = image * 255.0
+        image = np.clip(image, 0.0, 255.0).astype(np.uint8)
+    else:
+        image = np.clip(image, 0, 255).astype(np.uint8)
+    buffer = io.BytesIO()
+    Image.fromarray(image).save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
+def _depth_bytes(depth: np.ndarray) -> bytes:
+    depth_image = np.asarray(depth, dtype=np.float32)
+    if depth_image.ndim != 2:
+        raise ValueError(f"Expected an HxW depth array, got shape {depth_image.shape}.")
+    depth_u16 = np.rint(np.clip(depth_image, 0.0, 6.5535) * 10000.0).astype(np.uint16)
+    buffer = io.BytesIO()
+    Image.fromarray(depth_u16).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 @dataclass(frozen=True)
 class System2Decision:
     mode: DecisionMode
@@ -58,6 +80,20 @@ class System2Decision:
     raw_text: str = ""
     history_frame_ids: tuple[int, ...] = ()
     needs_requery: bool = False
+
+
+@dataclass(frozen=True)
+class System2Result:
+    status: str
+    uv_norm: np.ndarray | None
+    text: str
+    latency_ms: float
+    stamp_s: float
+    pixel_xy: np.ndarray | None = None
+    decision_mode: str | None = None
+    action_sequence: tuple[str, ...] | None = None
+    needs_requery: bool = False
+    raw_payload: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -75,28 +111,39 @@ class System2SessionResult:
     decision: System2Decision | None = None
     latency_ms: float = 0.0
     error: str = ""
-    source: str = "llm"
+    source: str = "internvla"
+    raw_payload: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
 class System2SessionConfig:
     endpoint: str
-    model: str
-    temperature: float = 0.2
-    top_k: int = 40
-    top_p: float = 0.95
-    min_p: float = 0.05
-    repeat_penalty: float = 1.1
+    model: str = "internvla"
     timeout_sec: float = 35.0
-    num_history: int = 8
-    max_images_per_request: int = 3
-    mode: Literal["llm", "mock"] = "llm"
+    language: str = "auto"
 
 
-@dataclass(frozen=True)
-class _ObservedFrame:
-    frame_id: int
-    image_bgr: np.ndarray
+def normalized_uv_to_pixel_xy(uv_norm: np.ndarray, *, image_width: int, image_height: int) -> tuple[int, int]:
+    uv = np.asarray(uv_norm, dtype=np.float32).reshape(2)
+    width = max(1, int(image_width))
+    height = max(1, int(image_height))
+    x = int(round(float(np.clip(uv[0], 0.0, 1.0)) * max(width - 1, 0)))
+    y = int(round(float(np.clip(uv[1], 0.0, 1.0)) * max(height - 1, 0)))
+    return x, y
+
+
+def pixel_xy_to_normalized_uv(pixel_xy: tuple[int, int], *, image_width: int, image_height: int) -> np.ndarray:
+    width = max(1, int(image_width))
+    height = max(1, int(image_height))
+    x = int(np.clip(pixel_xy[0], 0, width - 1))
+    y = int(np.clip(pixel_xy[1], 0, height - 1))
+    return np.asarray(
+        (
+            float(x / max(width - 1, 1)),
+            float(y / max(height - 1, 1)),
+        ),
+        dtype=np.float32,
+    )
 
 
 def parse_system2_output(
@@ -108,9 +155,8 @@ def parse_system2_output(
 ) -> System2Decision:
     text = str(raw_text).strip()
     lowered = text.lower()
-    numbers = [int(token) for token in re.findall(r"-?\d+", text)]
+    numbers = [int(token) for token in __import__("re").findall(r"-?\d+", text)]
     if len(numbers) >= 2:
-        # Official InternVLA parsing treats the textual order as (y, x).
         pixel_y = int(np.clip(numbers[0], 0, max(int(height) - 1, 0)))
         pixel_x = int(np.clip(numbers[1], 0, max(int(width) - 1, 0)))
         return System2Decision(
@@ -121,439 +167,336 @@ def parse_system2_output(
             history_frame_ids=tuple(history_frame_ids),
             needs_requery=False,
         )
+    if "stop" in lowered:
+        return System2Decision("stop", reason=text or "STOP", raw_text=text, history_frame_ids=tuple(history_frame_ids))
+    if "left" in lowered:
+        return System2Decision("yaw_left", reason=text or "LEFT", raw_text=text, history_frame_ids=tuple(history_frame_ids))
+    if "right" in lowered:
+        return System2Decision("yaw_right", reason=text or "RIGHT", raw_text=text, history_frame_ids=tuple(history_frame_ids))
+    if "forward" in lowered:
+        return System2Decision("forward", reason=text or "FORWARD", raw_text=text, history_frame_ids=tuple(history_frame_ids))
+    if "look down" in lowered or "lookdown" in lowered or "tilt down" in lowered:
+        return System2Decision("look_down", reason=text or "LOOK_DOWN", raw_text=text, history_frame_ids=tuple(history_frame_ids), needs_requery=True)
+    return System2Decision("wait", reason=text or "WAIT", raw_text=text, history_frame_ids=tuple(history_frame_ids), needs_requery=True)
 
-    if re.search(r"\bstop\b", lowered):
-        return System2Decision(
-            mode="stop",
-            reason=text or "STOP",
-            raw_text=text,
-            history_frame_ids=tuple(history_frame_ids),
+
+def _normalize_eval_response(
+    payload: dict[str, Any],
+    *,
+    image_width: int,
+    image_height: int,
+    stamp_s: float,
+    latency_ms: float,
+) -> System2Result:
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"Expected a JSON object from InternVLA server, got {type(payload)!r}.")
+
+    pixel_goal = payload.get("pixel_goal")
+    if pixel_goal is not None:
+        pixel = np.asarray(pixel_goal, dtype=np.float32).reshape(2)
+        pixel_xy = np.asarray(
+            (
+                float(np.clip(pixel[0], 0.0, max(image_width - 1, 0))),
+                float(np.clip(pixel[1], 0.0, max(image_height - 1, 0))),
+            ),
+            dtype=np.float32,
+        )
+        uv_norm = pixel_xy_to_normalized_uv(
+            (int(round(float(pixel_xy[0]))), int(round(float(pixel_xy[1])))),
+            image_width=image_width,
+            image_height=image_height,
+        )
+        return System2Result(
+            status="goal",
+            uv_norm=uv_norm,
+            text=f"pixel_goal:{int(round(float(pixel_xy[0])))},{int(round(float(pixel_xy[1])))}",
+            latency_ms=float(latency_ms),
+            stamp_s=float(stamp_s),
+            pixel_xy=pixel_xy,
+            decision_mode="pixel_goal",
             needs_requery=False,
+            raw_payload=dict(payload),
         )
 
-    left_index = _first_token_index(lowered, _TURN_LEFT_TOKENS)
-    right_index = _first_token_index(lowered, _TURN_RIGHT_TOKENS)
-    if left_index >= 0 and (right_index < 0 or left_index <= right_index):
-        return System2Decision(
-            mode="yaw_left",
-            reason=text or "LEFT",
-            raw_text=text,
-            history_frame_ids=tuple(history_frame_ids),
+    action_seq = payload.get("discrete_action")
+    mapping = {
+        0: ("stop", "stop"),
+        1: ("hold", "forward"),
+        2: ("hold", "yaw_left"),
+        3: ("hold", "yaw_right"),
+        5: ("hold", "wait"),
+    }
+    normalized_actions: list[str] = []
+    action = None
+    if isinstance(action_seq, list):
+        for raw_action in action_seq:
+            try:
+                action_id = int(raw_action)
+            except Exception:
+                continue
+            if action_id in mapping:
+                if action is None:
+                    action = action_id
+                normalized_actions.append(mapping[action_id][1])
+    if action in mapping:
+        status, decision_mode = mapping[action]
+        return System2Result(
+            status=status,
+            uv_norm=None,
+            text=f"discrete_action:{action}",
+            latency_ms=float(latency_ms),
+            stamp_s=float(stamp_s),
+            pixel_xy=None,
+            decision_mode=decision_mode,
+            action_sequence=tuple(normalized_actions),
             needs_requery=False,
-        )
-    if right_index >= 0:
-        return System2Decision(
-            mode="yaw_right",
-            reason=text or "RIGHT",
-            raw_text=text,
-            history_frame_ids=tuple(history_frame_ids),
-            needs_requery=False,
+            raw_payload=dict(payload),
         )
 
-    if _first_token_index(lowered, _LOOK_DOWN_TOKENS) >= 0:
-        return System2Decision(
-            mode="look_down",
-            reason=text or "LOOK_DOWN",
-            raw_text=text,
-            history_frame_ids=tuple(history_frame_ids),
-            needs_requery=True,
-        )
-
-    return System2Decision(
-        mode="wait",
-        reason=text or "unparsed_system2_output",
-        raw_text=text,
-        history_frame_ids=tuple(history_frame_ids),
-        needs_requery=True,
+    return System2Result(
+        status="hold",
+        uv_norm=None,
+        text=str(payload.get("message", "")).strip() or "wait",
+        latency_ms=float(latency_ms),
+        stamp_s=float(stamp_s),
+        pixel_xy=None,
+        decision_mode="wait",
+        needs_requery=False,
+        raw_payload=dict(payload),
     )
+
+
+def sample_depth_window(
+    depth_image: np.ndarray,
+    *,
+    pixel_xy: tuple[int, int],
+    window_size: int,
+    depth_min_m: float,
+    depth_max_m: float,
+) -> float | None:
+    depth = np.asarray(depth_image, dtype=np.float32)
+    if depth.ndim != 2:
+        raise ValueError(f"Expected an HxW depth image, got shape {depth.shape}.")
+    width = depth.shape[1]
+    height = depth.shape[0]
+    if width == 0 or height == 0:
+        return None
+    x = int(np.clip(pixel_xy[0], 0, width - 1))
+    y = int(np.clip(pixel_xy[1], 0, height - 1))
+    radius = max(0, int(window_size) // 2)
+    x0 = max(0, x - radius)
+    x1 = min(width, x + radius + 1)
+    y0 = max(0, y - radius)
+    y1 = min(height, y + radius + 1)
+    window = depth[y0:y1, x0:x1]
+    valid = window[np.isfinite(window)]
+    valid = valid[(valid >= float(depth_min_m)) & (valid <= float(depth_max_m))]
+    if valid.size == 0:
+        return None
+    return float(np.median(valid))
+
+
+def deproject_pixel_to_camera_point(pixel_xy: tuple[int, int], *, depth_m: float, intrinsic: np.ndarray) -> np.ndarray:
+    matrix = np.asarray(intrinsic, dtype=np.float32)
+    if matrix.ndim != 2 or matrix.shape[0] < 3 or matrix.shape[1] < 3:
+        raise ValueError(f"Expected a 3x3 or 4x4 intrinsic matrix, got shape {matrix.shape}.")
+    u = float(pixel_xy[0])
+    v = float(pixel_xy[1])
+    fx = float(matrix[0, 0])
+    fy = float(matrix[1, 1])
+    cx = float(matrix[0, 2])
+    cy = float(matrix[1, 2])
+    if fx == 0.0 or fy == 0.0:
+        raise ValueError("Camera intrinsics fx/fy must be non-zero.")
+    depth = float(depth_m)
+    x_forward = depth
+    y_left = -((u - cx) / fx) * depth
+    z_up = -((v - cy) / fy) * depth
+    return np.asarray((x_forward, y_left, z_up), dtype=np.float32)
+
+
+def resolve_goal_world_xy_from_pixel(
+    *,
+    pixel_xy: tuple[int, int],
+    depth_image: np.ndarray,
+    intrinsic: np.ndarray,
+    camera_pos_world: np.ndarray,
+    camera_quat_wxyz: np.ndarray,
+    window_size: int = 11,
+    depth_min_m: float = 0.1,
+    depth_max_m: float = 6.0,
+) -> np.ndarray | None:
+    depth_m = sample_depth_window(
+        depth_image,
+        pixel_xy=pixel_xy,
+        window_size=window_size,
+        depth_min_m=depth_min_m,
+        depth_max_m=depth_max_m,
+    )
+    if depth_m is None:
+        return None
+    point_camera = deproject_pixel_to_camera_point(pixel_xy, depth_m=depth_m, intrinsic=intrinsic)
+    point_world = project_camera_point_to_world(
+        point_xyz_camera=point_camera,
+        camera_pos_world=camera_pos_world,
+        camera_quat_wxyz=camera_quat_wxyz,
+    )
+    return np.asarray(point_world[:2], dtype=np.float32)
 
 
 class System2Session:
     def __init__(self, config: System2SessionConfig) -> None:
         self.config = config
-        self._lock = threading.Lock()
+        self._server_url = build_vlm_endpoint(config.endpoint).rsplit("/navigation", 1)[0]
         self._instruction = ""
-        self._frames: list[_ObservedFrame] = []
-        self._last_output = ""
-        self._last_reason = ""
-        self._last_history_frame_ids: tuple[int, ...] = ()
-        self._last_decision_mode: DecisionMode = "wait"
-        self._last_needs_requery = False
+        self._language = str(config.language).strip() or "auto"
+        self._needs_reset = True
+        self._request_idx = 0
+        self._session_id = f"system2-{uuid.uuid4().hex}"
 
-    def reset(self, instruction: str) -> None:
-        with self._lock:
-            self._instruction = str(instruction).strip()
-            self._frames = []
-            self._last_output = ""
-            self._last_reason = ""
-            self._last_history_frame_ids = ()
-            self._last_decision_mode = "wait"
-            self._last_needs_requery = False
+    @property
+    def session_id(self) -> str:
+        return self._session_id
 
-    def observe(self, frame_id: int, image_bgr: np.ndarray) -> None:
-        image = np.asarray(image_bgr, dtype=np.uint8)
-        if image.ndim != 3 or image.shape[-1] != 3:
-            raise ValueError(f"System2Session.observe expects [H,W,3] BGR input, got {image.shape}")
-        with self._lock:
-            if self._frames and self._frames[-1].frame_id == int(frame_id):
-                self._frames[-1] = _ObservedFrame(frame_id=int(frame_id), image_bgr=image.copy())
-            else:
-                self._frames.append(_ObservedFrame(frame_id=int(frame_id), image_bgr=image.copy()))
+    @property
+    def instruction(self) -> str:
+        return self._instruction
 
-    def prepare_request(
-        self,
-        events: dict[str, Any] | None = None,
-        memory_context: MemoryContextBundle | None = None,
-    ) -> System2Request:
-        with self._lock:
-            if self._instruction == "":
-                raise RuntimeError("System2Session.reset() must be called with a non-empty instruction first.")
-            if not self._frames:
-                raise RuntimeError("System2Session.observe() must be called before prepare_request().")
-            current = self._frames[-1]
-            max_history_images = max(int(self.config.max_images_per_request) - 1, 0)
-            if memory_context is not None:
-                max_history_images = min(max_history_images, 1)
-            history = self._select_history_locked(max_history_images=max_history_images)
-            history_frame_ids = tuple(frame.frame_id for frame in history)
+    def reset(self, instruction: str, *, language: str | None = None) -> None:
+        normalized_instruction = " ".join(str(instruction).strip().split())
+        if normalized_instruction == "":
+            raise ValueError("instruction is required.")
+        self._instruction = normalized_instruction
+        if language is not None and str(language).strip():
+            self._language = str(language).strip()
+        self._needs_reset = True
+        self._request_idx = 0
+        self._session_id = f"system2-{uuid.uuid4().hex}"
 
-        width = int(current.image_bgr.shape[1])
-        height = int(current.image_bgr.shape[0])
-        body = self._build_request_body(
-            instruction=self._instruction,
-            current=current,
-            history=history,
-            memory_context=memory_context,
-            events=dict(events or {}),
-        )
-        return System2Request(
-            frame_id=int(current.frame_id),
-            width=width,
-            height=height,
-            history_frame_ids=history_frame_ids,
-            body=body,
-        )
-
-    def execute_request(self, request: System2Request) -> System2SessionResult:
-        if self.config.mode == "mock":
-            return self._execute_mock(request)
-
-        try:
-            first_round = self._execute_llm_round(
-                request.body,
-                width=int(request.width),
-                height=int(request.height),
-                history_frame_ids=tuple(request.history_frame_ids),
-            )
-            if not first_round.ok or first_round.decision is None or first_round.decision.mode != "look_down":
-                return first_round
-
-            follow_up_body = self._build_follow_up_body(request=request, first_round=first_round)
-            second_round = self._execute_llm_round(
-                follow_up_body,
-                width=int(request.width),
-                height=int(request.height),
-                history_frame_ids=tuple(request.history_frame_ids),
-            )
-            total_latency_ms = float(first_round.latency_ms + second_round.latency_ms)
-            if not second_round.ok or second_round.decision is None:
-                return System2SessionResult(
-                    ok=False,
-                    latency_ms=total_latency_ms,
-                    error=str(second_round.error),
-                    source=str(second_round.source),
-                )
-
-            final_decision = second_round.decision
-            if final_decision.mode in {"look_down", "wait"}:
-                return System2SessionResult(
-                    ok=True,
-                    decision=System2Decision(
-                        mode="wait",
-                        reason=str(final_decision.reason or "system2_follow_up_unresolved"),
-                        raw_text=str(final_decision.raw_text),
-                        history_frame_ids=tuple(request.history_frame_ids),
-                        needs_requery=True,
-                    ),
-                    latency_ms=total_latency_ms,
-                    source="llm",
-                )
-
-            return System2SessionResult(
-                ok=True,
-                decision=final_decision,
-                latency_ms=total_latency_ms,
-                source="llm",
-            )
-        except Exception as exc:  # noqa: BLE001
-            return System2SessionResult(
-                ok=False,
-                latency_ms=0.0,
-                error=f"{type(exc).__name__}: {exc}",
-                source="llm",
-            )
-
-    def record_result(self, result: System2SessionResult) -> None:
-        if not result.ok or result.decision is None:
-            return
-        with self._lock:
-            self._last_output = str(result.decision.raw_text)
-            self._last_reason = str(result.decision.reason)
-            self._last_history_frame_ids = tuple(result.decision.history_frame_ids)
-            self._last_decision_mode = result.decision.mode
-            self._last_needs_requery = bool(result.decision.needs_requery)
-
-    def debug_state(self) -> dict[str, Any]:
-        with self._lock:
-            return {
-                "instruction": self._instruction,
-                "config": {
-                    "num_history": int(self.config.num_history),
-                    "max_images_per_request": int(self.config.max_images_per_request),
-                },
-                "observed_frames": [frame.frame_id for frame in self._frames],
-                "last_output": self._last_output,
-                "last_reason": self._last_reason,
-                "last_history_frame_ids": list(self._last_history_frame_ids),
-                "last_decision_mode": self._last_decision_mode,
-                "last_needs_requery": self._last_needs_requery,
-            }
-
-    def _select_history_locked(self, *, max_history_images: int | None = None) -> list[_ObservedFrame]:
-        if len(self._frames) <= 1:
-            return []
-        if max_history_images is not None and int(max_history_images) <= 0:
-            return []
-        upper = len(self._frames) - 2
-        sample_count = min(int(self.config.num_history), upper + 1)
-        if max_history_images is not None:
-            sample_count = min(sample_count, int(max_history_images))
-        if sample_count <= 0:
-            return []
-        if sample_count == 1:
-            indices = [upper]
-        else:
-            indices = np.unique(np.linspace(0, upper, sample_count, dtype=np.int32)).tolist()
-        return [self._frames[index] for index in indices]
-
-    def _lookup_frame_locked(self, frame_id: int) -> _ObservedFrame | None:
-        for frame in reversed(self._frames):
-            if int(frame.frame_id) == int(frame_id):
-                return frame
-        return self._frames[-1] if self._frames else None
-
-    def _build_request_body(
+    def reset_session(
         self,
         *,
+        session_id: str,
         instruction: str,
-        current: _ObservedFrame,
-        history: list[_ObservedFrame],
-        memory_context: MemoryContextBundle | None,
-        events: dict[str, Any],
+        language: str,
+        image_width: int,
+        image_height: int,
     ) -> dict[str, Any]:
-        width = int(current.image_bgr.shape[1])
-        height = int(current.image_bgr.shape[0])
-        prompt_lines = [
-            "You are an autonomous navigation assistant.",
-            f"Instruction: {instruction}",
-            f"Events: {events}",
-            f"Current image size: width={width}, height={height}.",
-            "The current image is already the waypoint-selection view for navigation.",
-        ]
-        scratchpad_lines = self._scratchpad_lines(memory_context)
-        if scratchpad_lines:
-            prompt_lines.append("Scratchpad:")
-            prompt_lines.extend(f"- {line}" for line in scratchpad_lines)
-        memory_lines = self._memory_lines(memory_context)
-        if memory_lines:
-            prompt_lines.append("Relevant memory:")
-            prompt_lines.extend(f"- {line}" for line in memory_lines)
-        else:
-            prompt_lines.append("Relevant memory:")
-            prompt_lines.append("- None")
-        prompt_lines.extend(
-            [
-                "Respond with exactly one of these formats:",
-                "- '<y>, <x>' for a waypoint in the current image",
-                "- 'STOP' if the task is complete now",
-                "- '←' to request a left turn before selecting a waypoint",
-                "- '→' to request a right turn before selecting a waypoint",
-                "- '↓' only if you need another frame before deciding",
-                "Do not output JSON.",
-            ]
-        )
-        prompt = "\n".join(prompt_lines)
-
-        user_content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
-        if history:
-            user_content.append({"type": "text", "text": "Recent history observation:"})
-            for frame in history[-1:]:
-                user_content.append({"type": "text", "text": f"Recent history (frame {frame.frame_id}):"})
-                user_content.append({"type": "image_url", "image_url": {"url": self._encode_image(frame.image_bgr)}})
-        if memory_context is not None:
-            keyframes = [record for record in memory_context.keyframes if str(record.image_path).strip() != ""][:2]
-            if keyframes:
-                user_content.append({"type": "text", "text": "Retrieved memory keyframes:"})
-                for index, record in enumerate(keyframes, start=1):
-                    encoded = self._encode_image_path(record.image_path)
-                    if encoded == "":
-                        continue
-                    label = record.summary or f"Retrieved keyframe {index}"
-                    user_content.append({"type": "text", "text": f"Memory keyframe {index}: {label}"})
-                    user_content.append({"type": "image_url", "image_url": {"url": encoded}})
-            crop_path = str(memory_context.crop_path).strip()
-            if crop_path != "":
-                encoded_crop = self._encode_image_path(crop_path)
-                if encoded_crop != "":
-                    user_content.append({"type": "text", "text": "Retrieved memory crop:"})
-                    user_content.append({"type": "image_url", "image_url": {"url": encoded_crop}})
-        user_content.append({"type": "text", "text": f"Current observation (frame {current.frame_id}):"})
-        user_content.append({"type": "image_url", "image_url": {"url": self._encode_image(current.image_bgr)}})
-
+        del image_width, image_height
+        self._session_id = str(session_id).strip() or f"system2-{uuid.uuid4().hex}"
+        self.reset(instruction, language=language)
         return {
-            "model": self.config.model,
-            "temperature": float(self.config.temperature),
-            "top_k": int(self.config.top_k),
-            "top_p": float(self.config.top_p),
-            "min_p": float(self.config.min_p),
-            "repeat_penalty": float(self.config.repeat_penalty),
-            "max_tokens": 64,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You must return only a single navigation decision string.",
-                },
-                {
-                    "role": "user",
-                    "content": user_content,
-                },
-            ],
+            "status": "ok",
+            "session_id": self._session_id,
+            "reset_queued": True,
+            "instruction": self._instruction,
+            "language": self._language,
         }
 
-    def _build_follow_up_body(self, *, request: System2Request, first_round: System2SessionResult) -> dict[str, Any]:
-        if first_round.decision is None:
-            raise RuntimeError("System2 follow-up requires a successful first-round decision.")
-        with self._lock:
-            current = self._lookup_frame_locked(int(request.frame_id))
-        if current is None:
-            raise RuntimeError(f"Missing observed frame for follow-up: {request.frame_id}")
-
-        base_body = copy.deepcopy(request.body)
-        base_messages = list(base_body.get("messages", []))
-        if len(base_messages) < 2:
-            raise RuntimeError("System2 request body is missing required initial messages.")
-
-        follow_up_content = [
-            {
-                "type": "text",
-                "text": (
-                    "You previously answered '↓'. Re-evaluate with this follow-up observation "
-                    "and return the final navigation decision now."
-                ),
+    def prepare_request(self, *, frame_id: int, width: int, height: int) -> System2Request:
+        if self._instruction == "":
+            raise RuntimeError("System2Session.reset() must be called before prepare_request().")
+        return System2Request(
+            frame_id=int(frame_id),
+            width=int(width),
+            height=int(height),
+            history_frame_ids=(),
+            body={
+                "reset": bool(self._needs_reset),
+                "idx": int(self._request_idx),
+                "instruction": self._instruction,
+                "language": self._language,
+                "session_id": self._session_id,
             },
-            {"type": "text", "text": f"Follow-up observation (same frame {current.frame_id}):"},
-            {"type": "image_url", "image_url": {"url": self._encode_image(current.image_bgr)}},
-        ]
-        base_messages.append({"role": "assistant", "content": str(first_round.decision.raw_text)})
-        base_messages.append({"role": "user", "content": follow_up_content})
-        base_body["messages"] = base_messages
-        return base_body
+        )
 
-    def _execute_llm_round(
+    def step_session(
         self,
-        body: dict[str, Any],
         *,
-        width: int,
-        height: int,
-        history_frame_ids: tuple[int, ...],
-    ) -> System2SessionResult:
+        session_id: str,
+        rgb: np.ndarray,
+        depth: np.ndarray,
+        stamp_s: float,
+        force_infer: bool = False,
+    ) -> System2Result:
+        del force_infer
+        self._session_id = str(session_id).strip() or self._session_id
+        request = self.prepare_request(frame_id=int(self._request_idx), width=int(np.asarray(rgb).shape[1]), height=int(np.asarray(rgb).shape[0]))
+        start = time.monotonic()
+        response = requests.post(
+            f"{self._server_url}/navigation",
+            files={
+                "image": ("rgb.jpg", _image_bytes(rgb), "image/jpeg"),
+                "depth": ("depth.png", _depth_bytes(depth), "image/png"),
+            },
+            data={"json": json.dumps(request.body)},
+            timeout=float(self.config.timeout_sec),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        self._needs_reset = False
+        self._request_idx += 1
+        return _normalize_eval_response(
+            payload,
+            image_width=int(np.asarray(rgb).shape[1]),
+            image_height=int(np.asarray(rgb).shape[0]),
+            stamp_s=float(stamp_s),
+            latency_ms=(time.monotonic() - start) * 1000.0,
+        )
+
+    def execute_request(self, request: System2Request, *, rgb: np.ndarray, depth: np.ndarray, stamp_s: float) -> System2SessionResult:
         start = time.perf_counter()
         try:
-            resp = requests.post(
-                self.config.endpoint,
-                json=body,
+            response = requests.post(
+                f"{self._server_url}/navigation",
+                files={
+                    "image": ("rgb.jpg", _image_bytes(rgb), "image/jpeg"),
+                    "depth": ("depth.png", _depth_bytes(depth), "image/png"),
+                },
+                data={"json": json.dumps(request.body)},
                 timeout=float(self.config.timeout_sec),
             )
-            resp.raise_for_status()
-            payload = resp.json()
-            raw_text = extract_chat_content(payload)
-            decision = parse_system2_output(
-                raw_text,
-                width=int(width),
-                height=int(height),
-                history_frame_ids=tuple(history_frame_ids),
+            response.raise_for_status()
+            payload = response.json()
+            result = _normalize_eval_response(
+                payload,
+                image_width=int(request.width),
+                image_height=int(request.height),
+                stamp_s=float(stamp_s),
+                latency_ms=(time.perf_counter() - start) * 1000.0,
             )
-            latency_ms = (time.perf_counter() - start) * 1000.0
+            self._needs_reset = False
+            self._request_idx += 1
             return System2SessionResult(
                 ok=True,
-                decision=decision,
-                latency_ms=float(latency_ms),
-                source="llm",
+                decision=System2Decision(
+                    mode=str(result.decision_mode or "wait"),
+                    pixel_goal=None if result.pixel_xy is None else (
+                        int(round(float(result.pixel_xy[0]))),
+                        int(round(float(result.pixel_xy[1]))),
+                    ),
+                    reason=str(result.text),
+                    raw_text=str(result.text),
+                    needs_requery=bool(result.needs_requery),
+                ),
+                latency_ms=float(result.latency_ms),
+                source="internvla",
+                raw_payload=dict(payload) if isinstance(payload, dict) else None,
             )
         except Exception as exc:  # noqa: BLE001
-            latency_ms = (time.perf_counter() - start) * 1000.0
             return System2SessionResult(
                 ok=False,
-                latency_ms=float(latency_ms),
+                latency_ms=(time.perf_counter() - start) * 1000.0,
                 error=f"{type(exc).__name__}: {exc}",
-                source="llm",
+                source="internvla",
             )
 
-    def _execute_mock(self, request: System2Request) -> System2SessionResult:
-        start = time.perf_counter()
-        width = max(int(request.width), 1)
-        height = max(int(request.height), 1)
-        decision = System2Decision(
-            mode="pixel_goal",
-            pixel_goal=(width // 2, int(np.clip(int(0.7 * height), 0, height - 1))),
-            reason="mock_forward",
-            raw_text=f"{int(0.7 * height)}, {width // 2}",
-            history_frame_ids=tuple(request.history_frame_ids),
-            needs_requery=False,
-        )
-        latency_ms = (time.perf_counter() - start) * 1000.0
-        return System2SessionResult(ok=True, decision=decision, latency_ms=float(latency_ms), source="mock")
-
-    @staticmethod
-    def _encode_image(image_bgr: np.ndarray) -> str:
-        ok, encoded = cv2.imencode(".jpg", np.asarray(image_bgr, dtype=np.uint8))
-        if not ok:
-            raise ValueError("failed to encode System2 image as JPEG")
-        payload = base64.b64encode(io.BytesIO(encoded).getvalue()).decode("ascii")
-        return f"data:image/jpeg;base64,{payload}"
-
-    @classmethod
-    def _encode_image_path(cls, image_path: str) -> str:
-        image = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
-        if image is None:
-            return ""
-        return cls._encode_image(image)
-
-    @staticmethod
-    def _scratchpad_lines(memory_context: MemoryContextBundle | None) -> list[str]:
-        if memory_context is None or memory_context.scratchpad is None:
-            return []
-        scratchpad = memory_context.scratchpad
-        lines: list[str] = []
-        if scratchpad.goal_summary.strip() != "":
-            lines.append(f"Goal: {scratchpad.goal_summary.strip()}")
-        if scratchpad.checked_locations:
-            lines.append("Checked: " + ", ".join(scratchpad.checked_locations[-3:]))
-        if scratchpad.recent_hint.strip() != "":
-            lines.append(f"Hint: {scratchpad.recent_hint.strip()}")
-        if scratchpad.next_priority.strip() != "":
-            lines.append(f"Next: {scratchpad.next_priority.strip()}")
-        return lines[:4]
-
-    @staticmethod
-    def _memory_lines(memory_context: MemoryContextBundle | None) -> list[str]:
-        if memory_context is None:
-            return []
-        return [str(line.text).strip() for line in memory_context.text_lines if str(line.text).strip() != ""][:5]
-
-
-def _first_token_index(text: str, candidates: tuple[str, ...]) -> int:
-    matches = [text.find(candidate) for candidate in candidates if text.find(candidate) >= 0]
-    if not matches:
-        return -1
-    return min(matches)
+    def debug_state(self) -> dict[str, Any]:
+        return {
+            "session_id": self._session_id,
+            "instruction": self._instruction,
+            "language": self._language,
+            "pending_reset": bool(self._needs_reset),
+            "request_idx": int(self._request_idx),
+            "endpoint": f"{self._server_url}/navigation",
+        }

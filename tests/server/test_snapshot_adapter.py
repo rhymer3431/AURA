@@ -176,7 +176,7 @@ def test_snapshot_adapter_builds_dashboard_state_from_snapshot() -> None:
     state = SnapshotAdapter.to_dashboard_state(
         _snapshot(),
         processes=[{"name": "navdp", "state": "running"}],
-        services={"navdp": {"status": "ok", "latencyMs": 18.0}, "dual": {"status": "ok", "latencyMs": 24.0}},
+        services={"navdp": {"status": "ok", "latencyMs": 18.0}, "system2": {"status": "ok", "latencyMs": 24.0}},
         session_state={"timestamp": 1.0, "active": True, "startedAt": 2.0, "config": {"viewerEnabled": True}, "lastEvent": {"message": "ok"}},
         transport_state={"frameSeq": 7, "frameAvailable": True, "frameAgeMs": 9.0},
         architecture={
@@ -218,7 +218,7 @@ def test_snapshot_adapter_normalizes_target_and_latency_summaries() -> None:
     summary = SnapshotAdapter.selected_target_summary(_snapshot(), frame=_frame())
     latency = SnapshotAdapter.latency_breakdown(
         _snapshot(),
-        services={"navdp": {"latencyMs": 18.0}, "dual": {"latencyMs": 24.0}},
+        services={"navdp": {"latencyMs": 18.0}, "system2": {"latencyMs": 24.0}},
         transport_state={"frameAgeMs": 9.0},
     )
 

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-import sys
+import io
+import json
 from pathlib import Path
+import sys
 
 import numpy as np
-import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
@@ -12,282 +13,75 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 import inference.vlm.system2_session as system2_module
-from common.cv2_compat import cv2
 from inference.vlm import System2Session, System2SessionConfig, parse_system2_output
-from memory.models import KeyframeRecord, MemoryContextBundle, RetrievedMemoryLine, ScratchpadState
 
 
 def test_parse_system2_output_handles_pixel_goal() -> None:
     decision = parse_system2_output("321, 123", width=640, height=480)
-
     assert decision.mode == "pixel_goal"
     assert decision.pixel_goal == (123, 321)
-    assert decision.needs_requery is False
 
 
-def test_parse_system2_output_handles_stop() -> None:
-    decision = parse_system2_output("STOP", width=640, height=480)
-
-    assert decision.mode == "stop"
-    assert decision.pixel_goal is None
-    assert decision.needs_requery is False
+def test_build_vlm_endpoint_points_to_navigation() -> None:
+    assert system2_module.build_vlm_endpoint("http://127.0.0.1:15801") == "http://127.0.0.1:15801/navigation"
+    assert system2_module.build_vlm_endpoint("http://127.0.0.1:15801/navigation") == "http://127.0.0.1:15801/navigation"
 
 
-def test_parse_system2_output_handles_left_turn() -> None:
-    decision = parse_system2_output("←", width=640, height=480)
+def test_system2_session_reset_and_prepare_request() -> None:
+    session = System2Session(System2SessionConfig(endpoint="http://127.0.0.1:15801"))
+    session.reset("dock")
+    request = session.prepare_request(frame_id=7, width=640, height=480)
 
-    assert decision.mode == "yaw_left"
-    assert decision.needs_requery is False
-
-
-def test_parse_system2_output_handles_right_turn() -> None:
-    decision = parse_system2_output("→", width=640, height=480)
-
-    assert decision.mode == "yaw_right"
-    assert decision.needs_requery is False
+    assert request.body["reset"] is True
+    assert request.body["idx"] == 0
+    assert request.body["instruction"] == "dock"
 
 
-def test_parse_system2_output_handles_look_down() -> None:
-    decision = parse_system2_output("↓", width=640, height=480)
+def test_system2_session_step_posts_multipart(monkeypatch) -> None:
+    captured: dict[str, object] = {}
 
-    assert decision.mode == "look_down"
-    assert decision.needs_requery is True
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
 
+        def json(self) -> dict[str, object]:
+            return {"pixel_goal": [80, 120]}
 
-def test_parse_system2_output_prefers_coordinates_from_mixed_text() -> None:
-    decision = parse_system2_output("Waypoint: 200, 150 near the ramp", width=640, height=480)
-
-    assert decision.mode == "pixel_goal"
-    assert decision.pixel_goal == (150, 200)
-
-
-def test_system2_session_resets_history_and_samples_frames() -> None:
-    session = System2Session(
-        System2SessionConfig(
-            endpoint="http://127.0.0.1:8080/v1/chat/completions",
-            model="mock-model",
-            mode="mock",
-            num_history=8,
-            max_images_per_request=9,
-        )
-    )
-    session.reset("find the loading dock")
-
-    for frame_id in range(10):
-        session.observe(frame_id, np.full((8, 8, 3), frame_id, dtype=np.uint8))
-
-    request = session.prepare_request(events={"force_s2": True})
-
-    assert request.frame_id == 9
-    assert request.history_frame_ids == (0, 1, 2, 3, 4, 5, 6, 8)
-
-    session.reset("inspect the pallet")
-    session.observe(50, np.zeros((8, 8, 3), dtype=np.uint8))
-    request_after_reset = session.prepare_request()
-
-    assert request_after_reset.frame_id == 50
-    assert request_after_reset.history_frame_ids == ()
-
-
-def test_system2_session_records_raw_text_and_history_ids() -> None:
-    session = System2Session(
-        System2SessionConfig(
-            endpoint="http://127.0.0.1:8080/v1/chat/completions",
-            model="mock-model",
-            mode="mock",
-            num_history=8,
-            max_images_per_request=9,
-        )
-    )
-    session.reset("move to the center aisle")
-    for frame_id in range(4):
-        session.observe(frame_id, np.full((8, 8, 3), frame_id, dtype=np.uint8))
-
-    request = session.prepare_request()
-    result = session.execute_request(request)
-    assert result.ok is True
-    session.record_result(result)
-    debug_state = session.debug_state()
-
-    assert debug_state["last_output"] != ""
-    assert debug_state["last_reason"] == "mock_forward"
-    assert debug_state["last_history_frame_ids"] == [0, 1, 2]
-    assert debug_state["last_decision_mode"] == "pixel_goal"
-
-
-def test_system2_session_caps_total_images_per_request() -> None:
-    session = System2Session(
-        System2SessionConfig(
-            endpoint="http://127.0.0.1:8080/v1/chat/completions",
-            model="mock-model",
-            mode="mock",
-            num_history=8,
-            max_images_per_request=3,
-        )
-    )
-    session.reset("find the dock")
-    for frame_id in range(10):
-        session.observe(frame_id, np.full((8, 8, 3), frame_id, dtype=np.uint8))
-
-    request = session.prepare_request()
-
-    assert request.frame_id == 9
-    assert request.history_frame_ids == (0, 8)
-
-
-def test_system2_session_includes_memory_context_sections(tmp_path: Path) -> None:
-    session = System2Session(
-        System2SessionConfig(
-            endpoint="http://127.0.0.1:8080/v1/chat/completions",
-            model="mock-model",
-            mode="mock",
-            num_history=8,
-            max_images_per_request=4,
-        )
-    )
-    session.reset("find the apple")
-    for frame_id in range(3):
-        session.observe(frame_id, np.full((8, 8, 3), frame_id, dtype=np.uint8))
-
-    keyframe_path = tmp_path / "kf_0001.jpg"
-    crop_path = tmp_path / "kf_0001_crop.jpg"
-    cv2.imwrite(str(keyframe_path), np.full((8, 8, 3), 127, dtype=np.uint8))
-    cv2.imwrite(str(crop_path), np.full((4, 4, 3), 64, dtype=np.uint8))
-    memory_context = MemoryContextBundle(
-        instruction="find the apple",
-        scratchpad=ScratchpadState(
-            instruction="find the apple",
-            planner_mode="interactive",
-            task_state="active",
-            goal_summary="Find apple.",
-            checked_locations=["hallway"],
-            recent_hint="Observed apple in the kitchen.",
-            next_priority="Use the remembered evidence.",
-        ),
-        text_lines=[
-            RetrievedMemoryLine(
-                text="Apple seen in kitchen on the left.",
-                score=4.0,
-                source_type="object_memory",
-                entity_id="apple_0001",
-                keyframe_id="kf_0001",
-            )
-        ],
-        keyframes=[
-            KeyframeRecord(
-                keyframe_id="kf_0001",
-                image_path=str(keyframe_path),
-                crop_paths=[str(crop_path)],
-                summary="Apple visible on the left table.",
-                timestamp=10.0,
-                room_id="kitchen",
-            )
-        ],
-        crop_path=str(crop_path),
-    )
-
-    request = session.prepare_request(events={"force_s2": True}, memory_context=memory_context)
-    user_content = request.body["messages"][1]["content"]
-    text_blocks = [item["text"] for item in user_content if item["type"] == "text"]
-    image_count = sum(1 for item in user_content if item["type"] == "image_url")
-
-    assert request.history_frame_ids == (1,)
-    assert any("Scratchpad:" in block for block in text_blocks)
-    assert any("Relevant memory:" in block for block in text_blocks)
-    assert any("Apple seen in kitchen on the left." in block for block in text_blocks)
-    assert image_count == 4
-
-
-class _FakeResponse:
-    def __init__(self, content: str) -> None:
-        self._content = content
-
-    def raise_for_status(self) -> None:
-        return None
-
-    def json(self) -> dict[str, object]:
-        return {"choices": [{"message": {"content": self._content}}]}
-
-
-@pytest.mark.parametrize(
-    ("final_text", "expected_mode", "expected_pixel_goal"),
-    [
-        ("321, 123", "pixel_goal", (123, 321)),
-        ("←", "yaw_left", None),
-        ("STOP", "stop", None),
-    ],
-)
-def test_system2_session_requeries_once_for_look_down(
-    monkeypatch: pytest.MonkeyPatch,
-    final_text: str,
-    expected_mode: str,
-    expected_pixel_goal: tuple[int, int] | None,
-) -> None:
-    session = System2Session(
-        System2SessionConfig(
-            endpoint="http://127.0.0.1:8080/v1/chat/completions",
-            model="mock-model",
-            mode="llm",
-        )
-    )
-    session.reset("find the loading dock")
-    session.observe(7, np.full((480, 640, 3), 127, dtype=np.uint8))
-
-    recorded_bodies: list[dict[str, object]] = []
-    responses = iter(["↓", final_text])
-
-    def _fake_post(url: str, json: dict[str, object], timeout: float) -> _FakeResponse:
-        assert url == "http://127.0.0.1:8080/v1/chat/completions"
-        assert timeout == pytest.approx(35.0)
-        recorded_bodies.append(json)
-        return _FakeResponse(next(responses))
+    def _fake_post(url, *, files, data, timeout):  # noqa: ANN001
+        captured["url"] = url
+        captured["files"] = files
+        captured["data"] = data
+        captured["timeout"] = timeout
+        return _Response()
 
     monkeypatch.setattr(system2_module.requests, "post", _fake_post)
-
-    request = session.prepare_request()
-    result = session.execute_request(request)
-
-    assert result.ok is True
-    assert result.decision is not None
-    assert result.decision.mode == expected_mode
-    assert result.decision.pixel_goal == expected_pixel_goal
-    assert result.decision.needs_requery is False
-    assert len(recorded_bodies) == 2
-    assert [message["role"] for message in recorded_bodies[1]["messages"]] == ["system", "user", "assistant", "user"]
-    assert recorded_bodies[1]["messages"][2]["content"] == "↓"
-    initial_user_content = recorded_bodies[0]["messages"][1]["content"]
-    follow_up_user_content = recorded_bodies[1]["messages"][3]["content"]
-    initial_current_image = initial_user_content[-1]["image_url"]["url"]
-    follow_up_image = follow_up_user_content[-1]["image_url"]["url"]
-    assert initial_current_image == follow_up_image
-
-
-def test_system2_session_falls_back_to_wait_when_follow_up_is_unresolved(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    session = System2Session(
-        System2SessionConfig(
-            endpoint="http://127.0.0.1:8080/v1/chat/completions",
-            model="mock-model",
-            mode="llm",
-        )
+    session = System2Session(System2SessionConfig(endpoint="http://127.0.0.1:15801", timeout_sec=9.0))
+    session.reset("dock")
+    result = session.step_session(
+        session_id="nav-1",
+        rgb=np.zeros((32, 32, 3), dtype=np.uint8),
+        depth=np.ones((32, 32), dtype=np.float32),
+        stamp_s=1.5,
     )
-    session.reset("find the loading dock")
-    session.observe(8, np.full((480, 640, 3), 64, dtype=np.uint8))
 
-    responses = iter(["↓", "↓"])
+    payload = json.loads(captured["data"]["json"])
+    assert captured["url"] == "http://127.0.0.1:15801/navigation"
+    assert set(captured["files"].keys()) == {"image", "depth"}
+    assert payload["reset"] is True
+    assert payload["instruction"] == "dock"
+    assert result.decision_mode == "pixel_goal"
+    assert tuple(result.pixel_xy.tolist()) == (31.0, 31.0)
 
-    def _fake_post(url: str, json: dict[str, object], timeout: float) -> _FakeResponse:
-        del url, json, timeout
-        return _FakeResponse(next(responses))
 
-    monkeypatch.setattr(system2_module.requests, "post", _fake_post)
-
-    request = session.prepare_request()
-    result = session.execute_request(request)
-
-    assert result.ok is True
-    assert result.decision is not None
-    assert result.decision.mode == "wait"
-    assert result.decision.pixel_goal is None
-    assert result.decision.needs_requery is True
+def test_sample_depth_window_and_projection() -> None:
+    depth = np.ones((10, 10), dtype=np.float32)
+    intrinsic = np.asarray([[100.0, 0.0, 5.0], [0.0, 100.0, 5.0], [0.0, 0.0, 1.0]], dtype=np.float32)
+    world_xy = system2_module.resolve_goal_world_xy_from_pixel(
+        pixel_xy=(5, 5),
+        depth_image=depth,
+        intrinsic=intrinsic,
+        camera_pos_world=np.zeros(3, dtype=np.float32),
+        camera_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    assert world_xy is not None
+    assert len(world_xy) == 2

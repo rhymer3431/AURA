@@ -2,12 +2,18 @@ from __future__ import annotations
 
 from argparse import Namespace
 from pathlib import Path
+import sys
 
 import numpy as np
 
-from control.async_planners import DualPlannerOutput, PlannerOutput
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from control.async_planners import PlannerInput, PlannerOutput
 from ipc.messages import ActionCommand
-from runtime.planning_session import PlanningSession
+from runtime.planning_session import ExecutionObservation, PlanningSession
 from server.planner_runtime_engine import PlannerRuntimeEngine
 from server.planner_runtime_state import PlannerRuntimeState
 
@@ -16,14 +22,13 @@ def _args(*, planner_mode: str = "interactive") -> Namespace:
     return Namespace(
         planner_mode=planner_mode,
         server_url="http://127.0.0.1:8888",
-        dual_server_url="http://127.0.0.1:8890",
+        system2_url="http://127.0.0.1:15801",
         instruction="head to dock",
         use_trajectory_z=False,
         plan_wait_timeout_sec=0.5,
         plan_interval_frames=1,
-        dual_request_gap_frames=1,
         s1_period_sec=0.2,
-        s2_period_sec=1.0,
+        s2_period_sec=0.0,
         goal_ttl_sec=3.0,
         traj_ttl_sec=1.5,
         traj_max_stale_sec=4.0,
@@ -41,6 +46,9 @@ def _args(*, planner_mode: str = "interactive") -> Namespace:
         global_map_config="",
         global_waypoint_spacing_m=0.75,
         global_inflation_radius_m=0.25,
+        internvla_goal_depth_window=3,
+        internvla_goal_depth_min=0.1,
+        internvla_goal_depth_max=6.0,
     )
 
 
@@ -58,19 +66,25 @@ class _FakeNavDPClient:
         return "navdp"
 
 
-class _FakeDualClient:
+class _FakeSystem2Client:
     def __init__(self) -> None:
-        self.instructions: list[str] = []
+        self.session_id = "system2-nav"
+        self.reset_calls: list[str] = []
+        self.results: list[Namespace] = []
 
-    def dual_reset(self, intrinsic, instruction, **kwargs):  # noqa: ANN001,ANN003
-        _ = intrinsic, kwargs
-        self.instructions.append(str(instruction))
-        return Namespace(algo="dual", state={})
+    def reset(self, instruction: str) -> None:
+        self.reset_calls.append(str(instruction))
+
+    def step_session(self, *, session_id: str, rgb, depth, stamp_s: float):  # noqa: ANN001
+        _ = session_id, rgb, depth, stamp_s
+        if not self.results:
+            raise AssertionError("step_session called without a prepared result")
+        return self.results.pop(0)
 
 
 class _FakePlanner:
     def __init__(self) -> None:
-        self.outputs: list[PlannerOutput | DualPlannerOutput | None] = []
+        self.outputs: list[PlannerOutput | None] = []
         self.status = (0, 0, "", 0.0)
         self.reset_calls = 0
         self.submitted: list[object] = []
@@ -97,39 +111,26 @@ class _FakePlanner:
         return self.status
 
 
-def _make_session(*, mode: str) -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeDualClient]:
+def _make_session(*, mode: str) -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeSystem2Client]:
     session = PlanningSession(_args(planner_mode=mode))
-    session._intrinsic = np.eye(3, dtype=np.float32)
+    session._intrinsic = np.asarray([[8.0, 0.0, 4.0], [0.0, 8.0, 4.0], [0.0, 0.0, 1.0]], dtype=np.float32)
     session.navdp_client = _FakeNavDPClient()
     session.pointgoal_planner = _FakePlanner()
     session.nogoal_planner = _FakePlanner()
-    session.dual_planner = _FakePlanner()
-    session._dual_client = _FakeDualClient()
-    return session, session.nogoal_planner, session.dual_planner, session.navdp_client, session._dual_client
+    session.system2_client = _FakeSystem2Client()
+    return session, session.nogoal_planner, session.pointgoal_planner, session.navdp_client, session.system2_client
 
 
-def _observation(session: PlanningSession, frame_id: int):
-    return session.build_local_observation(
+def _observation(frame_id: int):
+    return ExecutionObservation(
         frame_id=frame_id,
         rgb=np.zeros((8, 8, 3), dtype=np.uint8),
         depth=np.ones((8, 8), dtype=np.float32),
-        camera_pose_xyz=(0.0, 0.0, 1.2),
-        camera_quat_wxyz=(1.0, 0.0, 0.0, 0.0),
-        intrinsic=np.eye(3, dtype=np.float32),
         sensor_meta={"rgb_source": "fake", "depth_source": "fake"},
+        cam_pos=np.zeros(3, dtype=np.float32),
+        cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+        intrinsic=np.asarray([[8.0, 0.0, 4.0], [0.0, 8.0, 4.0], [0.0, 0.0, 1.0]], dtype=np.float32),
     )
-
-
-def test_planning_session_no_longer_exposes_task_lifecycle_apis() -> None:
-    session = PlanningSession(_args())
-    for name in (
-        "start_dual_task",
-        "submit_interactive_instruction",
-        "cancel_interactive_task",
-        "active_memory_instruction",
-        "viewer_overlay_state",
-    ):
-        assert not hasattr(session, name)
 
 
 def test_planning_session_default_navdp_client_factory_uses_supported_keyword_names(monkeypatch) -> None:
@@ -153,112 +154,111 @@ def test_planning_session_default_navdp_client_factory_uses_supported_keyword_na
     assert "allow_tf32" not in captured
 
 
-def test_planner_runtime_engine_owns_interactive_state_transitions() -> None:
-    session, nogoal_planner, dual_planner, navdp_client, dual_client = _make_session(mode="interactive")
-    state = PlannerRuntimeState(mode="interactive")
-    engine = PlannerRuntimeEngine(_args(planner_mode="interactive"), transport=session, state=state)
-    assert engine.activate_interactive_roaming("startup") is True
+def test_planner_runtime_engine_updates_nav_goal_from_system2_pixel_goal() -> None:
+    session, _nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav")
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(_args(planner_mode="nav"), transport=session, state=state)
 
-    dual_planner.outputs = [
-        DualPlannerOutput(
-            plan_version=0,
-            source_frame_id=2,
-            trajectory_world=np.asarray([[0.3, 0.0, 0.0], [0.5, 0.1, 0.0]], dtype=np.float32),
-            pixel_goal=np.asarray([240.0, 180.0], dtype=np.float32),
-            stop=False,
-            goal_version=3,
-            traj_version=4,
-            stale_sec=0.2,
-            used_cached_traj=False,
-            planner_control={"mode": "trajectory", "reason": "forward", "yaw_delta_rad": None},
-            debug={},
-            latency_ms=4.0,
-            successful_calls=1,
-            failed_calls=0,
-            last_error="",
-        )
+    system2_client.results = [
+        Namespace(decision_mode="pixel_goal", pixel_xy=(5, 4), text="5, 4"),
     ]
-    dual_planner.status = (1, 0, "", 4.0)
-
-    command_id = engine.submit_interactive_instruction("go to the loading dock")
-    update = engine.plan_with_observation(
-        _observation(session, 2),
-        action_command=_planner_managed_command(),
-        robot_pos_world=np.zeros(3, dtype=np.float32),
-        robot_yaw=0.0,
-        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-    )
-
-    assert navdp_client.reset_calls == 1
-    assert command_id == 1
-    assert dual_client.instructions == ["go to the loading dock"]
-    assert update.interactive_phase == "task_active"
-    assert update.interactive_command_id == 1
-    assert state.goal.system2_pixel_goal == [240, 180]
-    assert engine.viewer_overlay_state()["system2_pixel_goal"] == [240, 180]
-    assert len(nogoal_planner.submitted) == 0
-
-
-def test_planner_runtime_engine_owns_dual_goal_versions() -> None:
-    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session(mode="dual")
-    state = PlannerRuntimeState(mode="dual")
-    engine = PlannerRuntimeEngine(_args(planner_mode="dual"), transport=session, state=state)
-
-    dual_planner.outputs = [
-        DualPlannerOutput(
+    pointgoal_planner.outputs = [
+        PlannerOutput(
             plan_version=0,
             source_frame_id=1,
             trajectory_world=np.asarray([[0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32),
-            pixel_goal=np.asarray([240.0, 180.0], dtype=np.float32),
-            stop=False,
-            goal_version=5,
-            traj_version=7,
-            stale_sec=0.1,
-            used_cached_traj=False,
-            planner_control={"mode": "trajectory", "reason": "forward", "yaw_delta_rad": None},
-            debug={},
             latency_ms=3.5,
             successful_calls=1,
             failed_calls=0,
             last_error="",
         )
     ]
-    dual_planner.status = (1, 0, "", 3.5)
+    pointgoal_planner.status = (1, 0, "", 3.5)
 
-    engine.start_dual_task("head to the dock")
+    engine.start_nav_task("head to the dock")
     update = engine.plan_with_observation(
-        _observation(session, 1),
-        action_command=_planner_managed_command(task_id="dual"),
+        _observation(1),
+        action_command=_planner_managed_command(task_id="nav"),
         robot_pos_world=np.zeros(3, dtype=np.float32),
         robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
-    assert dual_client.instructions == ["head to the dock"]
-    assert update.goal_version == 5
-    assert update.traj_version == 7
+    assert system2_client.reset_calls == ["head to the dock"]
+    assert navdp_client.reset_calls == 1
+    assert state.goal.system2_pixel_goal == [5, 4]
+    assert update.goal_version == 0
+    assert update.traj_version == 0
     assert update.trajectory_world.shape == (2, 3)
+    assert len(pointgoal_planner.submitted) == 1
+    submitted = pointgoal_planner.submitted[0]
+    assert isinstance(submitted, PlannerInput)
+    assert submitted.sensor_meta["robot_pose_xyz"] == [0.0, 0.0, 0.0]
+    assert submitted.sensor_meta["robot_yaw_rad"] == 0.0
 
 
-def test_dual_runtime_includes_robot_pose_and_yaw_in_dual_sensor_meta() -> None:
-    session, _nogoal_planner, dual_planner, _navdp_client, dual_client = _make_session(mode="dual")
-    state = PlannerRuntimeState(mode="dual")
-    engine = PlannerRuntimeEngine(_args(planner_mode="dual"), transport=session, state=state)
+def test_planner_runtime_engine_uses_direct_action_overrides() -> None:
+    session, _nogoal_planner, pointgoal_planner, _navdp_client, system2_client = _make_session(mode="nav")
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(_args(planner_mode="nav"), transport=session, state=state)
 
-    engine.start_dual_task("find the red mug")
-    _ = dual_client
+    system2_client.results = [
+        Namespace(decision_mode="forward", pixel_xy=None, text="forward"),
+    ]
+
+    engine.start_nav_task("move toward the dock")
     update = engine.plan_with_observation(
-        _observation(session, 4),
-        action_command=_planner_managed_command(task_id="dual"),
-        robot_pos_world=np.asarray([1.5, -2.0, 0.25], dtype=np.float32),
-        robot_yaw=0.75,
+        _observation(2),
+        action_command=_planner_managed_command(task_id="nav"),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
-    del update
-    assert len(dual_planner.submitted) == 1
-    submitted = dual_planner.submitted[0]
-    assert submitted.sensor_meta["rgb_source"] == "fake"
-    assert submitted.sensor_meta["depth_source"] == "fake"
-    assert submitted.sensor_meta["robot_pose_xyz"] == [1.5, -2.0, 0.25]
-    assert submitted.sensor_meta["robot_yaw_rad"] == 0.75
+    assert update.planner_control_mode == "forward"
+    assert update.stop is False
+    assert len(pointgoal_planner.submitted) == 0
+    assert update.trajectory_world.shape == (0, 3)
+
+
+def test_planner_runtime_engine_interactive_path_promotes_pending_instruction_into_nav_task() -> None:
+    session, nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="interactive")
+    state = PlannerRuntimeState(mode="interactive")
+    engine = PlannerRuntimeEngine(_args(planner_mode="interactive"), transport=session, state=state)
+
+    assert engine.activate_interactive_roaming("startup") is True
+    assert navdp_client.reset_calls == 1
+
+    system2_client.results = [
+        Namespace(decision_mode="pixel_goal", pixel_xy=(5, 4), text="5, 4"),
+    ]
+    pointgoal_planner.outputs = [
+        PlannerOutput(
+            plan_version=0,
+            source_frame_id=3,
+            trajectory_world=np.asarray([[0.3, 0.0, 0.0], [0.5, 0.1, 0.0]], dtype=np.float32),
+            latency_ms=4.0,
+            successful_calls=1,
+            failed_calls=0,
+            last_error="",
+        )
+    ]
+    pointgoal_planner.status = (1, 0, "", 4.0)
+
+    command_id = engine.submit_interactive_instruction("go to the loading dock")
+    update = engine.plan_with_observation(
+        _observation(3),
+        action_command=_planner_managed_command(),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert command_id == 1
+    assert system2_client.reset_calls == ["go to the loading dock"]
+    assert navdp_client.reset_calls == 2
+    assert nogoal_planner.reset_calls == 2
+    assert update.interactive_phase == "task_active"
+    assert update.interactive_command_id == 1
+    assert update.interactive_instruction == "go to the loading dock"
+    assert state.goal.system2_pixel_goal == [5, 4]

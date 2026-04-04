@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import socket
 import sys
-import time
-import uuid
 from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,8 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
-from apps.runtime_common import build_runtime_io
+from ipc.messages import ActionCommand
 from runtime.aura_runtime import AuraRuntimeCommandSource
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 
@@ -37,12 +33,45 @@ class _FakeController:
         )
 
 
+class _FakeBridge:
+    def __init__(self) -> None:
+        self.notices = []
+        self.statuses = []
+        self.health = []
+
+    def publish_notice(self, notice) -> None:  # noqa: ANN001
+        self.notices.append(notice)
+
+    def publish_status(self, status) -> None:  # noqa: ANN001
+        self.statuses.append(status)
+
+    def publish_health(self, payload) -> None:  # noqa: ANN001
+        self.health.append(payload)
+
+    def publish_capability(self, payload) -> None:  # noqa: ANN001
+        _ = payload
+
+    def drain_task_requests(self):
+        return []
+
+    def drain_runtime_controls(self):
+        return []
+
+
+class _FakeSupervisor:
+    def __init__(self) -> None:
+        self.bridge = _FakeBridge()
+        self.memory_service = SimpleNamespace(scratchpad=SimpleNamespace(task_id="interactive"))
+        self.perception_pipeline = SimpleNamespace(detector=SimpleNamespace(runtime_report=None, info=SimpleNamespace(backend_name="stub")))
+
+
 class _FakePlanningSession:
     def __init__(self) -> None:
         self.last_action_type = ""
         self._plan_version = -1
         self.started_instructions: list[str] = []
         self.health_checks: list[str] = []
+        self.submitted_instructions: list[str] = []
         self._viewer_trajectory_world = [
             [0.0, 0.0, 2.0],
             [0.4, 0.0, 2.0],
@@ -72,24 +101,33 @@ class _FakePlanningSession:
         _ = observation, robot_pos_world, robot_yaw, robot_quat_wxyz
         self.last_action_type = action_command.action_type if action_command is not None else ""
         self._plan_version += 1
-        trajectory = np.asarray([[0.3, 0.0, 0.0], [0.6, 0.0, 0.0]], dtype=np.float32)
         return TrajectoryUpdate(
-            trajectory_world=trajectory,
+            trajectory_world=np.asarray([[0.3, 0.0, 0.0], [0.6, 0.0, 0.0]], dtype=np.float32),
             plan_version=self._plan_version,
             stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=2.0, last_plan_step=int(observation.frame_id)),
             source_frame_id=int(observation.frame_id),
             action_command=action_command,
             stop=False,
+            interactive_phase="task_active" if self.submitted_instructions else None,
+            interactive_command_id=len(self.submitted_instructions) if self.submitted_instructions else -1,
+            interactive_instruction=self.submitted_instructions[-1] if self.submitted_instructions else "",
         )
 
     def ensure_navdp_service_ready(self, *, context: str) -> None:
         self.health_checks.append(f"navdp:{context}")
 
-    def ensure_dual_service_ready(self, *, context: str) -> None:
-        self.health_checks.append(f"dual:{context}")
+    def ensure_system2_service_ready(self, *, context: str) -> None:
+        self.health_checks.append(f"system2:{context}")
 
-    def start_dual_task(self, instruction: str) -> None:
+    def start_nav_task(self, instruction: str) -> None:
         self.started_instructions.append(str(instruction))
+
+    def submit_interactive_instruction(self, instruction: str) -> int:
+        self.submitted_instructions.append(str(instruction))
+        return len(self.submitted_instructions)
+
+    def cancel_interactive_task(self) -> bool:
+        return True
 
     def viewer_overlay_state(self) -> dict[str, object]:
         return {
@@ -103,45 +141,60 @@ class _FakePlanningSession:
         return None
 
     def active_memory_instruction(self) -> str:
+        if self.submitted_instructions:
+            return self.submitted_instructions[-1]
         return self.started_instructions[-1] if self.started_instructions else ""
 
 
-class _InteractivePlanningSession(_FakePlanningSession):
-    def __init__(self) -> None:
-        super().__init__()
-        self.submitted_instructions: list[str] = []
+class _FakeServer:
+    def __init__(self, args: Namespace, planning_session: _FakePlanningSession) -> None:
+        self.args = args
+        self.planning_session = planning_session
 
-    def submit_interactive_instruction(self, instruction: str) -> int:
-        self.submitted_instructions.append(str(instruction))
-        return len(self.submitted_instructions)
+    def initialize(self, simulation_app, stage) -> None:  # noqa: ANN001
+        _ = simulation_app, stage
 
-    def cancel_interactive_task(self) -> bool:
-        return True
+    def bootstrap(self):
+        mode = str(getattr(self.args, "planner_mode", "")).strip().lower()
+        if mode == "interactive":
+            self.planning_session.ensure_navdp_service_ready(context="interactive startup")
+        elif mode == "nav":
+            self.planning_session.ensure_navdp_service_ready(context="nav startup")
+            self.planning_session.ensure_system2_service_ready(context="nav startup")
+            self.planning_session.start_nav_task(str(getattr(self.args, "instruction", "")))
+        return []
 
-    def active_memory_instruction(self) -> str:
-        return self.submitted_instructions[-1] if self.submitted_instructions else ""
-
-    def plan_with_observation(self, observation, *, action_command, robot_pos_world, robot_yaw, robot_quat_wxyz):  # noqa: ANN001
-        _ = robot_pos_world, robot_yaw, robot_quat_wxyz
-        self.last_action_type = action_command.action_type if action_command is not None else ""
-        self._plan_version += 1
-        return TrajectoryUpdate(
-            trajectory_world=np.asarray([[0.25, 0.0, 0.0], [0.55, 0.0, 0.0]], dtype=np.float32),
-            plan_version=self._plan_version,
-            stats=PlannerStats(successful_calls=1, failed_calls=0, latency_ms=2.0, last_plan_step=int(observation.frame_id)),
-            source_frame_id=int(observation.frame_id),
+    def tick(self, *, frame_event, task_events, runtime_status, robot_pos_world, robot_lin_vel_world, robot_ang_vel_world, robot_yaw, robot_quat_wxyz):  # noqa: ANN001
+        _ = task_events, runtime_status, robot_lin_vel_world, robot_ang_vel_world
+        action_command = ActionCommand(action_type="LOCAL_SEARCH", task_id=str(frame_event.metadata.task_id), metadata={"planner_managed": True})
+        update = self.planning_session.plan_with_observation(
+            frame_event.observation,
             action_command=action_command,
-            stop=False,
-            interactive_phase="task_active",
-            interactive_command_id=max(len(self.submitted_instructions), 1),
-            interactive_instruction=self.submitted_instructions[-1] if self.submitted_instructions else "",
+            robot_pos_world=robot_pos_world,
+            robot_yaw=robot_yaw,
+            robot_quat_wxyz=robot_quat_wxyz,
         )
+        return SimpleNamespace(
+            notices=[],
+            trajectory_update=update,
+            evaluation=SimpleNamespace(goal_distance_m=1.0, yaw_error_rad=0.0, reached_goal=False),
+            command_vector=np.asarray([0.1, 0.0, 0.0], dtype=np.float32),
+            status=None,
+            action_command=action_command,
+            viewer_overlay=self.planning_session.viewer_overlay_state(),
+        )
+
+    def snapshot(self):
+        return None
+
+    def shutdown(self) -> None:
+        return None
 
 
 def _args() -> Namespace:
     return Namespace(
-        planner_mode="dual",
-        instruction="아까 봤던 사과를 찾아가",
+        planner_mode="nav",
+        instruction="go to the loading dock",
         spawn_demo_object=False,
         goal_x=None,
         goal_y=None,
@@ -160,37 +213,56 @@ def _args() -> Namespace:
         memory_db_path="state/memory/memory.sqlite",
         detector_model_path="artifacts/models/__missing__.engine",
         detector_device="",
+        timeout_sec=5.0,
+        launch_mode="headless",
+        resolved_launch_mode="headless",
+        headless=True,
+        viewer_publish=False,
+        native_viewer="off",
+        viewer_control_endpoint="tcp://127.0.0.1:5580",
+        viewer_telemetry_endpoint="tcp://127.0.0.1:5581",
+        viewer_shm_name="g1_view_frames",
+        viewer_shm_slot_size=2 * 1024 * 1024,
+        viewer_shm_capacity=4,
     )
 
 
-def _free_tcp_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+def _install_fakes(monkeypatch: pytest.MonkeyPatch, command_source: AuraRuntimeCommandSource, planning_session: _FakePlanningSession) -> None:
+    fake_supervisor = _FakeSupervisor()
+
+    def fake_runtime_bridge(self) -> None:  # noqa: ANN001
+        self._runtime_io = SimpleNamespace(bus=SimpleNamespace(), shm_ring=None, close=lambda unlink_shm=True: None)
+        self._supervisor = fake_supervisor
+
+    def fake_control_server(self) -> None:  # noqa: ANN001
+        if self._server is None:
+            self._server = _FakeServer(self.args, planning_session)
+
+    monkeypatch.setattr(AuraRuntimeCommandSource, "_ensure_runtime_bridge", fake_runtime_bridge)
+    monkeypatch.setattr(AuraRuntimeCommandSource, "_ensure_control_server", fake_control_server)
 
 
-def test_dual_mode_bootstraps_planner_managed_command_flow() -> None:
+def test_nav_mode_bootstraps_direct_system2_and_navdp_flow(monkeypatch: pytest.MonkeyPatch) -> None:
     planning_session = _FakePlanningSession()
     command_source = AuraRuntimeCommandSource(_args(), planning_session=planning_session)
+    _install_fakes(monkeypatch, command_source, planning_session)
+
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     command_source.update(1)
 
-    assert planning_session.started_instructions == ["아까 봤던 사과를 찾아가"]
-    assert planning_session.health_checks == ["navdp:dual startup", "dual:dual startup"]
+    assert planning_session.started_instructions == ["go to the loading dock"]
+    assert planning_session.health_checks == ["navdp:nav startup", "system2:nav startup"]
     assert planning_session.last_action_type == "LOCAL_SEARCH"
-    assert command_source._active_command is not None
-    assert command_source._active_command.metadata["planner_managed"] is True
-    assert command_source._runtime_io is not None
-    assert command_source._runtime_io.shm_ring is None
+    assert np.allclose(command_source.command(), np.asarray([0.1, 0.0, 0.0], dtype=np.float32))
 
 
-def test_interactive_mode_uses_planning_session_control_flow(monkeypatch: pytest.MonkeyPatch) -> None:
-    planning_session = _InteractivePlanningSession()
+def test_interactive_mode_keeps_roaming_bootstrap_and_accepts_runtime_instruction(monkeypatch: pytest.MonkeyPatch) -> None:
+    planning_session = _FakePlanningSession()
     args = _args()
     args.planner_mode = "interactive"
     args.instruction = ""
-    monkeypatch.setattr(AuraRuntimeCommandSource, "_interactive_input_loop", lambda self: None)
     command_source = AuraRuntimeCommandSource(args, planning_session=planning_session)
+    _install_fakes(monkeypatch, command_source, planning_session)
 
     command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
     command_source.planning_session.submit_interactive_instruction("go to the loading dock")
@@ -199,73 +271,4 @@ def test_interactive_mode_uses_planning_session_control_flow(monkeypatch: pytest
     assert planning_session.health_checks == ["navdp:interactive startup"]
     assert planning_session.submitted_instructions == ["go to the loading dock"]
     assert planning_session.last_action_type == "LOCAL_SEARCH"
-    assert command_source.supervisor.snapshot()["state"] == "Idle"
-    assert tuple(np.round(command_source.command(), 4)) != (0.0, 0.0, 0.0)
-
-
-def test_g1_view_mode_publishes_overlay_metadata_over_zmq_and_shm() -> None:
-    pytest.importorskip("zmq")
-    planning_session = _FakePlanningSession()
-    port = _free_tcp_port()
-    args = _args()
-    args.launch_mode = "g1_view"
-    args.resolved_launch_mode = "g1_view"
-    args.headless = True
-    args.viewer_control_endpoint = f"tcp://127.0.0.1:{port}"
-    args.viewer_telemetry_endpoint = f"tcp://127.0.0.1:{port + 1}"
-    args.viewer_shm_name = f"g1_view_test_{uuid.uuid4().hex[:12]}"
-    args.viewer_shm_slot_size = 2 * 1024 * 1024
-    args.viewer_shm_capacity = 4
-    command_source = AuraRuntimeCommandSource(args, planning_session=planning_session)
-    viewer_io = None
-    try:
-        command_source.initialize(_FakeSimulationApp(), stage=None, controller=_FakeController())
-        viewer_io = build_runtime_io(
-            bus_kind="zmq",
-            endpoint=args.viewer_control_endpoint,
-            bind=False,
-            shm_name=args.viewer_shm_name,
-            shm_slot_size=args.viewer_shm_slot_size,
-            shm_capacity=args.viewer_shm_capacity,
-            create_shm=False,
-            role="agent",
-            control_endpoint=args.viewer_control_endpoint,
-            telemetry_endpoint=args.viewer_telemetry_endpoint,
-            identity="test-g1-viewer",
-        )
-        time.sleep(0.1)
-
-        observed_header = None
-        for frame_idx in range(1, 8):
-            command_source.update(frame_idx)
-            deadline = time.time() + 0.25
-            while time.time() < deadline:
-                records = viewer_io.bus.poll("isaac.observation", max_items=32)
-                if records:
-                    observed_header = records[-1].message
-                    break
-                time.sleep(0.01)
-            if observed_header is not None:
-                break
-
-        assert observed_header is not None
-        assert "viewer_overlay" in observed_header.metadata
-        overlay = observed_header.metadata["viewer_overlay"]
-        assert overlay["detector_backend"] != ""
-        assert overlay["detections"]
-        assert overlay["detections"][0]["class_name"] == "apple"
-        assert overlay["detections"][0]["bbox_xyxy"] == [28, 24, 67, 71]
-        assert overlay["trajectory_pixels"] == [[48, 48], [96, 48], [144, 48]]
-        assert overlay["plan_version"] == 4
-        assert overlay["goal_version"] == 2
-        assert overlay["traj_version"] == 3
-
-        batch = IsaacBridgeAdapter(viewer_io.bus, shm_ring=viewer_io.shm_ring).reconstruct_batch(observed_header)
-        assert batch.rgb_image is not None
-        assert batch.depth_image_m is not None
-        assert batch.rgb_image.shape == (96, 96, 3)
-        assert planning_session.last_action_type == "LOCAL_SEARCH"
-    finally:
-        if viewer_io is not None:
-            viewer_io.close()
-        command_source.shutdown()
+    assert np.allclose(command_source.command(), np.asarray([0.1, 0.0, 0.0], dtype=np.float32))

@@ -8,11 +8,11 @@ import numpy as np
 
 from common.geometry import within_xy_radius, world_goal_to_robot_frame
 from control.async_planners import (
-    DualPlannerInput,
     NoGoalPlannerInput,
     PlannerInput,
     PlannerOutput,
 )
+from inference.vlm import resolve_goal_world_xy_from_pixel
 from ipc.messages import ActionCommand
 from runtime.global_route import GlobalRoutePlanner
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
@@ -40,17 +40,20 @@ class PlannerRuntimeEngine:
     def viewer_overlay_state(self) -> dict[str, object]:
         return self._state.viewer_overlay_state()
 
-    def start_dual_task(self, instruction: str) -> None:
+    def start_nav_task(self, instruction: str) -> None:
         if self._state.mode != "NAV":
-            raise RuntimeError("start_dual_task requires execution mode NAV")
+            raise RuntimeError("start_nav_task requires execution mode NAV")
         text = str(instruction).strip()
         if text == "":
-            raise ValueError("dual instruction must be non-empty")
-        if getattr(self._transport, "_dual_client", None) is None or getattr(self._transport, "dual_planner", None) is None:
-            raise RuntimeError("dual planner is not initialized")
-        self._state.goal.dual_instruction = text
-        self._dual_reset(text, prefix="[G1_DUAL]")
-        self._transport.dual_planner.reset_state()
+            raise ValueError("navigation instruction must be non-empty")
+        if getattr(self._transport, "system2_client", None) is None or getattr(self._transport, "pointgoal_planner", None) is None:
+            raise RuntimeError("NAV task planner is not initialized")
+        self._transport.system2_client.reset(text)
+        try:
+            self._transport.navdp_client.navigator_reset(self._transport._intrinsic.copy(), batch_size=1)
+        except Exception:
+            pass
+        self._state.goal.nav_instruction = text
         self._state.trajectory.plan_version = -1
         self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
         self._state.reset_planner_control()
@@ -58,7 +61,10 @@ class PlannerRuntimeEngine:
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
         self._state.goal.system2_pixel_goal = None
-        self._state.goal.dual_response_ts = time.perf_counter()
+        self._state.goal.system2_response_ts = time.perf_counter()
+        self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
+        self._state.interactive.last_nogoal_plan_version = -1
+        self._state.interactive.last_nav_plan_version = -1
         self._state.trajectory.stats = PlannerStats()
 
     def submit_interactive_instruction(self, instruction: str) -> int:
@@ -113,9 +119,9 @@ class PlannerRuntimeEngine:
                 robot_yaw=robot_yaw,
             )
         if self._state.mode == "NAV":
-            if getattr(self._transport, "dual_planner", None) is None:
+            if getattr(self._transport, "pointgoal_planner", None) is None or getattr(self._transport, "system2_client", None) is None:
                 raise RuntimeError("PlanningSession is not initialized.")
-            return self._run_dual(
+            return self._run_nav_task(
                 observation,
                 action_command=action_command,
                 robot_pos_world=robot_pos_world,
@@ -419,7 +425,7 @@ class PlannerRuntimeEngine:
             sensor_meta=observation.sensor_meta,
         )
 
-    def _run_dual(
+    def _run_nav_task(
         self,
         observation: ExecutionObservation,
         *,
@@ -427,64 +433,194 @@ class PlannerRuntimeEngine:
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> TrajectoryUpdate:
-        if self._state.goal.dual_instruction == "":
+        if self._state.goal.nav_instruction == "":
             return TrajectoryUpdate(
                 trajectory_world=np.zeros((0, 3), dtype=np.float32),
                 plan_version=self._state.trajectory.plan_version,
-                stats=PlannerStats(failed_calls=1, last_error="dual task not started", last_plan_step=int(observation.frame_id)),
+                stats=PlannerStats(failed_calls=1, last_error="NAV task not started", last_plan_step=int(observation.frame_id)),
                 source_frame_id=int(observation.frame_id),
                 action_command=action_command,
                 stop=True,
                 sensor_meta=dict(observation.sensor_meta),
             )
-        force_s2 = bool(
-            self._state.trajectory.trajectory_world.shape[0] == 0
-            and self._state.trajectory.planner_control_mode != "yaw_delta"
+        self._maybe_update_system2(
+            observation,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
         )
-        should_plan = self._state.trajectory.trajectory_world.shape[0] == 0 or (
-            observation.frame_id % max(int(getattr(self._args, "dual_request_gap_frames", 1)), 1) == 0
+        self._maybe_submit_navdp_plan(
+            observation,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
         )
-        if should_plan:
-            self._transport.dual_planner.submit(
-                DualPlannerInput(
-                    frame_id=int(observation.frame_id),
-                    rgb=observation.rgb,
-                    depth=observation.depth,
-                    sensor_meta=self._dual_sensor_meta(
-                        observation.sensor_meta,
-                        robot_pos_world=robot_pos_world,
-                        robot_yaw=robot_yaw,
-                    ),
-                    cam_pos=observation.cam_pos,
-                    cam_quat=observation.cam_quat,
-                    memory_context=observation.memory_context,
-                    events={
-                        "force_s2": force_s2,
-                        "stuck": False,
-                        "collision_risk": False,
-                    },
-                )
-            )
-        plan = self._transport.dual_planner.consume_latest(last_seen_version=self._state.trajectory.plan_version)
+        self._consume_navdp_plan(frame_id=int(observation.frame_id))
+        self._refresh_stale_navdp_hold()
         plan_stop = bool(self._state.trajectory.planner_control_mode == "stop")
-        if plan is not None:
-            self._state.goal.dual_response_ts = time.perf_counter()
-            self._accept_dual_plan(plan)
-            plan_stop = bool(self._state.trajectory.planner_control_mode == "stop")
-        success_calls, failed_calls, last_error, planner_latency_ms = self._transport.dual_planner.snapshot_status()
-        self._state.trajectory.stats = PlannerStats(
-            successful_calls=int(success_calls),
-            failed_calls=int(failed_calls),
-            latency_ms=float(planner_latency_ms),
-            last_error=str(last_error),
-            last_plan_step=int(self._state.trajectory.stats.last_plan_step),
-        )
         return self._build_update(
             frame_id=observation.frame_id,
             action_command=action_command,
             stop=plan_stop,
             sensor_meta=observation.sensor_meta,
         )
+
+    def _maybe_update_system2(
+        self,
+        observation: ExecutionObservation,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> None:
+        now = time.monotonic()
+        should_query = (
+            self._state.goal.goal_version < 0
+            or (now - float(self._state.goal.system2_response_ts)) >= max(float(getattr(self._args, "s2_period_sec", 1.0)), 0.05)
+        )
+        if not should_query:
+            return
+        if getattr(self._transport, "system2_client", None) is None:
+            return
+        try:
+            result = self._transport.system2_client.step_session(
+                session_id=self._transport.system2_client.session_id,
+                rgb=observation.rgb,
+                depth=observation.depth,
+                stamp_s=now,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._state.trajectory.stats = PlannerStats(
+                successful_calls=int(self._state.trajectory.stats.successful_calls),
+                failed_calls=int(self._state.trajectory.stats.failed_calls) + 1,
+                latency_ms=0.0,
+                last_error=f"{type(exc).__name__}: {exc}",
+                last_plan_step=int(observation.frame_id),
+            )
+            return
+        self._state.goal.system2_response_ts = now
+        decision_mode = str(result.decision_mode or "wait").strip().lower() or "wait"
+        self._state.goal.system2_pixel_goal = None
+        if result.pixel_xy is not None:
+            pixel_xy = np.asarray(result.pixel_xy, dtype=np.float32).reshape(2)
+            self._state.goal.system2_pixel_goal = [
+                int(round(float(pixel_xy[0]))),
+                int(round(float(pixel_xy[1]))),
+            ]
+        if decision_mode == "pixel_goal" and result.pixel_xy is not None:
+            pixel_xy = tuple(int(round(float(v))) for v in np.asarray(result.pixel_xy, dtype=np.float32).reshape(2))
+            world_xy = resolve_goal_world_xy_from_pixel(
+                pixel_xy=pixel_xy,
+                depth_image=observation.depth,
+                intrinsic=observation.intrinsic,
+                camera_pos_world=observation.cam_pos,
+                camera_quat_wxyz=observation.cam_quat,
+                window_size=int(getattr(self._args, "internvla_goal_depth_window", 11)),
+                depth_min_m=float(getattr(self._args, "internvla_goal_depth_min", 0.1)),
+                depth_max_m=float(getattr(self._args, "internvla_goal_depth_max", 6.0)),
+            )
+            if world_xy is not None:
+                self._state.goal.goal_version += 1
+                self._state.goal.local_xy = world_goal_to_robot_frame(
+                    goal_xy=np.asarray(world_xy, dtype=np.float32),
+                    robot_xy=np.asarray(robot_pos_world, dtype=np.float32),
+                    robot_yaw=float(robot_yaw),
+                ).astype(np.float32)
+                self._state.trajectory.planner_control_mode = "trajectory"
+                self._state.trajectory.planner_yaw_delta_rad = None
+                self._state.trajectory.planner_control_reason = "pixel_goal"
+            return
+        if decision_mode in {"forward", "yaw_left", "yaw_right", "stop", "wait"}:
+            if decision_mode in {"forward", "yaw_left", "yaw_right", "stop"}:
+                self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
+                self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+            self._state.trajectory.planner_control_mode = decision_mode
+            self._state.trajectory.planner_yaw_delta_rad = None
+            self._state.trajectory.planner_control_reason = str(result.text)
+            if decision_mode in {"stop", "wait"}:
+                self._state.trajectory.used_cached_traj = False
+            return
+        if decision_mode == "look_down":
+            if self._state.trajectory.trajectory_world.shape[0] == 0:
+                self._state.trajectory.planner_control_mode = "wait"
+                self._state.trajectory.planner_control_reason = str(result.text)
+
+    def _maybe_submit_navdp_plan(
+        self,
+        observation: ExecutionObservation,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> None:
+        if self._state.trajectory.planner_control_mode not in {None, "trajectory"}:
+            return
+        if not np.any(np.isfinite(self._state.goal.local_xy)):
+            return
+        if not np.any(np.abs(self._state.goal.local_xy) > 0.0):
+            return
+        now = time.monotonic()
+        should_plan = (
+            self._state.trajectory.trajectory_world.shape[0] == 0
+            or (now - float(self._state.trajectory.last_plan_stamp_s)) >= max(float(getattr(self._args, "s1_period_sec", 0.2)), 0.05)
+        )
+        if not should_plan:
+            return
+        self._transport.pointgoal_planner.submit(
+            PlannerInput(
+                frame_id=int(observation.frame_id),
+                local_goal_xy=np.asarray(self._state.goal.local_xy, dtype=np.float32),
+                rgb=observation.rgb,
+                depth=observation.depth,
+                sensor_meta=self._nav_sensor_meta(
+                    observation.sensor_meta,
+                    robot_pos_world=robot_pos_world,
+                    robot_yaw=robot_yaw,
+                ),
+                cam_pos=observation.cam_pos,
+                cam_quat=observation.cam_quat,
+                robot_pos=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+            )
+        )
+
+    def _consume_navdp_plan(self, *, frame_id: int) -> None:
+        latest = self._transport.pointgoal_planner.consume_latest(self._state.trajectory.plan_version)
+        success, failed, error, latency_ms = self._transport.pointgoal_planner.snapshot_status()
+        if latest is not None:
+            self._state.trajectory.plan_version = int(latest.plan_version)
+            self._state.trajectory.trajectory_world = np.asarray(latest.trajectory_world, dtype=np.float32).copy()
+            self._state.trajectory.last_plan_stamp_s = time.monotonic()
+            self._state.goal.traj_version = int(latest.plan_version)
+            self._state.trajectory.planner_control_mode = "trajectory"
+            self._state.trajectory.planner_control_reason = ""
+            self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.stale_sec = 0.0
+            last_plan_step = int(latest.source_frame_id)
+        else:
+            last_plan_step = int(frame_id)
+        self._state.trajectory.stats = PlannerStats(
+            successful_calls=int(success),
+            failed_calls=int(failed),
+            latency_ms=float(latency_ms),
+            last_error=str(error),
+            last_plan_step=last_plan_step,
+        )
+
+    def _refresh_stale_navdp_hold(self) -> None:
+        if self._state.trajectory.planner_control_mode not in {None, "trajectory"}:
+            self._state.trajectory.stale_sec = -1.0
+            return
+        if self._state.trajectory.trajectory_world.shape[0] == 0 or float(self._state.trajectory.last_plan_stamp_s) <= 0.0:
+            self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.stale_sec = -1.0
+            return
+        stale_sec = max(0.0, time.monotonic() - float(self._state.trajectory.last_plan_stamp_s))
+        self._state.trajectory.stale_sec = float(stale_sec)
+        max_stale = float(getattr(self._args, "traj_max_stale_sec", 4.0))
+        if stale_sec > max_stale:
+            self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+            self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.planner_control_mode = "wait"
+            self._state.trajectory.planner_control_reason = "stale_hold_timeout"
+            return
+        self._state.trajectory.used_cached_traj = bool(stale_sec > 0.0)
 
     def _run_interactive(
         self,
@@ -555,10 +691,8 @@ class PlannerRuntimeEngine:
         self._transport.nogoal_planner.reset_state()
         self._state.interactive.last_nogoal_plan_version = -1
         self._state.interactive.last_nogoal_failed_calls = 0
-        if getattr(self._transport, "dual_planner", None) is not None:
-            self._transport.dual_planner.reset_state()
-        self._state.interactive.last_dual_plan_version = -1
-        self._state.interactive.last_dual_failed_calls = 0
+        self._state.interactive.last_nav_plan_version = -1
+        self._state.interactive.last_nav_failed_calls = 0
         self._interactive_clear_active_task()
         self._state.reset_planner_control()
         self._state.interactive.phase = "roaming"
@@ -566,13 +700,13 @@ class PlannerRuntimeEngine:
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
         self._state.goal.system2_pixel_goal = None
-        self._state.goal.dual_response_ts = time.perf_counter()
+        self._state.goal.system2_response_ts = time.perf_counter()
         self._state.trajectory.stats = PlannerStats()
         self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
         return True
 
     def _activate_task(self, command_id: int, instruction: str) -> bool:
-        if getattr(self._transport, "_dual_client", None) is None or getattr(self._transport, "dual_planner", None) is None:
+        if getattr(self._transport, "system2_client", None) is None:
             return False
         self._state.interactive.phase = "task_pending"
         self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
@@ -580,14 +714,13 @@ class PlannerRuntimeEngine:
             self._transport.nogoal_planner.reset_state()
         self._state.interactive.last_nogoal_plan_version = -1
         self._state.interactive.last_nogoal_failed_calls = 0
-        self._transport.dual_planner.reset_state()
-        self._state.interactive.last_dual_plan_version = -1
-        self._state.interactive.last_dual_failed_calls = 0
+        self._state.interactive.last_nav_plan_version = -1
+        self._state.interactive.last_nav_failed_calls = 0
         self._state.reset_planner_control()
         try:
-            self._dual_reset(instruction, prefix="[G1_INTERACTIVE][TASK]")
+            self.start_nav_task(instruction)
         except Exception as exc:  # noqa: BLE001
-            error = f"dual_reset failed for command_id={int(command_id)}: {type(exc).__name__}: {exc}"
+            error = f"start_nav_task failed for command_id={int(command_id)}: {type(exc).__name__}: {exc}"
             self._state.trajectory.stats = PlannerStats(
                 successful_calls=0,
                 failed_calls=1,
@@ -595,18 +728,18 @@ class PlannerRuntimeEngine:
                 last_error=error,
                 last_plan_step=int(self._state.trajectory.stats.last_plan_step),
             )
-            self._activate_roaming(f"dual reset failure for command_id={int(command_id)}")
+            self._activate_roaming(f"nav task start failure for command_id={int(command_id)}")
             return False
 
         self._state.interactive.phase = "task_active"
         self._state.interactive.active_command_id = int(command_id)
         self._state.interactive.active_instruction = str(instruction)
-        self._state.goal.dual_instruction = str(instruction)
+        self._state.goal.nav_instruction = str(instruction)
         self._state.trajectory.stale_sec = -1.0
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
         self._state.goal.system2_pixel_goal = None
-        self._state.goal.dual_response_ts = time.perf_counter()
+        self._state.goal.system2_response_ts = time.perf_counter()
         self._state.trajectory.stats = PlannerStats()
         return True
 
@@ -655,70 +788,25 @@ class PlannerRuntimeEngine:
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> bool:
-        force_s2 = bool(
-            self._state.trajectory.trajectory_world.shape[0] == 0
-            and self._state.trajectory.planner_control_mode != "yaw_delta"
+        self._maybe_update_system2(
+            observation,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
         )
-        should_plan = self._state.trajectory.trajectory_world.shape[0] == 0 or (
-            observation.frame_id % max(int(getattr(self._args, "dual_request_gap_frames", 1)), 1) == 0
+        self._maybe_submit_navdp_plan(
+            observation,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
         )
-        if should_plan:
-            self._transport.dual_planner.submit(
-                DualPlannerInput(
-                    frame_id=int(observation.frame_id),
-                    rgb=observation.rgb,
-                    depth=observation.depth,
-                    sensor_meta=self._dual_sensor_meta(
-                        observation.sensor_meta,
-                        robot_pos_world=robot_pos_world,
-                        robot_yaw=robot_yaw,
-                    ),
-                    cam_pos=observation.cam_pos,
-                    cam_quat=observation.cam_quat,
-                    memory_context=observation.memory_context,
-                    events={
-                        "force_s2": force_s2,
-                        "stuck": False,
-                        "collision_risk": False,
-                    },
-                )
-            )
-
-        plan = self._transport.dual_planner.consume_latest(last_seen_version=self._state.interactive.last_dual_plan_version)
-        if plan is not None:
-            self._state.interactive.last_dual_plan_version = int(plan.plan_version)
-            self._state.goal.dual_response_ts = time.perf_counter()
-            planner_control = dict(plan.planner_control) if isinstance(plan.planner_control, dict) else {}
-            if str(planner_control.get("mode", "trajectory")).strip().lower() == "stop" or bool(plan.stop):
-                self._activate_roaming(f"task complete command_id={int(self._state.interactive.active_command_id)}")
-                return True
-            self._accept_dual_plan(plan, interactive=True)
-
-        success_calls, failed_calls, last_error, planner_latency_ms = self._transport.dual_planner.snapshot_status()
-        if int(failed_calls) > int(self._state.interactive.last_dual_failed_calls):
-            self._state.trajectory.stats = PlannerStats(
-                successful_calls=int(success_calls),
-                failed_calls=int(failed_calls),
-                latency_ms=float(planner_latency_ms),
-                last_error=str(last_error),
-                last_plan_step=int(self._state.trajectory.stats.last_plan_step),
-            )
-            self._state.interactive.last_dual_failed_calls = int(failed_calls)
-            self._activate_roaming(f"task failure command_id={int(self._state.interactive.active_command_id)}")
-            return False
-
-        self._state.interactive.last_dual_failed_calls = int(failed_calls)
-        self._state.trajectory.stats = PlannerStats(
-            successful_calls=int(success_calls),
-            failed_calls=int(failed_calls),
-            latency_ms=float(planner_latency_ms),
-            last_error=str(last_error),
-            last_plan_step=int(self._state.trajectory.stats.last_plan_step),
-        )
+        self._consume_navdp_plan(frame_id=int(observation.frame_id))
+        self._refresh_stale_navdp_hold()
+        if self._state.trajectory.planner_control_mode == "stop":
+            self._activate_roaming(f"task complete command_id={int(self._state.interactive.active_command_id)}")
+            return True
         return False
 
     @staticmethod
-    def _dual_sensor_meta(
+    def _nav_sensor_meta(
         sensor_meta: dict[str, Any] | None,
         *,
         robot_pos_world: np.ndarray,
@@ -774,75 +862,20 @@ class PlannerRuntimeEngine:
             sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
         )
 
-    def _dual_reset(self, instruction: str, *, prefix: str) -> None:
-        reset_rsp = self._transport._dual_client.dual_reset(
-            intrinsic=self._transport._intrinsic.copy(),
-            instruction=str(instruction),
-            navdp_url=str(getattr(self._args, "server_url", "")),
-            s1_period_sec=float(getattr(self._args, "s1_period_sec", 0.2)),
-            s2_period_sec=float(getattr(self._args, "s2_period_sec", 1.0)),
-            goal_ttl_sec=float(getattr(self._args, "goal_ttl_sec", 3.0)),
-            traj_ttl_sec=float(getattr(self._args, "traj_ttl_sec", 1.5)),
-            traj_max_stale_sec=float(getattr(self._args, "traj_max_stale_sec", 4.0)),
-        )
-        print(
-            f"{prefix} dual_reset "
-            f"algo={reset_rsp.algo} dual_server={getattr(self._args, 'dual_server_url', '')} "
-            f"navdp_server={getattr(self._args, 'server_url', '')}"
-        )
-
-    def _accept_dual_plan(self, plan, *, interactive: bool = False) -> None:
-        planner_control = dict(plan.planner_control) if isinstance(plan.planner_control, dict) else {}
-        planner_mode = str(planner_control.get("mode", "trajectory")).strip().lower() or "trajectory"
-        planner_yaw_delta = planner_control.get("yaw_delta_rad")
-        if planner_yaw_delta is not None:
-            planner_yaw_delta = float(planner_yaw_delta)
-        planner_reason = str(planner_control.get("reason", ""))
-        if planner_mode == "trajectory":
-            if interactive:
-                self._emit_interactive_trajectory(plan.trajectory_world)
-            else:
-                self._state.trajectory.plan_version = int(plan.plan_version)
-                self._state.trajectory.trajectory_world = np.asarray(plan.trajectory_world, dtype=np.float32).copy()
-        else:
-            if interactive:
-                self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
-            else:
-                self._state.trajectory.plan_version = int(plan.plan_version)
-                self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
-        self._state.trajectory.planner_control_mode = planner_mode
-        self._state.trajectory.planner_yaw_delta_rad = planner_yaw_delta
-        self._state.trajectory.planner_control_reason = planner_reason
-        self._state.trajectory.used_cached_traj = bool(plan.used_cached_traj if planner_mode == "trajectory" else False)
-        self._state.trajectory.stale_sec = float(plan.stale_sec)
-        self._state.goal.goal_version = int(plan.goal_version)
-        self._state.goal.traj_version = int(plan.traj_version)
-        self._state.goal.system2_pixel_goal = None
-        if plan.pixel_goal is not None:
-            pixel_goal = np.asarray(plan.pixel_goal, dtype=np.float32).reshape(-1)
-            if pixel_goal.shape[0] >= 2 and np.all(np.isfinite(pixel_goal[:2])):
-                self._state.goal.system2_pixel_goal = [int(round(float(pixel_goal[0]))), int(round(float(pixel_goal[1])))]
-        self._state.trajectory.stats = PlannerStats(
-            successful_calls=int(plan.successful_calls),
-            failed_calls=int(plan.failed_calls),
-            latency_ms=float(plan.latency_ms),
-            last_error=str(plan.last_error),
-            last_plan_step=int(plan.source_frame_id),
-        )
-
     def _emit_interactive_trajectory(self, trajectory_world: np.ndarray) -> None:
         traj = np.asarray(trajectory_world, dtype=np.float32)
         if traj.size == 0:
             traj = np.zeros((0, 3), dtype=np.float32)
         self._state.interactive.session_plan_version += 1
         self._state.trajectory.plan_version = int(self._state.interactive.session_plan_version)
+        self._state.trajectory.last_plan_stamp_s = time.monotonic()
         self._state.trajectory.trajectory_world = traj.copy()
 
     def _interactive_clear_active_task(self) -> None:
         self._state.interactive.active_command_id = -1
         self._state.interactive.active_instruction = ""
         if self._interactive_enabled():
-            self._state.goal.dual_instruction = ""
+            self._state.goal.nav_instruction = ""
 
     def _build_update(
         self,

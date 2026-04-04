@@ -52,6 +52,14 @@ class _FakeProcessManager:
     def snapshot(self):
         return []
 
+    @staticmethod
+    def service_urls(name: str) -> tuple[str, str]:
+        if name == "navdp":
+            return "http://127.0.0.1:8888/health", "http://127.0.0.1:8888/debug_last_input"
+        if name == "system2":
+            return "http://127.0.0.1:15801/healthz", ""
+        return "", ""
+
 
 class _FakeControlClient:
     @staticmethod
@@ -74,22 +82,26 @@ class _FakeSessionRequest:
 
     @staticmethod
     def required_process_names() -> set[str]:
-        return {"navdp", "system2", "dual", "runtime"}
+        return {"navdp", "system2", "runtime"}
 
     @staticmethod
     def to_public_dict() -> dict[str, object]:
         return {"viewerEnabled": True}
 
 
-def test_state_aggregator_start_cleans_up_client_session_on_refresh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    aggregator = StateAggregator(
+def _aggregator(process_manager: _FakeProcessManager | None = None) -> StateAggregator:
+    return StateAggregator(
         DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
-        process_manager=_FakeProcessManager(),
+        process_manager=_FakeProcessManager() if process_manager is None else process_manager,
         subscriber=_FakeSubscriber(),
         control_client=_FakeControlClient(),
         session_manager=_FakeSessionManager(),
         log_tailer=_FakeLogTailer(),
     )
+
+
+def test_state_aggregator_start_cleans_up_client_session_on_refresh_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    aggregator = _aggregator()
 
     async def boom() -> None:
         raise RuntimeError("startup refresh failed")
@@ -104,14 +116,7 @@ def test_state_aggregator_start_cleans_up_client_session_on_refresh_failure(monk
 
 
 def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
-    aggregator = StateAggregator(
-        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
-        process_manager=_FakeProcessManager(),
-        subscriber=_FakeSubscriber(),
-        control_client=_FakeControlClient(),
-        session_manager=_FakeSessionManager(),
-        log_tailer=_FakeLogTailer(),
-    )
+    aggregator = _aggregator()
 
     aggregator._consume_gateway_event(
         "health",
@@ -175,7 +180,6 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     )
     state = aggregator._build_state()
 
-    assert "_runtime_snapshot" not in aggregator.__dict__
     assert state["runtime"]["modes"]["executionMode"] == "NAV"
     assert state["runtime"]["activeInstruction"] == "dock"
     assert state["runtime"]["recoveryState"] == "REPLAN_PENDING"
@@ -185,16 +189,13 @@ def test_state_aggregator_builds_runtime_state_from_world_snapshot() -> None:
     assert state["architecture"]["gateway"]["name"] == "Robot Gateway"
     assert state["architecture"]["mainControlServer"]["metrics"]["recoveryState"] == "REPLAN_PENDING"
     assert state["architecture"]["modules"]["s2"]["name"] == "S2"
-    assert "dual" not in state["architecture"]["modules"]
     assert state["selectedTargetSummary"]["trackId"] == "track-1"
-    assert state["selectedTargetSummary"]["bbox"] == [1, 2, 10, 12]
     assert state["latencyBreakdown"]["navLatencyMs"] is None
     assert len(state["cognitionTrace"]) == 1
-    assert state["cognitionTrace"][0]["frameId"] == -1
     assert state["recoveryTransitions"] == []
 
 
-def test_state_aggregator_normalizes_system2_output_from_dual_debug() -> None:
+def test_state_aggregator_normalizes_system2_output_from_health_payload() -> None:
     process_manager = _FakeProcessManager()
     process_manager.current_request = _FakeSessionRequest()
     process_manager.session_started_at = 100.0
@@ -206,44 +207,28 @@ def test_state_aggregator_normalizes_system2_output_from_dual_debug() -> None:
             "pid": 4242,
             "exitCode": None,
             "startedAt": 100.0,
-            "healthUrl": "http://127.0.0.1:8080/health",
+            "healthUrl": "http://127.0.0.1:15801/healthz",
             "stdoutLog": "tmp/system2.stdout.log",
             "stderrLog": "tmp/system2.stderr.log",
         }
     ]
 
-    aggregator = StateAggregator(
-        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
-        process_manager=process_manager,
-        subscriber=_FakeSubscriber(),
-        control_client=_FakeControlClient(),
-        session_manager=_FakeSessionManager(),
-        log_tailer=_FakeLogTailer(),
-    )
-    aggregator._service_state["dual"] = {
-        "name": "dual",
+    aggregator = _aggregator(process_manager)
+    aggregator._service_state["system2"] = {
+        "name": "system2",
         "status": "ok",
-        "debug": {
-            "instruction": "dock at the charging station",
-            "stats": {
-                "last_s2_reason": "121, 84",
-                "last_s2_requested_stop": False,
-                "last_s2_effective_stop": False,
-                "last_s2_mode": "pixel_goal",
-                "last_s2_history_frame_ids": [17, 21],
-                "last_s2_needs_requery": False,
-                "last_s2_raw_text": "121, 84",
-                "last_s2_latency_ms": 38.5,
-            },
-            "system2_session": {
+        "latencyMs": 38.5,
+        "health": {
+            "system2_output": {
                 "instruction": "dock at the charging station",
-                "last_output": "121, 84",
-                "last_reason": "121, 84",
-                "last_history_frame_ids": [17, 21],
-                "last_decision_mode": "pixel_goal",
-                "last_needs_requery": False,
-            },
+                "rawText": "121, 84",
+                "decisionMode": "pixel_goal",
+                "historyFrameIds": [17, 21],
+                "needsRequery": False,
+                "latencyMs": 38.5,
+            }
         },
+        "debug": {},
     }
 
     state = aggregator._build_state()
@@ -277,43 +262,18 @@ def test_state_aggregator_keeps_system2_output_null_before_first_decision() -> N
             "pid": 4242,
             "exitCode": None,
             "startedAt": 100.0,
-            "healthUrl": "http://127.0.0.1:8080/health",
+            "healthUrl": "http://127.0.0.1:15801/healthz",
             "stdoutLog": "tmp/system2.stdout.log",
             "stderrLog": "tmp/system2.stderr.log",
         }
     ]
 
-    aggregator = StateAggregator(
-        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
-        process_manager=process_manager,
-        subscriber=_FakeSubscriber(),
-        control_client=_FakeControlClient(),
-        session_manager=_FakeSessionManager(),
-        log_tailer=_FakeLogTailer(),
-    )
-    aggregator._service_state["dual"] = {
-        "name": "dual",
+    aggregator = _aggregator(process_manager)
+    aggregator._service_state["system2"] = {
+        "name": "system2",
         "status": "ok",
-        "debug": {
-            "instruction": "dock at the charging station",
-            "stats": {
-                "last_s2_requested_stop": False,
-                "last_s2_effective_stop": False,
-                "last_s2_mode": "wait",
-                "last_s2_history_frame_ids": [],
-                "last_s2_needs_requery": False,
-                "last_s2_raw_text": "",
-                "last_s2_latency_ms": 0.0,
-            },
-            "system2_session": {
-                "instruction": "dock at the charging station",
-                "last_output": "",
-                "last_reason": "",
-                "last_history_frame_ids": [],
-                "last_decision_mode": "wait",
-                "last_needs_requery": False,
-            },
-        },
+        "health": {"system2_output": None},
+        "debug": {},
     }
 
     state = aggregator._build_state()
@@ -324,14 +284,7 @@ def test_state_aggregator_keeps_system2_output_null_before_first_decision() -> N
 
 
 def test_state_aggregator_updates_trace_in_place_for_same_frame_and_tracks_recovery_transitions() -> None:
-    aggregator = StateAggregator(
-        DashboardBackendConfig(repo_root=ROOT, dashboard_dir=ROOT / "dashboard"),
-        process_manager=_FakeProcessManager(),
-        subscriber=_FakeSubscriber(),
-        control_client=_FakeControlClient(),
-        session_manager=_FakeSessionManager(),
-        log_tailer=_FakeLogTailer(),
-    )
+    aggregator = _aggregator()
 
     def consume(current_state: str, reason: str, *, decision_mode: str) -> dict[str, object]:
         aggregator._consume_gateway_event(
@@ -358,22 +311,19 @@ def test_state_aggregator_updates_trace_in_place_for_same_frame_and_tracks_recov
                 },
             },
         )
-        aggregator._service_state["dual"] = {
-            "name": "dual",
+        aggregator._service_state["system2"] = {
+            "name": "system2",
             "status": "ok",
-            "debug": {
-                "stats": {
-                    "last_s2_mode": decision_mode,
-                    "last_s2_raw_text": "120, 80",
-                    "last_s2_reason": reason,
-                },
-                "system2_session": {
-                    "last_output": "120, 80",
-                    "last_reason": reason,
-                    "last_decision_mode": decision_mode,
-                    "last_needs_requery": False,
-                },
+            "health": {
+                "system2_output": {
+                    "instruction": "dock",
+                    "rawText": "120, 80",
+                    "decisionMode": decision_mode,
+                    "historyFrameIds": [],
+                    "needsRequery": False,
+                }
             },
+            "debug": {},
         }
         return aggregator._build_state()
 

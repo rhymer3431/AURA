@@ -79,14 +79,14 @@ class PlannerCoordinator:
         except TypeError:
             self._transport.ensure_navdp_service_ready(context=context)
 
-    def ensure_dual_service_ready(self, *, context: str) -> None:
+    def ensure_system2_service_ready(self, *, context: str) -> None:
         try:
-            self._transport.ensure_dual_service_ready(
+            self._transport.ensure_system2_service_ready(
                 context=context,
                 launcher_processes=self._runtime_state.launcher_processes,
             )
         except TypeError:
-            self._transport.ensure_dual_service_ready(context=context)
+            self._transport.ensure_system2_service_ready(context=context)
 
     def activate_interactive_roaming(self, reason: str) -> bool:
         if self._engine is None:
@@ -105,15 +105,15 @@ class PlannerCoordinator:
         self.set_execution_mode("IDLE")
         _ = reason
 
-    def start_dual_task(self, instruction: str, *, mode: ExecutionMode = "NAV") -> None:
+    def start_nav_task(self, instruction: str, *, mode: ExecutionMode = "NAV") -> None:
         self.set_execution_mode(mode)
         if self._engine is None:
-            starter = getattr(self._transport, "start_dual_task", None)
+            starter = getattr(self._transport, "start_nav_task", None)
             if callable(starter):
                 starter(instruction)
                 return
-            raise RuntimeError("planner transport does not support dual startup")
-        self._engine.start_dual_task(instruction)
+            raise RuntimeError("planner transport does not support NAV task startup")
+        self._engine.start_nav_task(instruction)
 
     def submit_interactive_instruction(self, instruction: str) -> int:
         if self._engine is None:
