@@ -14,7 +14,7 @@ import requests
 from adapters.sensors.d455_sensor import D455SensorAdapter, D455SensorAdapterConfig
 from control.async_planners import AsyncNoGoalPlanner, AsyncPointGoalPlanner
 from inference.navdp import InProcessNavDPClient, create_inprocess_navdp_client
-from inference.vlm import System2Session, System2SessionConfig
+from inference.vlm import AsyncSystem2Planner, System2Session, System2SessionConfig
 from ipc.messages import ActionCommand
 from memory.models import MemoryContextBundle
 
@@ -209,6 +209,7 @@ class PlanningSession:
         self.pointgoal_planner: AsyncPointGoalPlanner | None = None
         self.nogoal_planner: AsyncNoGoalPlanner | None = None
         self.system2_client: System2Session | None = None
+        self.system2_planner: AsyncSystem2Planner | None = None
         self._intrinsic = np.eye(3, dtype=np.float32)
         self.last_sensor_init_report: dict[str, Any] = {}
         self._legacy_engine = None
@@ -267,9 +268,11 @@ class PlanningSession:
         self.pointgoal_planner.start()
         self.nogoal_planner.start()
         self.system2_client = system2_client or self.system2_client_factory(self.args)
+        self.system2_planner = AsyncSystem2Planner(self.system2_client)
+        self.system2_planner.start()
 
     def shutdown(self) -> None:
-        for planner in (self.pointgoal_planner, self.nogoal_planner):
+        for planner in (self.pointgoal_planner, self.nogoal_planner, self.system2_planner):
             if planner is not None:
                 planner.stop()
 

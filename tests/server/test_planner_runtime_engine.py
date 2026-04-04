@@ -12,6 +12,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from control.async_planners import PlannerInput, PlannerOutput
+from inference.vlm import AsyncSystem2Output
+from inference.vlm.system2_session import System2Result
 from ipc.messages import ActionCommand
 from runtime.planning_session import ExecutionObservation, PlanningSession
 from server.planner_runtime_engine import PlannerRuntimeEngine
@@ -75,7 +77,7 @@ class _FakeSystem2Client:
     def reset(self, instruction: str) -> None:
         self.reset_calls.append(str(instruction))
 
-    def step_session(self, *, session_id: str, rgb, depth, stamp_s: float):  # noqa: ANN001
+    def step_session(self, *, rgb, depth, stamp_s: float, session_id: str | None = None):  # noqa: ANN001
         _ = session_id, rgb, depth, stamp_s
         if not self.results:
             raise AssertionError("step_session called without a prepared result")
@@ -109,6 +111,34 @@ class _FakePlanner:
 
     def snapshot_status(self):
         return self.status
+
+
+class _FakeSystem2AsyncPlanner:
+    def __init__(self) -> None:
+        self.outputs: list[AsyncSystem2Output | None] = []
+        self.submitted: list[object] = []
+        self.reset_calls = 0
+        self.pending = False
+
+    def reset_state(self) -> None:
+        self.reset_calls += 1
+        self.outputs.clear()
+        self.submitted.clear()
+        self.pending = False
+
+    def submit(self, planner_input) -> None:  # noqa: ANN001
+        self.submitted.append(planner_input)
+        self.pending = True
+
+    def has_pending_work(self) -> bool:
+        return bool(self.pending)
+
+    def consume_latest(self, last_seen_version: int):  # noqa: ANN001
+        _ = last_seen_version
+        if not self.outputs:
+            return None
+        self.pending = False
+        return self.outputs.pop(0)
 
 
 def _make_session(*, mode: str) -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeSystem2Client]:
@@ -262,3 +292,58 @@ def test_planner_runtime_engine_interactive_path_promotes_pending_instruction_in
     assert update.interactive_command_id == 1
     assert update.interactive_instruction == "go to the loading dock"
     assert state.goal.system2_pixel_goal == [5, 4]
+
+
+def test_planner_runtime_engine_consumes_async_system2_results_without_direct_session_call() -> None:
+    session, _nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav")
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(_args(planner_mode="nav"), transport=session, state=state)
+    async_planner = _FakeSystem2AsyncPlanner()
+    session.system2_planner = async_planner
+
+    system2_client.step_session = lambda **kwargs: (_ for _ in ()).throw(AssertionError("direct System2 path should not be used"))  # type: ignore[method-assign]
+
+    engine.start_nav_task("head to the async dock")
+    pointgoal_planner.outputs = [
+        PlannerOutput(
+            plan_version=0,
+            source_frame_id=4,
+            trajectory_world=np.asarray([[0.25, 0.0, 0.0], [0.55, 0.1, 0.0]], dtype=np.float32),
+            latency_ms=2.0,
+            successful_calls=1,
+            failed_calls=0,
+            last_error="",
+        )
+    ]
+    pointgoal_planner.status = (1, 0, "", 2.0)
+    async_planner.outputs = [
+        AsyncSystem2Output(
+            result_version=0,
+            source_frame_id=4,
+            result=System2Result(
+                status="goal",
+                uv_norm=np.asarray([0.5, 0.5], dtype=np.float32),
+                text="pixel_goal:5,4",
+                latency_ms=12.0,
+                stamp_s=1.0,
+                pixel_xy=np.asarray([5.0, 4.0], dtype=np.float32),
+                decision_mode="pixel_goal",
+            ),
+        )
+    ]
+    update = engine.plan_with_observation(
+        _observation(4),
+        action_command=_planner_managed_command(task_id="nav"),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert system2_client.reset_calls == ["head to the async dock"]
+    assert async_planner.reset_calls == 1
+    assert navdp_client.reset_calls == 1
+    assert state.goal.system2_result_version == 0
+    assert state.goal.system2_pixel_goal == [5, 4]
+    assert update.goal_version == 0
+    assert update.traj_version == 0
+    assert len(pointgoal_planner.submitted) == 1

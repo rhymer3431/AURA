@@ -1,6 +1,9 @@
 """Optional VLM/System2 package."""
 
 from .system2_session import (
+    AsyncSystem2Input,
+    AsyncSystem2Output,
+    AsyncSystem2Planner,
     System2Decision,
     System2Request,
     System2Result,
@@ -18,6 +21,9 @@ from .system2_session import (
 )
 
 __all__ = [
+    "AsyncSystem2Input",
+    "AsyncSystem2Output",
+    "AsyncSystem2Planner",
     "System2Decision",
     "System2Request",
     "System2Result",

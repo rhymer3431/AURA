@@ -12,7 +12,7 @@ from control.async_planners import (
     PlannerInput,
     PlannerOutput,
 )
-from inference.vlm import resolve_goal_world_xy_from_pixel
+from inference.vlm import AsyncSystem2Input, System2Result, resolve_goal_world_xy_from_pixel
 from ipc.messages import ActionCommand
 from runtime.global_route import GlobalRoutePlanner
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
@@ -60,12 +60,16 @@ class PlannerRuntimeEngine:
         self._state.trajectory.stale_sec = -1.0
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
+        self._state.goal.system2_result_version = -1
         self._state.goal.system2_pixel_goal = None
+        self._state.goal.system2_submit_ts = 0.0
         self._state.goal.system2_response_ts = time.perf_counter()
         self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
         self._state.interactive.last_nogoal_plan_version = -1
         self._state.interactive.last_nav_plan_version = -1
         self._state.trajectory.stats = PlannerStats()
+        if getattr(self._transport, "system2_planner", None) is not None:
+            self._transport.system2_planner.reset_state()
 
     def submit_interactive_instruction(self, instruction: str) -> int:
         if not self._interactive_enabled():
@@ -470,18 +474,35 @@ class PlannerRuntimeEngine:
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> None:
+        planner = getattr(self._transport, "system2_planner", None)
+        if planner is not None:
+            self._consume_async_system2_result(
+                observation,
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+            )
+            if not self._system2_query_due(now=time.monotonic()):
+                return
+            if planner.has_pending_work():
+                return
+            planner.submit(
+                AsyncSystem2Input(
+                    frame_id=int(observation.frame_id),
+                    rgb=observation.rgb,
+                    depth=observation.depth,
+                    stamp_s=time.monotonic(),
+                )
+            )
+            self._state.goal.system2_submit_ts = time.monotonic()
+            return
+
         now = time.monotonic()
-        should_query = (
-            self._state.goal.goal_version < 0
-            or (now - float(self._state.goal.system2_response_ts)) >= max(float(getattr(self._args, "s2_period_sec", 1.0)), 0.05)
-        )
-        if not should_query:
+        if not self._system2_query_due(now=now):
             return
         if getattr(self._transport, "system2_client", None) is None:
             return
         try:
             result = self._transport.system2_client.step_session(
-                session_id=self._transport.system2_client.session_id,
                 rgb=observation.rgb,
                 depth=observation.depth,
                 stamp_s=now,
@@ -495,7 +516,51 @@ class PlannerRuntimeEngine:
                 last_plan_step=int(observation.frame_id),
             )
             return
-        self._state.goal.system2_response_ts = now
+        self._state.goal.system2_submit_ts = now
+        self._state.goal.system2_response_ts = time.monotonic()
+        self._state.goal.system2_result_version += 1
+        self._apply_system2_result(
+            observation,
+            result=result,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
+        )
+
+    def _system2_query_due(self, *, now: float) -> bool:
+        interval = max(float(getattr(self._args, "s2_period_sec", 1.0)), 0.05)
+        last_query_ts = max(float(self._state.goal.system2_submit_ts), float(self._state.goal.system2_response_ts))
+        return self._state.goal.system2_result_version < 0 or (float(now) - last_query_ts) >= interval
+
+    def _consume_async_system2_result(
+        self,
+        observation: ExecutionObservation,
+        *,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> None:
+        planner = getattr(self._transport, "system2_planner", None)
+        if planner is None:
+            return
+        latest = planner.consume_latest(self._state.goal.system2_result_version)
+        if latest is None:
+            return
+        self._state.goal.system2_result_version = int(latest.result_version)
+        self._state.goal.system2_response_ts = time.monotonic()
+        self._apply_system2_result(
+            observation,
+            result=latest.result,
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
+        )
+
+    def _apply_system2_result(
+        self,
+        observation: ExecutionObservation,
+        *,
+        result: System2Result,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> None:
         decision_mode = str(result.decision_mode or "wait").strip().lower() or "wait"
         self._state.goal.system2_pixel_goal = None
         if result.pixel_xy is not None:
@@ -699,9 +764,13 @@ class PlannerRuntimeEngine:
         self._state.trajectory.stale_sec = -1.0
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
+        self._state.goal.system2_result_version = -1
         self._state.goal.system2_pixel_goal = None
+        self._state.goal.system2_submit_ts = 0.0
         self._state.goal.system2_response_ts = time.perf_counter()
         self._state.trajectory.stats = PlannerStats()
+        if getattr(self._transport, "system2_planner", None) is not None:
+            self._transport.system2_planner.reset_state()
         self._emit_interactive_trajectory(np.zeros((0, 3), dtype=np.float32))
         return True
 
@@ -738,7 +807,9 @@ class PlannerRuntimeEngine:
         self._state.trajectory.stale_sec = -1.0
         self._state.goal.goal_version = -1
         self._state.goal.traj_version = -1
+        self._state.goal.system2_result_version = -1
         self._state.goal.system2_pixel_goal = None
+        self._state.goal.system2_submit_ts = 0.0
         self._state.goal.system2_response_ts = time.perf_counter()
         self._state.trajectory.stats = PlannerStats()
         return True

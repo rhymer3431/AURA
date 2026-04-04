@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import io
 import json
+import threading
 import time
 import uuid
 from typing import Any
@@ -106,6 +107,21 @@ class System2Request:
 
 
 @dataclass(frozen=True)
+class AsyncSystem2Input:
+    frame_id: int
+    rgb: np.ndarray
+    depth: np.ndarray
+    stamp_s: float
+
+
+@dataclass(frozen=True)
+class AsyncSystem2Output:
+    result_version: int
+    source_frame_id: int
+    result: System2Result
+
+
+@dataclass(frozen=True)
 class System2SessionResult:
     ok: bool
     decision: System2Decision | None = None
@@ -121,6 +137,21 @@ class System2SessionConfig:
     model: str = "internvla"
     timeout_sec: float = 35.0
     language: str = "auto"
+
+
+def _clone_system2_result(result: System2Result) -> System2Result:
+    return System2Result(
+        status=str(result.status),
+        uv_norm=None if result.uv_norm is None else np.asarray(result.uv_norm, dtype=np.float32).copy(),
+        text=str(result.text),
+        latency_ms=float(result.latency_ms),
+        stamp_s=float(result.stamp_s),
+        pixel_xy=None if result.pixel_xy is None else np.asarray(result.pixel_xy, dtype=np.float32).copy(),
+        decision_mode=None if result.decision_mode is None else str(result.decision_mode),
+        action_sequence=None if result.action_sequence is None else tuple(str(item) for item in result.action_sequence),
+        needs_requery=bool(result.needs_requery),
+        raw_payload=None if result.raw_payload is None else dict(result.raw_payload),
+    )
 
 
 def normalized_uv_to_pixel_xy(uv_norm: np.ndarray, *, image_width: int, image_height: int) -> tuple[int, int]:
@@ -353,16 +384,25 @@ class System2Session:
         self._needs_reset = True
         self._request_idx = 0
         self._session_id = f"system2-{uuid.uuid4().hex}"
+        self._lock = threading.Lock()
 
     @property
     def session_id(self) -> str:
-        return self._session_id
+        with self._lock:
+            return self._session_id
 
     @property
     def instruction(self) -> str:
-        return self._instruction
+        with self._lock:
+            return self._instruction
 
-    def reset(self, instruction: str, *, language: str | None = None) -> None:
+    def _reset_unlocked(
+        self,
+        instruction: str,
+        *,
+        language: str | None = None,
+        keep_session_id: bool = False,
+    ) -> None:
         normalized_instruction = " ".join(str(instruction).strip().split())
         if normalized_instruction == "":
             raise ValueError("instruction is required.")
@@ -371,7 +411,12 @@ class System2Session:
             self._language = str(language).strip()
         self._needs_reset = True
         self._request_idx = 0
-        self._session_id = f"system2-{uuid.uuid4().hex}"
+        if not keep_session_id:
+            self._session_id = f"system2-{uuid.uuid4().hex}"
+
+    def reset(self, instruction: str, *, language: str | None = None) -> None:
+        with self._lock:
+            self._reset_unlocked(instruction, language=language)
 
     def reset_session(
         self,
@@ -383,17 +428,18 @@ class System2Session:
         image_height: int,
     ) -> dict[str, Any]:
         del image_width, image_height
-        self._session_id = str(session_id).strip() or f"system2-{uuid.uuid4().hex}"
-        self.reset(instruction, language=language)
-        return {
-            "status": "ok",
-            "session_id": self._session_id,
-            "reset_queued": True,
-            "instruction": self._instruction,
-            "language": self._language,
-        }
+        with self._lock:
+            self._session_id = str(session_id).strip() or f"system2-{uuid.uuid4().hex}"
+            self._reset_unlocked(instruction, language=language, keep_session_id=True)
+            return {
+                "status": "ok",
+                "session_id": self._session_id,
+                "reset_queued": True,
+                "instruction": self._instruction,
+                "language": self._language,
+            }
 
-    def prepare_request(self, *, frame_id: int, width: int, height: int) -> System2Request:
+    def _prepare_request_unlocked(self, *, frame_id: int, width: int, height: int) -> System2Request:
         if self._instruction == "":
             raise RuntimeError("System2Session.reset() must be called before prepare_request().")
         return System2Request(
@@ -410,43 +456,29 @@ class System2Session:
             },
         )
 
+    def prepare_request(self, *, frame_id: int, width: int, height: int) -> System2Request:
+        with self._lock:
+            return self._prepare_request_unlocked(frame_id=frame_id, width=width, height=height)
+
     def step_session(
         self,
         *,
-        session_id: str,
+        session_id: str | None = None,
         rgb: np.ndarray,
         depth: np.ndarray,
         stamp_s: float,
         force_infer: bool = False,
     ) -> System2Result:
         del force_infer
-        self._session_id = str(session_id).strip() or self._session_id
-        request = self.prepare_request(frame_id=int(self._request_idx), width=int(np.asarray(rgb).shape[1]), height=int(np.asarray(rgb).shape[0]))
-        start = time.monotonic()
-        response = requests.post(
-            f"{self._server_url}/navigation",
-            files={
-                "image": ("rgb.jpg", _image_bytes(rgb), "image/jpeg"),
-                "depth": ("depth.png", _depth_bytes(depth), "image/png"),
-            },
-            data={"json": json.dumps(request.body)},
-            timeout=float(self.config.timeout_sec),
-        )
-        response.raise_for_status()
-        payload = response.json()
-        self._needs_reset = False
-        self._request_idx += 1
-        return _normalize_eval_response(
-            payload,
-            image_width=int(np.asarray(rgb).shape[1]),
-            image_height=int(np.asarray(rgb).shape[0]),
-            stamp_s=float(stamp_s),
-            latency_ms=(time.monotonic() - start) * 1000.0,
-        )
-
-    def execute_request(self, request: System2Request, *, rgb: np.ndarray, depth: np.ndarray, stamp_s: float) -> System2SessionResult:
-        start = time.perf_counter()
-        try:
+        with self._lock:
+            if session_id is not None:
+                self._session_id = str(session_id).strip() or self._session_id
+            request = self._prepare_request_unlocked(
+                frame_id=int(self._request_idx),
+                width=int(np.asarray(rgb).shape[1]),
+                height=int(np.asarray(rgb).shape[0]),
+            )
+            start = time.monotonic()
             response = requests.post(
                 f"{self._server_url}/navigation",
                 files={
@@ -458,45 +490,196 @@ class System2Session:
             )
             response.raise_for_status()
             payload = response.json()
-            result = _normalize_eval_response(
-                payload,
-                image_width=int(request.width),
-                image_height=int(request.height),
-                stamp_s=float(stamp_s),
-                latency_ms=(time.perf_counter() - start) * 1000.0,
-            )
             self._needs_reset = False
             self._request_idx += 1
-            return System2SessionResult(
-                ok=True,
-                decision=System2Decision(
-                    mode=str(result.decision_mode or "wait"),
-                    pixel_goal=None if result.pixel_xy is None else (
-                        int(round(float(result.pixel_xy[0]))),
-                        int(round(float(result.pixel_xy[1]))),
-                    ),
-                    reason=str(result.text),
-                    raw_text=str(result.text),
-                    needs_requery=bool(result.needs_requery),
-                ),
-                latency_ms=float(result.latency_ms),
-                source="internvla",
-                raw_payload=dict(payload) if isinstance(payload, dict) else None,
-            )
-        except Exception as exc:  # noqa: BLE001
-            return System2SessionResult(
-                ok=False,
-                latency_ms=(time.perf_counter() - start) * 1000.0,
-                error=f"{type(exc).__name__}: {exc}",
-                source="internvla",
+            return _normalize_eval_response(
+                payload,
+                image_width=int(np.asarray(rgb).shape[1]),
+                image_height=int(np.asarray(rgb).shape[0]),
+                stamp_s=float(stamp_s),
+                latency_ms=(time.monotonic() - start) * 1000.0,
             )
 
+    def execute_request(self, request: System2Request, *, rgb: np.ndarray, depth: np.ndarray, stamp_s: float) -> System2SessionResult:
+        with self._lock:
+            start = time.perf_counter()
+            try:
+                response = requests.post(
+                    f"{self._server_url}/navigation",
+                    files={
+                        "image": ("rgb.jpg", _image_bytes(rgb), "image/jpeg"),
+                        "depth": ("depth.png", _depth_bytes(depth), "image/png"),
+                    },
+                    data={"json": json.dumps(request.body)},
+                    timeout=float(self.config.timeout_sec),
+                )
+                response.raise_for_status()
+                payload = response.json()
+                result = _normalize_eval_response(
+                    payload,
+                    image_width=int(request.width),
+                    image_height=int(request.height),
+                    stamp_s=float(stamp_s),
+                    latency_ms=(time.perf_counter() - start) * 1000.0,
+                )
+                self._needs_reset = False
+                self._request_idx += 1
+                return System2SessionResult(
+                    ok=True,
+                    decision=System2Decision(
+                        mode=str(result.decision_mode or "wait"),
+                        pixel_goal=None if result.pixel_xy is None else (
+                            int(round(float(result.pixel_xy[0]))),
+                            int(round(float(result.pixel_xy[1]))),
+                        ),
+                        reason=str(result.text),
+                        raw_text=str(result.text),
+                        needs_requery=bool(result.needs_requery),
+                    ),
+                    latency_ms=float(result.latency_ms),
+                    source="internvla",
+                    raw_payload=dict(payload) if isinstance(payload, dict) else None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                return System2SessionResult(
+                    ok=False,
+                    latency_ms=(time.perf_counter() - start) * 1000.0,
+                    error=f"{type(exc).__name__}: {exc}",
+                    source="internvla",
+                )
+
     def debug_state(self) -> dict[str, Any]:
-        return {
-            "session_id": self._session_id,
-            "instruction": self._instruction,
-            "language": self._language,
-            "pending_reset": bool(self._needs_reset),
-            "request_idx": int(self._request_idx),
-            "endpoint": f"{self._server_url}/navigation",
-        }
+        with self._lock:
+            return {
+                "session_id": self._session_id,
+                "instruction": self._instruction,
+                "language": self._language,
+                "pending_reset": bool(self._needs_reset),
+                "request_idx": int(self._request_idx),
+                "endpoint": f"{self._server_url}/navigation",
+            }
+
+
+class AsyncSystem2Planner:
+    def __init__(self, session: System2Session):
+        self._session = session
+        self._lock = threading.Lock()
+        self._request_event = threading.Event()
+        self._stop_event = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._pending: AsyncSystem2Input | None = None
+        self._latest: AsyncSystem2Output | None = None
+        self._result_version = -1
+        self._successful_calls = 0
+        self._failed_calls = 0
+        self._last_error = ""
+        self._last_latency_ms = 0.0
+        self._generation = 0
+        self._busy = False
+
+    def start(self) -> None:
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(target=self._worker, name="system2-async-planner", daemon=True)
+        self._thread.start()
+
+    def stop(self, timeout_sec: float = 2.0) -> None:
+        self._stop_event.set()
+        self._request_event.set()
+        thread = self._thread
+        if thread is not None:
+            thread.join(timeout=max(float(timeout_sec), 0.1))
+
+    def reset_state(self) -> None:
+        with self._lock:
+            self._generation += 1
+            self._pending = None
+            self._latest = None
+            self._result_version = -1
+            self._successful_calls = 0
+            self._failed_calls = 0
+            self._last_error = ""
+            self._last_latency_ms = 0.0
+            self._busy = False
+
+    def submit(self, planner_input: AsyncSystem2Input) -> None:
+        request = AsyncSystem2Input(
+            frame_id=int(planner_input.frame_id),
+            rgb=np.asarray(planner_input.rgb, dtype=np.uint8).copy(),
+            depth=np.asarray(planner_input.depth, dtype=np.float32).copy(),
+            stamp_s=float(planner_input.stamp_s),
+        )
+        with self._lock:
+            self._pending = request
+        self._request_event.set()
+
+    def has_pending_work(self) -> bool:
+        with self._lock:
+            return self._busy or self._pending is not None
+
+    def consume_latest(self, last_seen_version: int) -> AsyncSystem2Output | None:
+        with self._lock:
+            if self._latest is None:
+                return None
+            if self._latest.result_version <= int(last_seen_version):
+                return None
+            latest = self._latest
+        return AsyncSystem2Output(
+            result_version=int(latest.result_version),
+            source_frame_id=int(latest.source_frame_id),
+            result=_clone_system2_result(latest.result),
+        )
+
+    def snapshot_status(self) -> tuple[int, int, str, float]:
+        with self._lock:
+            return (
+                int(self._successful_calls),
+                int(self._failed_calls),
+                str(self._last_error),
+                float(self._last_latency_ms),
+            )
+
+    def _worker(self) -> None:
+        while not self._stop_event.is_set():
+            self._request_event.wait(timeout=0.05)
+            self._request_event.clear()
+            if self._stop_event.is_set():
+                break
+            with self._lock:
+                pending = self._pending
+                generation = int(self._generation)
+                self._pending = None
+                self._busy = pending is not None
+            if pending is None:
+                continue
+
+            start_time = time.perf_counter()
+            try:
+                result = self._session.step_session(
+                    rgb=pending.rgb,
+                    depth=pending.depth,
+                    stamp_s=float(pending.stamp_s),
+                )
+                latency_ms = float(result.latency_ms)
+                with self._lock:
+                    self._busy = False
+                    if generation != self._generation:
+                        continue
+                    self._successful_calls += 1
+                    self._result_version += 1
+                    self._last_error = ""
+                    self._last_latency_ms = latency_ms
+                    self._latest = AsyncSystem2Output(
+                        result_version=int(self._result_version),
+                        source_frame_id=int(pending.frame_id),
+                        result=_clone_system2_result(result),
+                    )
+            except Exception as exc:  # noqa: BLE001
+                latency_ms = (time.perf_counter() - start_time) * 1000.0
+                with self._lock:
+                    self._busy = False
+                    if generation != self._generation:
+                        continue
+                    self._failed_calls += 1
+                    self._last_error = f"{type(exc).__name__}: {exc}"
+                    self._last_latency_ms = float(latency_ms)

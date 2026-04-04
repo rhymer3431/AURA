@@ -17,7 +17,9 @@ class GoalState:
     local_xy: np.ndarray = field(default_factory=lambda: np.zeros(2, dtype=np.float32))
     goal_version: int = -1
     traj_version: int = -1
+    system2_result_version: int = -1
     system2_pixel_goal: list[int] | None = None
+    system2_submit_ts: float = 0.0
     system2_response_ts: float = field(default_factory=time.perf_counter)
     nav_instruction: str = ""
 
@@ -90,7 +92,9 @@ class PlannerRuntimeState:
         self.goal.local_xy = np.zeros(2, dtype=np.float32)
         self.goal.goal_version = -1
         self.goal.traj_version = -1
+        self.goal.system2_result_version = -1
         self.goal.system2_pixel_goal = None
+        self.goal.system2_submit_ts = 0.0
         self.goal.system2_response_ts = time.perf_counter()
         self.goal.nav_instruction = ""
         self.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
