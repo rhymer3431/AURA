@@ -53,6 +53,13 @@ def _trace_runtime_event(message: str) -> None:
         return
 
 
+def _trace_runtime_exception(exc: BaseException) -> None:
+    _trace_runtime_event(f"unhandled exception: {type(exc).__name__}: {exc}")
+    tb = traceback.format_exc()
+    for line in tb.splitlines():
+        _trace_runtime_event(f"traceback: {line}")
+
+
 class AuraRuntimeCommandSource:
     def __init__(
         self,
@@ -447,9 +454,9 @@ class AuraRuntimeCommandSource:
         )
 
     def _publish_notice(self, *, level: str, notice: str, details: dict[str, object] | None = None) -> None:
-        if self._runtime_io is None:
+        if self._runtime_io is None or self._supervisor is None:
             return
-        self.supervisor.bridge.publish_notice(
+        self._supervisor.bridge.publish_notice(
             RuntimeNotice(component="aura_runtime", level=level, notice=notice, details=dict(details or {}))
         )
 
@@ -534,7 +541,7 @@ def main() -> int:
         _trace_runtime_event(f"locomotion runtime returned exit_code={exit_code}")
         return exit_code
     except Exception as exc:  # noqa: BLE001
-        _trace_runtime_event(f"unhandled exception: {type(exc).__name__}: {exc}")
+        _trace_runtime_exception(exc)
         print(f"[G1_POINTGOAL] unhandled exception: {type(exc).__name__}: {exc}")
         print(traceback.format_exc())
         return 1

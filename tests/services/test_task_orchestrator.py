@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from config.memory_policy_config import MemoryPolicyConfig
+from aura_config.memory_policy_config import MemoryPolicyConfig
 from control.behavior_fsm import BehaviorState
 from ipc.messages import ActionStatus, TaskRequest
 from memory.models import ObsObject

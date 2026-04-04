@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from config.memory_policy_config import MemoryPolicyConfig
+from aura_config.memory_policy_config import MemoryPolicyConfig
 
 from .memory_policy_types import MemoryPolicyContext, MemoryPolicyDecision, MemoryPolicyLabel
 

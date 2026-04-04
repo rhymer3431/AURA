@@ -8,7 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from config.memory_policy_config import MemoryPolicyConfig
+from aura_config.memory_policy_config import MemoryPolicyConfig
 from memory.models import MemoryContextBundle, RetrievedMemoryLine, ScratchpadState
 from memory.models import ObsObject
 from services.memory_policy_service import MemoryPolicyService

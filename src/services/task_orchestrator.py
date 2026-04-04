@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from config.memory_policy_config import MemoryPolicyConfig
+from aura_config.memory_policy_config import MemoryPolicyConfig
 from control.behavior_fsm import BehaviorFSM, BehaviorState
 from control.critic import PlanCritic
 from control.recovery import RecoveryPlanner
