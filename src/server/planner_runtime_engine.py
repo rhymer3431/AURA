@@ -593,6 +593,7 @@ class PlannerRuntimeEngine:
                 self._state.trajectory.planner_control_reason = "pixel_goal"
             return
         if decision_mode in {"forward", "yaw_left", "yaw_right", "stop", "wait"}:
+            self._state.trajectory.planner_control_version += 1
             if decision_mode in {"forward", "yaw_left", "yaw_right", "stop"}:
                 self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
                 self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
@@ -604,6 +605,7 @@ class PlannerRuntimeEngine:
             return
         if decision_mode == "look_down":
             if self._state.trajectory.trajectory_world.shape[0] == 0:
+                self._state.trajectory.planner_control_version += 1
                 self._state.trajectory.planner_control_mode = "wait"
                 self._state.trajectory.planner_control_reason = str(result.text)
 
@@ -972,6 +974,7 @@ class PlannerRuntimeEngine:
             action_command=action_command,
             stop=bool(stop),
             planner_control_mode=self._state.trajectory.planner_control_mode,
+            planner_control_version=int(self._state.trajectory.planner_control_version),
             planner_yaw_delta_rad=self._state.trajectory.planner_yaw_delta_rad,
             stale_sec=float(self._state.trajectory.stale_sec),
             goal_version=int(self._state.goal.goal_version),

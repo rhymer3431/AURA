@@ -41,6 +41,7 @@ class LocomotionWorker:
         )
         self._last_applied_plan_version = -1
         self._last_goal_version = -1
+        self._last_planner_control_version = -1
         self._planner_yaw_target_rad: float | None = None
         self._planner_action_mode: str | None = None
         self._planner_action_started_at_s: float = 0.0
@@ -78,6 +79,7 @@ class LocomotionWorker:
         del frame_idx, observation
         update = trajectory_update
         now = time.monotonic()
+        planner_control_version = int(getattr(update, "planner_control_version", -1))
         if update.plan_version > self._last_applied_plan_version:
             if update.planner_control_mode in {None, "trajectory"}:
                 reset_progress = True
@@ -101,23 +103,26 @@ class LocomotionWorker:
                 self._planner_action_mode = None
                 self._planner_action_start_pos_xy = None
             else:
-                self._tracker.clear(timestamp=now)
-                if update.planner_control_mode == "yaw_delta" and update.planner_yaw_delta_rad is not None:
-                    self._planner_yaw_target_rad = wrap_to_pi(float(robot_yaw) + float(update.planner_yaw_delta_rad))
-                    self._planner_action_mode = None
-                    self._planner_action_start_pos_xy = None
-                elif update.planner_control_mode in {"forward", "yaw_left", "yaw_right"}:
-                    self._planner_yaw_target_rad = None
-                    self._planner_action_mode = str(update.planner_control_mode)
-                    self._planner_action_started_at_s = float(now)
-                    self._planner_action_start_pos_xy = np.asarray(robot_pos_world, dtype=np.float32).reshape(-1)[:2].copy()
-                    self._planner_action_start_yaw_rad = float(robot_yaw)
-                else:
-                    self._planner_yaw_target_rad = None
-                    self._planner_action_mode = None
-                    self._planner_action_start_pos_xy = None
+                self._apply_direct_planner_control(
+                    update=update,
+                    now=now,
+                    robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                    robot_yaw=float(robot_yaw),
+                )
             self._last_applied_plan_version = int(update.plan_version)
             self._last_goal_version = int(getattr(update, "goal_version", -1))
+            self._last_planner_control_version = max(self._last_planner_control_version, planner_control_version)
+        elif (
+            update.planner_control_mode not in {None, "trajectory"}
+            and planner_control_version > self._last_planner_control_version
+        ):
+            self._apply_direct_planner_control(
+                update=update,
+                now=now,
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+            )
+            self._last_planner_control_version = planner_control_version
 
         evaluation = self.evaluate_action(
             action_command=action_command,
@@ -155,6 +160,31 @@ class LocomotionWorker:
             evaluation=evaluation,
             metadata=metadata,
         )
+
+    def _apply_direct_planner_control(
+        self,
+        *,
+        update: TrajectoryUpdate,
+        now: float,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> None:
+        self._tracker.clear(timestamp=now)
+        if update.planner_control_mode == "yaw_delta" and update.planner_yaw_delta_rad is not None:
+            self._planner_yaw_target_rad = wrap_to_pi(float(robot_yaw) + float(update.planner_yaw_delta_rad))
+            self._planner_action_mode = None
+            self._planner_action_start_pos_xy = None
+            return
+        if update.planner_control_mode in {"forward", "yaw_left", "yaw_right"}:
+            self._planner_yaw_target_rad = None
+            self._planner_action_mode = str(update.planner_control_mode)
+            self._planner_action_started_at_s = float(now)
+            self._planner_action_start_pos_xy = np.asarray(robot_pos_world, dtype=np.float32).reshape(-1)[:2].copy()
+            self._planner_action_start_yaw_rad = float(robot_yaw)
+            return
+        self._planner_yaw_target_rad = None
+        self._planner_action_mode = None
+        self._planner_action_start_pos_xy = None
 
     def empty_update(
         self,

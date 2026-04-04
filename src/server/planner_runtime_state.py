@@ -30,6 +30,7 @@ class TrajectoryState:
     plan_version: int = -1
     last_plan_stamp_s: float = 0.0
     planner_control_mode: str | None = None
+    planner_control_version: int = -1
     planner_yaw_delta_rad: float | None = None
     planner_control_reason: str = ""
     used_cached_traj: bool = False

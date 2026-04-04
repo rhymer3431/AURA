@@ -92,6 +92,7 @@ def _trajectory_update(
     trajectory_world: np.ndarray,
     plan_version: int,
     planner_control_mode: str | None = None,
+    planner_control_version: int = -1,
     planner_yaw_delta_rad: float | None = None,
     goal_version: int = -1,
 ) -> TrajectoryUpdate:
@@ -102,6 +103,7 @@ def _trajectory_update(
         source_frame_id=1,
         stop=False,
         planner_control_mode=planner_control_mode,
+        planner_control_version=planner_control_version,
         planner_yaw_delta_rad=planner_yaw_delta_rad,
         goal_version=goal_version,
     )
@@ -291,6 +293,69 @@ def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
     np.testing.assert_allclose(wait.command_vector, np.zeros(3, dtype=np.float32))
 
     assert follower.calls == []
+
+
+def test_locomotion_worker_arms_direct_turns_from_planner_control_version() -> None:
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=_FakeFollower())
+
+    yaw_left = worker.execute(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        trajectory_update=_trajectory_update(
+            trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            plan_version=0,
+            planner_control_mode="yaw_left",
+            planner_control_version=0,
+        ),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    assert float(yaw_left.command_vector[2]) > 0.0
+
+    yaw_right = worker.execute(
+        frame_idx=2,
+        observation=_observation(),
+        action_command=_planner_command(),
+        trajectory_update=_trajectory_update(
+            trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            plan_version=0,
+            planner_control_mode="yaw_right",
+            planner_control_version=1,
+        ),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+    assert float(yaw_right.command_vector[2]) < 0.0
+
+
+def test_locomotion_worker_arms_forward_from_planner_control_version() -> None:
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=_FakeFollower())
+
+    proposal = worker.execute(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        trajectory_update=_trajectory_update(
+            trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            plan_version=0,
+            planner_control_mode="forward",
+            planner_control_version=0,
+        ),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert float(proposal.command_vector[0]) > 0.0
 
 
 def test_locomotion_worker_resets_tracker_progress_when_goal_version_changes() -> None:

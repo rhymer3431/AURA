@@ -246,6 +246,7 @@ def test_planner_runtime_engine_uses_direct_action_overrides() -> None:
     )
 
     assert update.planner_control_mode == "forward"
+    assert update.planner_control_version == 0
     assert update.stop is False
     assert len(pointgoal_planner.submitted) == 0
     assert update.trajectory_world.shape == (0, 3)

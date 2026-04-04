@@ -179,6 +179,7 @@ class TrajectoryUpdate:
     action_command: ActionCommand | None = None
     stop: bool = False
     planner_control_mode: str | None = None
+    planner_control_version: int = -1
     planner_yaw_delta_rad: float | None = None
     stale_sec: float = -1.0
     goal_version: int = -1
