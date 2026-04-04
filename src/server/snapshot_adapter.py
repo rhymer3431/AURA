@@ -198,6 +198,9 @@ class SnapshotAdapter:
             system2_pixel_goal = list(world_state.planning.system2_pixel_goal)
 
         action_status = dict(world_state.execution.last_action_status)
+        decision_mode = str(world_state.planning.system2_decision_mode)
+        if decision_mode == "" and system2_output is not None:
+            decision_mode = str(system2_output.get("decisionMode", ""))
         return {
             "timestamp": timestamp,
             "frameId": int(world_state.robot.frame_id),
@@ -209,7 +212,7 @@ class SnapshotAdapter:
             "memoryObjectCount": int(world_state.memory.object_count),
             "memoryPlaceCount": int(world_state.memory.place_count),
             "s2RawText": "" if system2_output is None else str(system2_output.get("rawText", "")),
-            "s2DecisionMode": "" if system2_output is None else str(system2_output.get("decisionMode", "")),
+            "s2DecisionMode": decision_mode,
             "s2NeedsRequery": False if system2_output is None else bool(system2_output.get("needsRequery", False)),
             "system2PixelGoal": system2_pixel_goal,
             "planVersion": int(world_state.planning.plan_version),
@@ -241,6 +244,31 @@ class SnapshotAdapter:
             "plannerYawDeltaRad": world_state.planning.planner_yaw_delta_rad,
             "activeInstruction": str(world_state.planning.active_instruction),
             "routeState": dict(world_state.planning.route_state),
+            "activeGoalMode": str(world_state.planning.active_goal_mode),
+            "activeGoalWorldXy": []
+            if world_state.planning.active_goal_world_xy is None
+            else list(world_state.planning.active_goal_world_xy),
+            "activeGoalLocalXy": []
+            if world_state.planning.active_goal_local_xy is None
+            else list(world_state.planning.active_goal_local_xy),
+            "activePixelGoal": []
+            if world_state.planning.active_pixel_goal is None
+            else list(world_state.planning.active_pixel_goal),
+            "pendingGoalKind": str(world_state.planning.pending_goal_kind),
+            "pendingGoalWorldXy": []
+            if world_state.planning.pending_goal_world_xy is None
+            else list(world_state.planning.pending_goal_world_xy),
+            "pendingPixelGoal": []
+            if world_state.planning.pending_pixel_goal is None
+            else list(world_state.planning.pending_pixel_goal),
+            "directActionMode": str(world_state.planning.direct_action_mode),
+            "directActionQueue": list(world_state.planning.direct_action_queue),
+            "directActionProgress": float(world_state.planning.direct_action_progress),
+            "staleHoldReason": str(world_state.planning.stale_hold_reason),
+            "system2DecisionMode": str(world_state.planning.system2_decision_mode),
+            "system2Error": str(world_state.planning.system2_error),
+            "navdpState": dict(world_state.planning.navdp_state),
+            "locomotionState": dict(world_state.planning.locomotion),
             "goalDistanceM": world_state.execution.locomotion_proposal_summary.get("goal_distance_m"),
             "yawErrorRad": world_state.execution.locomotion_proposal_summary.get("yaw_error_rad"),
             "navTrajectoryWorld": nav_trajectory_world,
@@ -424,6 +452,29 @@ class SnapshotAdapter:
             "plannerYawDeltaRad": world_state.planning.planner_yaw_delta_rad,
             "activeInstruction": str(world_state.planning.active_instruction),
             "routeState": dict(world_state.planning.route_state),
+            "activeGoalMode": str(world_state.planning.active_goal_mode),
+            "activeGoalWorldXy": []
+            if world_state.planning.active_goal_world_xy is None
+            else list(world_state.planning.active_goal_world_xy),
+            "activeGoalLocalXy": []
+            if world_state.planning.active_goal_local_xy is None
+            else list(world_state.planning.active_goal_local_xy),
+            "activePixelGoal": []
+            if world_state.planning.active_pixel_goal is None
+            else list(world_state.planning.active_pixel_goal),
+            "pendingGoalKind": str(world_state.planning.pending_goal_kind),
+            "pendingGoalWorldXy": []
+            if world_state.planning.pending_goal_world_xy is None
+            else list(world_state.planning.pending_goal_world_xy),
+            "pendingPixelGoal": []
+            if world_state.planning.pending_pixel_goal is None
+            else list(world_state.planning.pending_pixel_goal),
+            "directActionMode": str(world_state.planning.direct_action_mode),
+            "directActionQueue": list(world_state.planning.direct_action_queue),
+            "directActionProgress": float(world_state.planning.direct_action_progress),
+            "staleHoldReason": str(world_state.planning.stale_hold_reason),
+            "system2DecisionMode": str(world_state.planning.system2_decision_mode),
+            "system2Error": str(world_state.planning.system2_error),
             "recoveryState": str(world_state.safety.recovery_state.current_state),
             "recoveryEnteredAtNs": int(world_state.safety.recovery_state.entered_at_ns),
             "recoveryRetryCount": int(world_state.safety.recovery_state.retry_count),
@@ -479,6 +530,29 @@ class SnapshotAdapter:
             "plannerYawDeltaRad": world_state.planning.planner_yaw_delta_rad,
             "activeInstruction": str(world_state.planning.active_instruction),
             "routeState": dict(world_state.planning.route_state),
+            "activeGoalMode": str(world_state.planning.active_goal_mode),
+            "activeGoalWorldXy": []
+            if world_state.planning.active_goal_world_xy is None
+            else list(world_state.planning.active_goal_world_xy),
+            "activeGoalLocalXy": []
+            if world_state.planning.active_goal_local_xy is None
+            else list(world_state.planning.active_goal_local_xy),
+            "activePixelGoal": []
+            if world_state.planning.active_pixel_goal is None
+            else list(world_state.planning.active_pixel_goal),
+            "pendingGoalKind": str(world_state.planning.pending_goal_kind),
+            "pendingGoalWorldXy": []
+            if world_state.planning.pending_goal_world_xy is None
+            else list(world_state.planning.pending_goal_world_xy),
+            "pendingPixelGoal": []
+            if world_state.planning.pending_pixel_goal is None
+            else list(world_state.planning.pending_pixel_goal),
+            "directActionMode": str(world_state.planning.direct_action_mode),
+            "directActionQueue": list(world_state.planning.direct_action_queue),
+            "directActionProgress": float(world_state.planning.direct_action_progress),
+            "staleHoldReason": str(world_state.planning.stale_hold_reason),
+            "system2DecisionMode": str(world_state.planning.system2_decision_mode),
+            "system2Error": str(world_state.planning.system2_error),
             "recoveryState": str(world_state.safety.recovery_state.current_state),
             "recoveryEnteredAtNs": int(world_state.safety.recovery_state.entered_at_ns),
             "recoveryRetryCount": int(world_state.safety.recovery_state.retry_count),

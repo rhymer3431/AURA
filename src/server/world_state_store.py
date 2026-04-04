@@ -197,14 +197,75 @@ class WorldStateStore:
         stale_info["goal_version"] = int(update.goal_version)
         stale_info["traj_version"] = int(update.traj_version)
         global_route: dict[str, object] = {}
+        overlay: dict[str, object] = {}
         planner_control_reason = ""
         system2_pixel_goal = None
+        system2_decision_mode = ""
+        system2_error = ""
+        active_goal_mode = ""
+        active_goal_world_xy = None
+        active_goal_local_xy = None
+        active_pixel_goal = None
+        pending_goal_kind = ""
+        pending_goal_world_xy = None
+        pending_pixel_goal = None
+        goal_candidate_sample_count = 0
+        direct_action_mode = ""
+        direct_action_queue: list[str] = []
+        direct_action_progress = 0.0
+        stale_hold_reason = str(getattr(update, "stale_hold_reason", ""))
+        navdp_state: dict[str, object] = {}
+        locomotion_state: dict[str, object] = {}
         if planner_state is not None:
             overlay = planner_state.viewer_overlay_state()
             planner_control_reason = str(overlay.get("planner_control_reason", ""))
             raw_pixel_goal = overlay.get("system2_pixel_goal")
             if isinstance(raw_pixel_goal, list) and len(raw_pixel_goal) >= 2:
                 system2_pixel_goal = [int(raw_pixel_goal[0]), int(raw_pixel_goal[1])]
+            system2_decision_mode = str(overlay.get("latest_system2_decision_mode", ""))
+            system2_error = str(overlay.get("last_system2_error", ""))
+            active_goal_mode = str(overlay.get("active_goal_mode", ""))
+            raw_active_goal_world_xy = overlay.get("active_goal_world_xy")
+            if isinstance(raw_active_goal_world_xy, list) and len(raw_active_goal_world_xy) >= 2:
+                active_goal_world_xy = [float(raw_active_goal_world_xy[0]), float(raw_active_goal_world_xy[1])]
+            raw_active_goal_local_xy = overlay.get("active_goal_local_xy")
+            if isinstance(raw_active_goal_local_xy, list) and len(raw_active_goal_local_xy) >= 2:
+                active_goal_local_xy = [float(raw_active_goal_local_xy[0]), float(raw_active_goal_local_xy[1])]
+            raw_active_pixel_goal = overlay.get("active_pixel_goal")
+            if isinstance(raw_active_pixel_goal, list) and len(raw_active_pixel_goal) >= 2:
+                active_pixel_goal = [int(raw_active_pixel_goal[0]), int(raw_active_pixel_goal[1])]
+            pending_goal_kind = str(overlay.get("pending_goal_kind", ""))
+            raw_pending_goal_world_xy = overlay.get("pending_goal_world_xy")
+            if isinstance(raw_pending_goal_world_xy, list) and len(raw_pending_goal_world_xy) >= 2:
+                pending_goal_world_xy = [float(raw_pending_goal_world_xy[0]), float(raw_pending_goal_world_xy[1])]
+            raw_pending_pixel_goal = overlay.get("pending_pixel_goal")
+            if isinstance(raw_pending_pixel_goal, list) and len(raw_pending_pixel_goal) >= 2:
+                pending_pixel_goal = [int(raw_pending_pixel_goal[0]), int(raw_pending_pixel_goal[1])]
+            goal_candidate_sample_count = int(overlay.get("goal_candidate_sample_count", 0) or 0)
+            direct_action_mode = "" if overlay.get("direct_action_mode") is None else str(overlay.get("direct_action_mode", ""))
+            if isinstance(overlay.get("direct_action_queue"), list):
+                direct_action_queue = [str(item) for item in overlay.get("direct_action_queue", [])]
+            direct_action_progress = float(overlay.get("direct_action_progress", 0.0) or 0.0)
+            stale_hold_reason = str(overlay.get("stale_hold_reason", stale_hold_reason))
+            navdp_state = {
+                "last_request_goal_version": int(overlay.get("navdp_last_request_goal_version", -1) or -1),
+                "last_request_mode": str(overlay.get("navdp_last_request_mode", "")),
+                "last_request_started_at_s": float(overlay.get("navdp_last_request_started_at_s", 0.0) or 0.0),
+                "last_request_source_frame_id": int(overlay.get("navdp_last_request_source_frame_id", -1) or -1),
+                "last_committed_goal_version": int(overlay.get("navdp_last_committed_goal_version", -1) or -1),
+                "last_committed_plan_version": int(overlay.get("navdp_last_committed_plan_version", -1) or -1),
+                "last_discarded_goal_version": int(overlay.get("navdp_last_discarded_goal_version", -1) or -1),
+                "last_discard_reason": str(overlay.get("navdp_last_discard_reason", "")),
+                "request_active": bool(overlay.get("navdp_request_active", False)),
+                "error": str(overlay.get("navdp_error", "")),
+            }
+            locomotion_state = {
+                "state_label": str(overlay.get("locomotion_state_label", "")),
+                "last_command": list(overlay.get("locomotion_last_command", []))
+                if isinstance(overlay.get("locomotion_last_command"), list)
+                else [],
+                "last_command_stamp": float(overlay.get("locomotion_last_command_stamp", 0.0) or 0.0),
+            }
             global_route = {
                 "enabled": bool(overlay.get("global_route_enabled", False)),
                 "active": bool(overlay.get("global_route_active", False)),
@@ -227,6 +288,7 @@ class WorldStateStore:
             mode=self._snapshot.mode,
             update=update,
             global_route=global_route,
+            overlay=overlay,
         )
         planning = PlanningStateSnapshot(
             last_s2_result={
@@ -240,6 +302,9 @@ class WorldStateStore:
                 "interactive_command_id": int(update.interactive_command_id),
                 "interactive_instruction": str(update.interactive_instruction),
                 "system2_pixel_goal": system2_pixel_goal,
+                "decision_mode": system2_decision_mode,
+                "error": system2_error,
+                "raw_result": dict(overlay.get("last_system2_result", {})) if isinstance(overlay.get("last_system2_result"), dict) else {},
             },
             active_nav_plan={
                 "plan_version": int(update.plan_version),
@@ -253,6 +318,9 @@ class WorldStateStore:
                 "stop": bool(update.stop),
                 "used_cached_traj": bool(update.used_cached_traj),
                 "planner_control_reason": planner_control_reason,
+                "planner_control_queue": [str(item) for item in getattr(update, "planner_control_queue", ())],
+                "planner_control_progress": float(getattr(update, "planner_control_progress", 0.0) or 0.0),
+                "stale_hold_reason": stale_hold_reason,
                 "global_route_waypoint_index": int(global_route.get("waypoint_index", 0) or 0),
                 "global_route_waypoint_count": int(global_route.get("waypoint_count", 0) or 0),
             },
@@ -268,6 +336,22 @@ class WorldStateStore:
             if update.planner_yaw_delta_rad is None
             else float(update.planner_yaw_delta_rad),
             system2_pixel_goal=system2_pixel_goal,
+            system2_decision_mode=system2_decision_mode,
+            system2_error=system2_error,
+            active_goal_mode=active_goal_mode,
+            active_goal_world_xy=active_goal_world_xy,
+            active_goal_local_xy=active_goal_local_xy,
+            active_pixel_goal=active_pixel_goal,
+            pending_goal_kind=pending_goal_kind,
+            pending_goal_world_xy=pending_goal_world_xy,
+            pending_pixel_goal=pending_pixel_goal,
+            goal_candidate_sample_count=goal_candidate_sample_count,
+            direct_action_mode=direct_action_mode,
+            direct_action_queue=direct_action_queue,
+            direct_action_progress=direct_action_progress,
+            stale_hold_reason=stale_hold_reason,
+            navdp_state=navdp_state,
+            locomotion=locomotion_state,
             stale_info=stale_info,
             global_route=global_route,
         )
@@ -354,15 +438,39 @@ class WorldStateStore:
         )
 
     @staticmethod
-    def _build_route_state(*, mode: str, update: TrajectoryUpdate, global_route: dict[str, object]) -> dict[str, object]:
+    def _build_route_state(
+        *,
+        mode: str,
+        update: TrajectoryUpdate,
+        global_route: dict[str, object],
+        overlay: dict[str, object] | None = None,
+    ) -> dict[str, object]:
         action_command = update.action_command
         action_metadata = {} if action_command is None else dict(action_command.metadata)
         normalized_mode = normalize_execution_mode(mode)
+        overlay_payload = {} if overlay is None else dict(overlay)
         if normalized_mode == "NAV":
             payload = {
                 "pixelGoal": None,
                 "plannerControlMode": "" if update.planner_control_mode is None else str(update.planner_control_mode),
                 "plannerControlReason": str(action_metadata.get("planner_control_reason", "")),
+                "activeGoalMode": str(overlay_payload.get("active_goal_mode", "")),
+                "activeGoalWorldXy": list(overlay_payload.get("active_goal_world_xy", []))
+                if isinstance(overlay_payload.get("active_goal_world_xy"), list)
+                else [],
+                "pendingGoalKind": str(overlay_payload.get("pending_goal_kind", "")),
+                "pendingGoalWorldXy": list(overlay_payload.get("pending_goal_world_xy", []))
+                if isinstance(overlay_payload.get("pending_goal_world_xy"), list)
+                else [],
+                "pendingPixelGoal": list(overlay_payload.get("pending_pixel_goal", []))
+                if isinstance(overlay_payload.get("pending_pixel_goal"), list)
+                else [],
+                "directActionMode": "" if overlay_payload.get("direct_action_mode") is None else str(overlay_payload.get("direct_action_mode", "")),
+                "directActionQueue": list(overlay_payload.get("direct_action_queue", []))
+                if isinstance(overlay_payload.get("direct_action_queue"), list)
+                else [],
+                "directActionProgress": float(overlay_payload.get("direct_action_progress", 0.0) or 0.0),
+                "staleHoldReason": str(overlay_payload.get("stale_hold_reason", "")),
             }
             raw_goal = action_metadata.get("system2_pixel_goal")
             if isinstance(raw_goal, list) and len(raw_goal) >= 2:

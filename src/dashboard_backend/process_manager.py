@@ -8,6 +8,8 @@ import subprocess
 import time
 from pathlib import Path
 import socket
+from urllib.error import URLError
+from urllib.request import urlopen
 from typing import BinaryIO, Callable
 
 from .config import DashboardBackendConfig
@@ -150,7 +152,7 @@ class ProcessManager:
                 name="navdp",
                 script_path=scripts_dir / "run_system.ps1",
                 args=("-Component", "nav"),
-                health_url=f"{navdp_base_url}/health",
+                health_url=f"{navdp_base_url}/healthz",
                 debug_url=f"{navdp_base_url}/debug_last_input",
                 tcp_ready_host="127.0.0.1",
                 tcp_ready_port=navdp_port,
@@ -237,20 +239,22 @@ class ProcessManager:
         if planned is not None:
             return planned.health_url, planned.debug_url
         if name == "navdp":
-            return "http://127.0.0.1:8888/health", "http://127.0.0.1:8888/debug_last_input"
+            return "http://127.0.0.1:8888/healthz", "http://127.0.0.1:8888/debug_last_input"
         if name == "system2":
             return "http://127.0.0.1:15801/healthz", ""
         return "", ""
 
     async def _wait_ready(self, spec: ProcessSpec, managed: ManagedProcess) -> None:
-        if spec.tcp_ready_host is None or spec.tcp_ready_port is None:
+        if spec.health_url == "" and (spec.tcp_ready_host is None or spec.tcp_ready_port is None):
             await asyncio.sleep(0.5)
             return
         deadline = time.time() + self._startup_timeout_sec
         while time.time() < deadline:
             if managed.poll() is not None:
                 raise RuntimeError(f"{spec.name} exited before becoming ready")
-            if await asyncio.to_thread(self._tcp_ready, spec.tcp_ready_host, spec.tcp_ready_port):
+            if spec.health_url != "" and await asyncio.to_thread(self._http_ready, spec.health_url):
+                return
+            if spec.health_url == "" and await asyncio.to_thread(self._tcp_ready, spec.tcp_ready_host, spec.tcp_ready_port):
                 return
             await asyncio.sleep(0.5)
         raise RuntimeError(f"{spec.name} did not become ready in time")
@@ -310,6 +314,14 @@ class ProcessManager:
             with socket.create_connection((host, port), timeout=1.0):
                 return True
         except OSError:
+            return False
+
+    @staticmethod
+    def _http_ready(url: str) -> bool:
+        try:
+            with urlopen(str(url), timeout=1.5) as response:  # noqa: S310
+                return int(getattr(response, "status", 0) or 0) == 200
+        except (OSError, URLError, ValueError):
             return False
 
     def _default_health_url(self, name: str) -> str:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 import sys
+import time
 
 import numpy as np
 
@@ -20,38 +21,57 @@ from server.planner_runtime_engine import PlannerRuntimeEngine
 from server.planner_runtime_state import PlannerRuntimeState
 
 
-def _args(*, planner_mode: str = "interactive") -> Namespace:
-    return Namespace(
-        planner_mode=planner_mode,
-        server_url="http://127.0.0.1:8888",
-        system2_url="http://127.0.0.1:15801",
-        instruction="head to dock",
-        use_trajectory_z=False,
-        plan_wait_timeout_sec=0.5,
-        plan_interval_frames=1,
-        s1_period_sec=0.2,
-        s2_period_sec=0.0,
-        goal_ttl_sec=3.0,
-        traj_ttl_sec=1.5,
-        traj_max_stale_sec=4.0,
-        timeout_sec=5.0,
-        reset_timeout_sec=15.0,
-        retry=1,
-        stop_threshold=-3.0,
-        navdp_backend="heuristic",
-        navdp_checkpoint="",
-        navdp_device="cpu",
-        navdp_amp=False,
-        navdp_amp_dtype="float16",
-        navdp_tf32=False,
-        global_map_image="",
-        global_map_config="",
-        global_waypoint_spacing_m=0.75,
-        global_inflation_radius_m=0.25,
-        internvla_goal_depth_window=3,
-        internvla_goal_depth_min=0.1,
-        internvla_goal_depth_max=6.0,
-    )
+def _args(**overrides: object) -> Namespace:
+    defaults: dict[str, object] = {
+        "planner_mode": "interactive",
+        "server_url": "http://127.0.0.1:8888",
+        "system2_url": "http://127.0.0.1:15801",
+        "instruction": "head to dock",
+        "nav_instruction_language": "auto",
+        "use_trajectory_z": False,
+        "plan_wait_timeout_sec": 0.5,
+        "plan_interval_frames": 1,
+        "s1_period_sec": 0.2,
+        "s2_period_sec": 0.0,
+        "goal_ttl_sec": 3.0,
+        "traj_ttl_sec": 1.5,
+        "traj_max_stale_sec": 4.0,
+        "timeout_sec": 5.0,
+        "reset_timeout_sec": 15.0,
+        "retry": 1,
+        "stop_threshold": -3.0,
+        "goal_tolerance_m": 0.4,
+        "navdp_backend": "heuristic",
+        "navdp_checkpoint": "",
+        "navdp_device": "cpu",
+        "navdp_amp": False,
+        "navdp_amp_dtype": "float16",
+        "navdp_tf32": False,
+        "global_map_image": "",
+        "global_map_config": "",
+        "global_waypoint_spacing_m": 0.75,
+        "global_inflation_radius_m": 0.25,
+        "navdp_replan_hz": 3.0,
+        "navdp_plan_timeout": 1.5,
+        "navdp_hold_last_plan_timeout": 4.0,
+        "internvla_goal_depth_window": 5,
+        "internvla_goal_depth_min": 0.25,
+        "internvla_goal_depth_max": 6.0,
+        "internvla_goal_update_min_dist": 0.35,
+        "internvla_goal_filter_alpha": 0.35,
+        "internvla_goal_confirm_samples": 2,
+        "internvla_goal_min_stable_time": 0.6,
+        "internvla_forward_step_m": 0.5,
+        "internvla_turn_step_deg": 30.0,
+        "internvla_action_timeout_s": 3.0,
+        "nav_command_api_host": "127.0.0.1",
+        "nav_command_api_port": 8892,
+        "camera_api_host": "127.0.0.1",
+        "camera_api_port": 8891,
+        "camera_pitch_deg": 0.0,
+    }
+    defaults.update(overrides)
+    return Namespace(**defaults)
 
 
 def _planner_managed_command(task_id: str = "interactive") -> ActionCommand:
@@ -71,11 +91,11 @@ class _FakeNavDPClient:
 class _FakeSystem2Client:
     def __init__(self) -> None:
         self.session_id = "system2-nav"
-        self.reset_calls: list[str] = []
-        self.results: list[Namespace] = []
+        self.reset_calls: list[dict[str, str]] = []
+        self.results: list[System2Result] = []
 
-    def reset(self, instruction: str) -> None:
-        self.reset_calls.append(str(instruction))
+    def reset(self, instruction: str, *, language: str = "auto") -> None:
+        self.reset_calls.append({"instruction": str(instruction), "language": str(language)})
 
     def step_session(self, *, rgb, depth, stamp_s: float, session_id: str | None = None):  # noqa: ANN001
         _ = session_id, rgb, depth, stamp_s
@@ -141,8 +161,9 @@ class _FakeSystem2AsyncPlanner:
         return self.outputs.pop(0)
 
 
-def _make_session(*, mode: str) -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeSystem2Client]:
-    session = PlanningSession(_args(planner_mode=mode))
+def _make_session(*, mode: str, args: Namespace | None = None) -> tuple[PlanningSession, _FakePlanner, _FakePlanner, _FakeNavDPClient, _FakeSystem2Client]:
+    resolved_args = _args(planner_mode=mode) if args is None else args
+    session = PlanningSession(resolved_args)
     session._intrinsic = np.asarray([[8.0, 0.0, 4.0], [0.0, 8.0, 4.0], [0.0, 0.0, 1.0]], dtype=np.float32)
     session.navdp_client = _FakeNavDPClient()
     session.pointgoal_planner = _FakePlanner()
@@ -151,7 +172,7 @@ def _make_session(*, mode: str) -> tuple[PlanningSession, _FakePlanner, _FakePla
     return session, session.nogoal_planner, session.pointgoal_planner, session.navdp_client, session.system2_client
 
 
-def _observation(frame_id: int):
+def _observation(frame_id: int) -> ExecutionObservation:
     return ExecutionObservation(
         frame_id=frame_id,
         rgb=np.zeros((8, 8, 3), dtype=np.uint8),
@@ -160,6 +181,43 @@ def _observation(frame_id: int):
         cam_pos=np.zeros(3, dtype=np.float32),
         cam_quat=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
         intrinsic=np.asarray([[8.0, 0.0, 4.0], [0.0, 8.0, 4.0], [0.0, 0.0, 1.0]], dtype=np.float32),
+    )
+
+
+def _system2_result(
+    *,
+    decision_mode: str,
+    pixel_xy: tuple[float, float] | None = None,
+    text: str = "",
+    status: str = "goal",
+    stamp_s: float = 1.0,
+    action_sequence: tuple[str, ...] = (),
+) -> System2Result:
+    return System2Result(
+        status=status,
+        uv_norm=None if pixel_xy is None else np.asarray([0.5, 0.5], dtype=np.float32),
+        text=text or decision_mode,
+        latency_ms=12.0,
+        stamp_s=float(stamp_s),
+        pixel_xy=None if pixel_xy is None else np.asarray(pixel_xy, dtype=np.float32),
+        decision_mode=decision_mode,
+        action_sequence=action_sequence,
+    )
+
+
+def _step_engine(
+    engine: PlannerRuntimeEngine,
+    *,
+    frame_id: int,
+    robot_pos_world: np.ndarray | None = None,
+    robot_yaw: float = 0.0,
+) -> object:
+    return engine.plan_with_observation(
+        _observation(frame_id),
+        action_command=_planner_managed_command(task_id="nav"),
+        robot_pos_world=np.zeros(3, dtype=np.float32) if robot_pos_world is None else np.asarray(robot_pos_world, dtype=np.float32),
+        robot_yaw=float(robot_yaw),
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
 
 
@@ -172,8 +230,9 @@ def test_planning_session_default_navdp_client_factory_uses_supported_keyword_na
 
     monkeypatch.setattr("runtime.planning_session.create_inprocess_navdp_client", _fake_create_inprocess_navdp_client)
 
-    session = PlanningSession(_args())
-    result = session._default_navdp_client_factory(np.eye(3, dtype=np.float32), _args())
+    args = _args()
+    session = PlanningSession(args)
+    result = session._default_navdp_client_factory(np.eye(3, dtype=np.float32), args)
 
     assert result is not None
     assert captured["backend"] == "heuristic"
@@ -184,18 +243,41 @@ def test_planning_session_default_navdp_client_factory_uses_supported_keyword_na
     assert "allow_tf32" not in captured
 
 
-def test_planner_runtime_engine_updates_nav_goal_from_system2_pixel_goal() -> None:
-    session, _nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav")
+def test_nav_task_start_resets_system2_and_navdp_exactly_once_per_instruction() -> None:
+    args = _args(planner_mode="nav", s2_period_sec=999.0)
+    session, _nogoal_planner, _pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav", args=args)
     state = PlannerRuntimeState(mode="nav")
-    engine = PlannerRuntimeEngine(_args(planner_mode="nav"), transport=session, state=state)
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
+    session.system2_planner = _FakeSystem2AsyncPlanner()
+    system2_client.results = [_system2_result(decision_mode="wait", text="wait")]
+
+    engine.start_nav_task("head to dock")
+    _step_engine(engine, frame_id=1)
+    _step_engine(engine, frame_id=2)
+
+    assert system2_client.reset_calls == [{"instruction": "head to dock", "language": "auto"}]
+    assert navdp_client.reset_calls == 1
+    assert session.system2_planner.reset_calls == 1
+
+
+def test_planner_runtime_engine_updates_nav_goal_from_system2_pixel_goal() -> None:
+    args = _args(planner_mode="nav", internvla_goal_confirm_samples=2, s2_period_sec=0.0)
+    session, _nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav", args=args)
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
 
     system2_client.results = [
-        Namespace(decision_mode="pixel_goal", pixel_xy=(5, 4), text="5, 4"),
+        _system2_result(decision_mode="pixel_goal", pixel_xy=(5.0, 4.0), text="pixel_goal"),
+        _system2_result(decision_mode="pixel_goal", pixel_xy=(5.0, 4.0), text="pixel_goal", stamp_s=2.0),
     ]
+
+    engine.start_nav_task("head to the dock")
+    first = _step_engine(engine, frame_id=1)
+
     pointgoal_planner.outputs = [
         PlannerOutput(
             plan_version=0,
-            source_frame_id=1,
+            source_frame_id=2,
             trajectory_world=np.asarray([[0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32),
             latency_ms=3.5,
             successful_calls=1,
@@ -204,101 +286,142 @@ def test_planner_runtime_engine_updates_nav_goal_from_system2_pixel_goal() -> No
         )
     ]
     pointgoal_planner.status = (1, 0, "", 3.5)
+    second = _step_engine(engine, frame_id=2)
 
-    engine.start_nav_task("head to the dock")
-    update = engine.plan_with_observation(
-        _observation(1),
-        action_command=_planner_managed_command(task_id="nav"),
-        robot_pos_world=np.zeros(3, dtype=np.float32),
-        robot_yaw=0.0,
-        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-    )
-
-    assert system2_client.reset_calls == ["head to the dock"]
+    assert system2_client.reset_calls == [{"instruction": "head to the dock", "language": "auto"}]
     assert navdp_client.reset_calls == 1
+    assert first.goal_version == -1
     assert state.goal.system2_pixel_goal == [5, 4]
-    assert update.goal_version == 0
-    assert update.traj_version == 0
-    assert update.trajectory_world.shape == (2, 3)
+    assert second.goal_version == 0
+    assert second.traj_version == 0
+    assert second.trajectory_world.shape == (2, 3)
     assert len(pointgoal_planner.submitted) == 1
     submitted = pointgoal_planner.submitted[0]
     assert isinstance(submitted, PlannerInput)
     assert submitted.sensor_meta["robot_pose_xyz"] == [0.0, 0.0, 0.0]
     assert submitted.sensor_meta["robot_yaw_rad"] == 0.0
+    assert state.navdp.last_committed_goal_version == 0
+    assert state.navdp.last_committed_plan_version == 0
 
 
-def test_planner_runtime_engine_uses_direct_action_overrides() -> None:
-    session, _nogoal_planner, pointgoal_planner, _navdp_client, system2_client = _make_session(mode="nav")
+def test_planner_runtime_engine_uses_direct_action_overrides_and_queue_progress() -> None:
+    args = _args(planner_mode="nav", s2_period_sec=999.0)
+    session, _nogoal_planner, pointgoal_planner, _navdp_client, system2_client = _make_session(mode="nav", args=args)
     state = PlannerRuntimeState(mode="nav")
-    engine = PlannerRuntimeEngine(_args(planner_mode="nav"), transport=session, state=state)
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
 
     system2_client.results = [
-        Namespace(decision_mode="forward", pixel_xy=None, text="forward"),
+        _system2_result(
+            decision_mode="forward",
+            text="forward then yaw left",
+            action_sequence=("forward", "yaw_left"),
+        )
     ]
 
     engine.start_nav_task("move toward the dock")
-    update = engine.plan_with_observation(
-        _observation(2),
-        action_command=_planner_managed_command(task_id="nav"),
-        robot_pos_world=np.zeros(3, dtype=np.float32),
-        robot_yaw=0.0,
-        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-    )
+    first = _step_engine(engine, frame_id=1)
+    second = _step_engine(engine, frame_id=2, robot_pos_world=np.asarray([0.5, 0.0, 0.0], dtype=np.float32))
+    third = _step_engine(engine, frame_id=3, robot_pos_world=np.asarray([0.5, 0.0, 0.0], dtype=np.float32), robot_yaw=np.deg2rad(30.0))
 
-    assert update.planner_control_mode == "forward"
-    assert update.planner_control_version == 0
-    assert update.stop is False
+    assert first.planner_control_mode == "forward"
+    assert first.planner_control_queue == ("yaw_left",)
+    assert second.planner_control_mode == "yaw_left"
+    assert second.planner_control_queue == ()
+    assert third.planner_control_mode == "wait"
+    assert third.planner_control_progress == 1.0
     assert len(pointgoal_planner.submitted) == 0
-    assert update.trajectory_world.shape == (0, 3)
+    assert third.trajectory_world.shape == (0, 3)
 
 
-def test_planner_runtime_engine_interactive_path_promotes_pending_instruction_into_nav_task() -> None:
-    session, nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="interactive")
-    state = PlannerRuntimeState(mode="interactive")
-    engine = PlannerRuntimeEngine(_args(planner_mode="interactive"), transport=session, state=state)
+def test_planner_runtime_engine_wait_preserves_active_goal() -> None:
+    args = _args(planner_mode="nav", internvla_goal_confirm_samples=1)
+    session, _nogoal_planner, _pointgoal_planner, _navdp_client, system2_client = _make_session(mode="nav", args=args)
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
 
-    assert engine.activate_interactive_roaming("startup") is True
-    assert navdp_client.reset_calls == 1
+    engine.start_nav_task("wait on the active goal")
+    state.goal.target_world_xy = np.asarray([1.0, 0.0], dtype=np.float32)
+    state.goal.target_pixel_xy = np.asarray([5.0, 4.0], dtype=np.float32)
+    state.goal.goal_version = 3
+    state.trajectory.planner_control_mode = "trajectory"
+    system2_client.results = [_system2_result(decision_mode="wait", text="wait")]
 
-    system2_client.results = [
-        Namespace(decision_mode="pixel_goal", pixel_xy=(5, 4), text="5, 4"),
-    ]
-    pointgoal_planner.outputs = [
-        PlannerOutput(
-            plan_version=0,
-            source_frame_id=3,
-            trajectory_world=np.asarray([[0.3, 0.0, 0.0], [0.5, 0.1, 0.0]], dtype=np.float32),
-            latency_ms=4.0,
-            successful_calls=1,
-            failed_calls=0,
-            last_error="",
-        )
-    ]
-    pointgoal_planner.status = (1, 0, "", 4.0)
+    update = _step_engine(engine, frame_id=4)
 
-    command_id = engine.submit_interactive_instruction("go to the loading dock")
-    update = engine.plan_with_observation(
-        _observation(3),
-        action_command=_planner_managed_command(),
-        robot_pos_world=np.zeros(3, dtype=np.float32),
-        robot_yaw=0.0,
-        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-    )
+    assert update.planner_control_mode == "trajectory"
+    assert state.goal.target_world_xy is not None
+    np.testing.assert_allclose(state.goal.target_world_xy, np.asarray([1.0, 0.0], dtype=np.float32))
 
-    assert command_id == 1
-    assert system2_client.reset_calls == ["go to the loading dock"]
-    assert navdp_client.reset_calls == 2
-    assert nogoal_planner.reset_calls == 2
-    assert update.interactive_phase == "task_active"
-    assert update.interactive_command_id == 1
-    assert update.interactive_instruction == "go to the loading dock"
-    assert state.goal.system2_pixel_goal == [5, 4]
+
+def test_planner_runtime_engine_stop_clears_goal_and_zeroes_plan() -> None:
+    args = _args(planner_mode="nav", s2_period_sec=0.0)
+    session, _nogoal_planner, _pointgoal_planner, _navdp_client, system2_client = _make_session(mode="nav", args=args)
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
+
+    engine.start_nav_task("stop the active goal")
+    state.goal.target_world_xy = np.asarray([1.0, 0.0], dtype=np.float32)
+    state.goal.goal_version = 1
+    state.trajectory.trajectory_world = np.asarray([[0.3, 0.0, 0.0]], dtype=np.float32)
+    state.trajectory.planner_control_mode = "trajectory"
+    system2_client.results = [_system2_result(decision_mode="stop", text="stop", status="stop")]
+
+    update = _step_engine(engine, frame_id=5)
+
+    assert update.stop is True
+    assert update.planner_control_mode == "stop"
+    assert state.goal.target_world_xy is None
+    assert state.trajectory.trajectory_world.shape == (0, 3)
+
+
+def test_planner_runtime_engine_look_down_preserves_goal_and_marks_requery_hold() -> None:
+    args = _args(planner_mode="nav", s2_period_sec=0.0)
+    session, _nogoal_planner, _pointgoal_planner, _navdp_client, system2_client = _make_session(mode="nav", args=args)
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
+
+    engine.start_nav_task("look down but preserve the goal")
+    state.goal.target_world_xy = np.asarray([1.0, 0.0], dtype=np.float32)
+    state.goal.goal_version = 2
+    state.trajectory.planner_control_mode = "trajectory"
+    system2_client.results = [_system2_result(decision_mode="look_down", text="look_down")]
+
+    update = _step_engine(engine, frame_id=6)
+
+    assert update.planner_control_mode == "trajectory"
+    assert update.stale_hold_reason == "look_down_requery"
+    assert state.goal.target_world_xy is not None
+
+
+def test_planner_runtime_engine_stale_plan_hold_and_timeout_match_source_thresholds() -> None:
+    args = _args(planner_mode="nav", navdp_plan_timeout=1.5, navdp_hold_last_plan_timeout=4.0)
+    session, _nogoal_planner, _pointgoal_planner, _navdp_client, _system2_client = _make_session(mode="nav", args=args)
+    state = PlannerRuntimeState(mode="nav")
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
+
+    state.goal.target_world_xy = np.asarray([2.0, 0.0], dtype=np.float32)
+    state.goal.goal_version = 1
+    state.trajectory.planner_control_mode = "trajectory"
+    state.trajectory.trajectory_world = np.asarray([[0.4, 0.0, 0.0], [0.8, 0.0, 0.0]], dtype=np.float32)
+    state.trajectory.last_plan_stamp_s = time.monotonic() - 2.0
+    engine._refresh_stale_navdp_hold()  # noqa: SLF001
+
+    assert state.trajectory.used_cached_traj is True
+    assert state.trajectory.stale_hold_reason == "stale_hold"
+
+    state.trajectory.last_plan_stamp_s = time.monotonic() - 5.0
+    engine._refresh_stale_navdp_hold()  # noqa: SLF001
+
+    assert state.trajectory.used_cached_traj is False
+    assert state.trajectory.stale_hold_reason == "hold_timeout"
+    assert state.trajectory.trajectory_world.shape == (0, 3)
 
 
 def test_planner_runtime_engine_consumes_async_system2_results_without_direct_session_call() -> None:
-    session, _nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav")
+    args = _args(planner_mode="nav", internvla_goal_confirm_samples=1, s2_period_sec=0.0)
+    session, _nogoal_planner, pointgoal_planner, navdp_client, system2_client = _make_session(mode="nav", args=args)
     state = PlannerRuntimeState(mode="nav")
-    engine = PlannerRuntimeEngine(_args(planner_mode="nav"), transport=session, state=state)
+    engine = PlannerRuntimeEngine(args, transport=session, state=state)
     async_planner = _FakeSystem2AsyncPlanner()
     session.system2_planner = async_planner
 
@@ -321,26 +444,12 @@ def test_planner_runtime_engine_consumes_async_system2_results_without_direct_se
         AsyncSystem2Output(
             result_version=0,
             source_frame_id=4,
-            result=System2Result(
-                status="goal",
-                uv_norm=np.asarray([0.5, 0.5], dtype=np.float32),
-                text="pixel_goal:5,4",
-                latency_ms=12.0,
-                stamp_s=1.0,
-                pixel_xy=np.asarray([5.0, 4.0], dtype=np.float32),
-                decision_mode="pixel_goal",
-            ),
+            result=_system2_result(decision_mode="pixel_goal", pixel_xy=(5.0, 4.0), text="pixel_goal"),
         )
     ]
-    update = engine.plan_with_observation(
-        _observation(4),
-        action_command=_planner_managed_command(task_id="nav"),
-        robot_pos_world=np.zeros(3, dtype=np.float32),
-        robot_yaw=0.0,
-        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
-    )
+    update = _step_engine(engine, frame_id=4)
 
-    assert system2_client.reset_calls == ["head to the async dock"]
+    assert system2_client.reset_calls == [{"instruction": "head to the async dock", "language": "auto"}]
     assert async_planner.reset_calls == 1
     assert navdp_client.reset_calls == 1
     assert state.goal.system2_result_version == 0

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from argparse import Namespace
+from pathlib import Path
+import sys
 
 import numpy as np
 import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from control.navdp_follower import NavDPFollowerResult
 from ipc.messages import ActionCommand
@@ -16,6 +23,9 @@ def _args(*, use_navdp_follower: bool = False) -> Namespace:
         cmd_max_vx=0.5,
         cmd_max_vy=0.3,
         cmd_max_wz=0.8,
+        internvla_forward_step_m=0.5,
+        internvla_turn_step_deg=30.0,
+        internvla_action_timeout_s=3.0,
         lookahead_distance_m=0.6,
         heading_slowdown_rad=0.6,
         traj_stale_timeout_sec=1.5,
@@ -95,6 +105,10 @@ def _trajectory_update(
     planner_control_version: int = -1,
     planner_yaw_delta_rad: float | None = None,
     goal_version: int = -1,
+    planner_control_queue: tuple[str, ...] = (),
+    planner_control_progress: float = 0.0,
+    stale_hold_reason: str = "",
+    planner_control_reason: str = "",
 ) -> TrajectoryUpdate:
     return TrajectoryUpdate(
         trajectory_world=np.asarray(trajectory_world, dtype=np.float32),
@@ -105,7 +119,11 @@ def _trajectory_update(
         planner_control_mode=planner_control_mode,
         planner_control_version=planner_control_version,
         planner_yaw_delta_rad=planner_yaw_delta_rad,
+        planner_control_queue=planner_control_queue,
+        planner_control_progress=planner_control_progress,
+        stale_hold_reason=stale_hold_reason,
         goal_version=goal_version,
+        planner_control_reason=planner_control_reason,
     )
 
 
@@ -129,6 +147,10 @@ def test_locomotion_worker_defaults_to_legacy_tracker_when_navdp_follower_is_dis
 
     assert proposal.metadata["trajectory_command_source"] == "legacy_tracker"
     assert proposal.metadata["trajectory_fallback_reason"] == "navdp_follower_disabled"
+    assert proposal.metadata["planner_control_mode"] is None
+    assert proposal.metadata["planner_control_queue"] == []
+    assert proposal.metadata["stale_hold_reason"] == ""
+    assert proposal.metadata["locomotion_state_label"] == "tracking"
     assert follower.calls == []
 
 
@@ -151,7 +173,9 @@ def test_locomotion_worker_uses_navdp_follower_in_trajectory_mode_when_opted_in(
     )
 
     np.testing.assert_allclose(proposal.command_vector, np.asarray([0.21, -0.11, 0.07], dtype=np.float32))
-    assert proposal.metadata == {"trajectory_command_source": "navdp_follower"}
+    assert proposal.metadata["trajectory_command_source"] == "navdp_follower"
+    assert proposal.metadata["planner_control_mode"] is None
+    assert proposal.metadata["locomotion_state_label"] == "tracking"
     assert proposal.evaluation.reached_goal is False
     assert not hasattr(proposal, "status")
     assert len(follower.calls) == 1
@@ -184,6 +208,7 @@ def test_locomotion_worker_falls_back_to_legacy_tracker_when_follower_inference_
     np.testing.assert_allclose(proposal.command_vector, np.asarray([0.5, 0.0, 0.0], dtype=np.float32), atol=1.0e-4)
     assert proposal.metadata["trajectory_command_source"] == "legacy_tracker"
     assert "inference failed" in str(proposal.metadata["trajectory_fallback_reason"])
+    assert proposal.metadata["locomotion_state_label"] == "tracking"
     assert len(follower.calls) == 1
 
 
@@ -216,6 +241,7 @@ def test_locomotion_worker_caches_follower_init_failure(monkeypatch: pytest.Monk
         )
         assert proposal.metadata["trajectory_command_source"] == "legacy_tracker"
         assert "init failed" in str(proposal.metadata["trajectory_fallback_reason"])
+        assert proposal.metadata["locomotion_state_label"] == "tracking"
 
     assert init_calls["count"] == 1
 
@@ -239,6 +265,7 @@ def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
     assert float(look_at.command_vector[2]) > 0.0
+    assert look_at.metadata["locomotion_state_label"] == "look-at"
 
     yaw_delta = worker.execute(
         frame_idx=1,
@@ -257,6 +284,7 @@ def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
     assert float(yaw_delta.command_vector[2]) > 0.0
+    assert yaw_delta.metadata["locomotion_state_label"] == "yaw-delta"
 
     stop = worker.execute(
         frame_idx=1,
@@ -274,6 +302,7 @@ def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
     np.testing.assert_allclose(stop.command_vector, np.zeros(3, dtype=np.float32))
+    assert stop.metadata["locomotion_state_label"] == "waiting"
 
     wait = worker.execute(
         frame_idx=1,
@@ -291,6 +320,7 @@ def test_locomotion_worker_non_trajectory_modes_skip_follower() -> None:
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
     np.testing.assert_allclose(wait.command_vector, np.zeros(3, dtype=np.float32))
+    assert wait.metadata["locomotion_state_label"] == "waiting"
 
     assert follower.calls == []
 
@@ -315,6 +345,7 @@ def test_locomotion_worker_arms_direct_turns_from_planner_control_version() -> N
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
     assert float(yaw_left.command_vector[2]) > 0.0
+    assert yaw_left.metadata["locomotion_state_label"] == "yaw-left-override"
 
     yaw_right = worker.execute(
         frame_idx=2,
@@ -333,6 +364,7 @@ def test_locomotion_worker_arms_direct_turns_from_planner_control_version() -> N
         robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
     )
     assert float(yaw_right.command_vector[2]) < 0.0
+    assert yaw_right.metadata["locomotion_state_label"] == "yaw-right-override"
 
 
 def test_locomotion_worker_arms_forward_from_planner_control_version() -> None:
@@ -356,6 +388,7 @@ def test_locomotion_worker_arms_forward_from_planner_control_version() -> None:
     )
 
     assert float(proposal.command_vector[0]) > 0.0
+    assert proposal.metadata["locomotion_state_label"] == "forward-override"
 
 
 def test_locomotion_worker_resets_tracker_progress_when_goal_version_changes() -> None:
@@ -404,3 +437,50 @@ def test_locomotion_worker_resets_tracker_progress_when_goal_version_changes() -
     )
     assert worker._tracker.progress_idx == 0  # noqa: SLF001
     assert goal_changed.metadata["trajectory_command_source"] == "navdp_follower"
+
+
+def test_locomotion_worker_exposes_direct_action_queue_and_stale_hold_metadata() -> None:
+    worker = LocomotionWorker(_args(use_navdp_follower=True), follower=_FakeFollower())
+
+    direct_action = worker.execute(
+        frame_idx=1,
+        observation=_observation(),
+        action_command=_planner_command(),
+        trajectory_update=_trajectory_update(
+            trajectory_world=np.zeros((0, 3), dtype=np.float32),
+            plan_version=0,
+            planner_control_mode="forward",
+            planner_control_version=0,
+            planner_control_queue=("yaw_left",),
+            planner_control_progress=0.4,
+        ),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert direct_action.metadata["planner_control_mode"] == "forward"
+    assert direct_action.metadata["planner_control_queue"] == ["yaw_left"]
+    assert direct_action.metadata["planner_control_progress"] == 0.4
+    assert direct_action.metadata["locomotion_state_label"] == "forward-override"
+
+    stale_hold = worker.execute(
+        frame_idx=2,
+        observation=_observation(),
+        action_command=_planner_command(),
+        trajectory_update=_trajectory_update(
+            trajectory_world=np.asarray([[0.8, 0.0, 0.0], [1.2, 0.4, 0.0]], dtype=np.float32),
+            plan_version=1,
+            stale_hold_reason="stale_hold",
+        ),
+        robot_pos_world=np.zeros(3, dtype=np.float32),
+        robot_lin_vel_world=np.zeros(3, dtype=np.float32),
+        robot_ang_vel_world=np.zeros(3, dtype=np.float32),
+        robot_yaw=0.0,
+        robot_quat_wxyz=np.asarray([1.0, 0.0, 0.0, 0.0], dtype=np.float32),
+    )
+
+    assert stale_hold.metadata["stale_hold_reason"] == "stale_hold"
+    assert stale_hold.metadata["locomotion_state_label"] == "stale-hold"

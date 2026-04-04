@@ -130,12 +130,15 @@ class LocomotionWorker:
             robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
             robot_yaw=float(robot_yaw),
         )
-        metadata: dict[str, object] = {}
+        metadata = self._planner_metadata(update)
+        state_label = self._state_label_for_update(update)
 
         if action_command is not None and action_command.action_type == "LOOK_AT":
             self._command = self._look_at_command(action_command, float(robot_yaw))
+            state_label = "look-at"
         elif update.planner_control_mode == "yaw_delta":
             self._command = self._planner_yaw_command(float(robot_yaw))
+            state_label = "yaw-delta"
         elif update.planner_control_mode in {"forward", "yaw_left", "yaw_right"}:
             self._command = self._planner_action_command(
                 planner_mode=str(update.planner_control_mode),
@@ -143,23 +146,65 @@ class LocomotionWorker:
                 robot_yaw=float(robot_yaw),
                 now=now,
             )
+            if update.planner_control_mode == "forward":
+                state_label = "forward-override"
+            elif update.planner_control_mode == "yaw_left":
+                state_label = "yaw-left-override"
+            else:
+                state_label = "yaw-right-override"
         elif update.planner_control_mode in {"stop", "wait"}:
             self._command = np.zeros(3, dtype=np.float32)
+            state_label = "waiting"
         else:
-            self._command, metadata = self._trajectory_command(
+            self._command, trajectory_metadata = self._trajectory_command(
                 robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
                 robot_lin_vel_world=np.asarray(robot_lin_vel_world, dtype=np.float32),
                 robot_ang_vel_world=np.asarray(robot_ang_vel_world, dtype=np.float32),
                 robot_quat_wxyz=np.asarray(robot_quat_wxyz, dtype=np.float32),
                 now=now,
                 evaluation=evaluation,
+                stale_hold_reason=str(getattr(update, "stale_hold_reason", "")),
             )
+            metadata.update(trajectory_metadata)
+            state_label = self._state_label_for_update(update)
+        metadata["locomotion_state_label"] = state_label
         return LocomotionProposal(
             command_vector=self._command.copy(),
             trajectory_update=update,
             evaluation=evaluation,
             metadata=metadata,
         )
+
+    @staticmethod
+    def _planner_metadata(update: TrajectoryUpdate) -> dict[str, object]:
+        return {
+            "planner_control_mode": None if update.planner_control_mode is None else str(update.planner_control_mode),
+            "planner_control_queue": [str(item) for item in getattr(update, "planner_control_queue", ())],
+            "planner_control_progress": float(getattr(update, "planner_control_progress", 0.0) or 0.0),
+            "stale_hold_reason": str(getattr(update, "stale_hold_reason", "")),
+        }
+
+    @staticmethod
+    def _state_label_for_update(update: TrajectoryUpdate) -> str:
+        mode = None if update.planner_control_mode is None else str(update.planner_control_mode)
+        if mode == "forward":
+            return "forward-override"
+        if mode == "yaw_left":
+            return "yaw-left-override"
+        if mode == "yaw_right":
+            return "yaw-right-override"
+        if mode == "stop":
+            return "waiting"
+        if mode == "wait":
+            if str(getattr(update, "planner_control_reason", "")) == "goal_reached":
+                return "done"
+            return "waiting"
+        stale_hold_reason = str(getattr(update, "stale_hold_reason", ""))
+        if stale_hold_reason == "stale_hold":
+            return "stale-hold"
+        if update.trajectory_world.shape[0] == 0:
+            return "tracking"
+        return "tracking"
 
     def _apply_direct_planner_control(
         self,
@@ -315,6 +360,7 @@ class LocomotionWorker:
         robot_quat_wxyz: np.ndarray,
         now: float,
         evaluation: CommandEvaluation,
+        stale_hold_reason: str,
     ) -> tuple[np.ndarray, dict[str, object]]:
         pose_target = self._tracker.compute_target_pose(
             robot_pos_world,
@@ -330,9 +376,13 @@ class LocomotionWorker:
                 now=now,
                 evaluation=evaluation,
                 fallback_reason=init_error or "navdp_follower_unavailable",
+                stale_hold_reason=stale_hold_reason,
             )
         if pose_target.stale or evaluation.force_stop:
-            return np.zeros(3, dtype=np.float32), {"trajectory_command_source": "navdp_follower"}
+            return np.zeros(3, dtype=np.float32), {
+                "trajectory_command_source": "navdp_follower",
+                "stale_hold_reason": stale_hold_reason,
+            }
         try:
             result = follower.compute_command(
                 pose_command_b=pose_target.pose_command_b,
@@ -347,8 +397,12 @@ class LocomotionWorker:
                 now=now,
                 evaluation=evaluation,
                 fallback_reason=f"{type(exc).__name__}: {exc}",
+                stale_hold_reason=stale_hold_reason,
             )
-        return result.command, {"trajectory_command_source": "navdp_follower"}
+        return result.command, {
+            "trajectory_command_source": "navdp_follower",
+            "stale_hold_reason": stale_hold_reason,
+        }
 
     def _legacy_tracker_command(
         self,
@@ -358,6 +412,7 @@ class LocomotionWorker:
         now: float,
         evaluation: CommandEvaluation,
         fallback_reason: str,
+        stale_hold_reason: str,
     ) -> tuple[np.ndarray, dict[str, object]]:
         tracker_result = self._tracker.compute_command(
             robot_pos_world,
@@ -365,7 +420,10 @@ class LocomotionWorker:
             now=now,
             force_stop=evaluation.force_stop,
         )
-        metadata = {"trajectory_command_source": "legacy_tracker"}
+        metadata = {
+            "trajectory_command_source": "legacy_tracker",
+            "stale_hold_reason": stale_hold_reason,
+        }
         if str(fallback_reason).strip() != "":
             metadata["trajectory_fallback_reason"] = str(fallback_reason)
         return tracker_result.command, metadata

@@ -19,7 +19,7 @@ from ipc.messages import ActionCommand
 from memory.models import MemoryContextBundle
 
 
-def _health_url(base_url: str, health_path: str = "/health") -> str:
+def _health_url(base_url: str, health_path: str = "/healthz") -> str:
     return f"{str(base_url).rstrip('/')}/{str(health_path).lstrip('/')}"
 
 
@@ -29,7 +29,7 @@ def _check_remote_service(
     timeout_sec: float,
     service_name: str,
     context: str,
-    health_path: str = "/health",
+    health_path: str = "/healthz",
 ) -> None:
     url = str(base_url).strip()
     if url == "":
@@ -89,7 +89,7 @@ def _ensure_remote_service_ready(
     launcher_args: tuple[str, ...] = (),
     launcher_processes: dict[str, subprocess.Popen[Any]] | None = None,
     startup_timeout_sec: float = 45.0,
-    health_path: str = "/health",
+    health_path: str = "/healthz",
 ) -> None:
     try:
         _check_remote_service(
@@ -180,11 +180,16 @@ class TrajectoryUpdate:
     stop: bool = False
     planner_control_mode: str | None = None
     planner_control_version: int = -1
+    planner_control_reason: str = ""
     planner_yaw_delta_rad: float | None = None
+    planner_control_queue: tuple[str, ...] = ()
+    planner_control_progress: float = 0.0
     stale_sec: float = -1.0
+    stale_hold_reason: str = ""
     goal_version: int = -1
     traj_version: int = -1
     used_cached_traj: bool = False
+    locomotion_state_label: str = ""
     sensor_meta: dict[str, Any] | None = None
     interactive_phase: str | None = None
     interactive_command_id: int = -1
@@ -292,7 +297,7 @@ class PlanningSession:
                 launcher_script_name="run_system.ps1",
                 launcher_args=("-Component", "nav"),
                 launcher_processes=launcher_processes,
-                health_path="/health",
+                health_path="/healthz",
             )
         except RuntimeError as exc:
             raise RuntimeError(f"{exc} Suggested command: .\\scripts\\run_system.ps1 -Component nav") from exc
@@ -438,10 +443,17 @@ class PlanningSession:
 
     @staticmethod
     def _default_system2_client_factory(args: argparse.Namespace) -> System2Session:
+        language = str(
+            getattr(
+                args,
+                "nav_instruction_language",
+                getattr(args, "instruction_language", "auto"),
+            )
+        )
         return System2Session(
             System2SessionConfig(
                 endpoint=str(getattr(args, "system2_url", "http://127.0.0.1:15801")),
                 timeout_sec=float(getattr(args, "timeout_sec", 5.0)),
-                language=str(getattr(args, "instruction_language", "auto")),
+                language=language,
             )
         )

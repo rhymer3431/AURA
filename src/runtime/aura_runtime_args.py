@@ -9,6 +9,7 @@ from schemas.execution_mode import normalize_execution_mode
 
 DEFAULT_NAV_INSTRUCTION = "Navigate safely to the target and stop when complete."
 DEFAULT_OBJECT_SEARCH_INSTRUCTION = "Find the bright red cube in the warehouse and stop when you reach it."
+DEFAULT_NAV_INSTRUCTION_LANGUAGE = "auto"
 DEFAULT_INTERACTIVE_PROMPT = "nl>"
 DEFAULT_VIEWER_CONTROL_ENDPOINT = "tcp://127.0.0.1:5580"
 DEFAULT_VIEWER_TELEMETRY_ENDPOINT = "tcp://127.0.0.1:5581"
@@ -97,8 +98,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.set_defaults(env_url="/Isaac/Environments/Simple_Warehouse/warehouse.usd")
     parser.add_argument("--launch-mode", dest="launch_mode", type=str, choices=("gui", "g1_view"), default="")
 
-    parser.add_argument("--server-url", dest="server_url", type=str, default="http://127.0.0.1:8888")
-    parser.add_argument("--system2-url", dest="system2_url", type=str, default="http://127.0.0.1:15801")
+    parser.add_argument(
+        "--server-url",
+        "--server_url",
+        "--navdp-url",
+        "--navdp_url",
+        dest="server_url",
+        type=str,
+        default="http://127.0.0.1:8888",
+    )
+    parser.add_argument(
+        "--system2-url",
+        "--system2_url",
+        "--internvla-url",
+        "--internvla_url",
+        dest="system2_url",
+        type=str,
+        default="http://127.0.0.1:15801",
+    )
     parser.add_argument(
         "--planner-mode",
         dest="planner_mode",
@@ -108,8 +125,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--instruction",
+        "--nav-instruction",
+        "--nav_instruction",
         type=str,
         default=DEFAULT_NAV_INSTRUCTION,
+    )
+    parser.add_argument(
+        "--nav-instruction-language",
+        "--nav_instruction_language",
+        dest="nav_instruction_language",
+        type=str,
+        default=DEFAULT_NAV_INSTRUCTION_LANGUAGE,
     )
     parser.add_argument("--goal-x", dest="goal_x", type=float, default=None)
     parser.add_argument("--goal-y", dest="goal_y", type=float, default=None)
@@ -133,12 +159,90 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--goal-ttl-sec", dest="goal_ttl_sec", type=float, default=3.0)
     parser.add_argument("--traj-ttl-sec", dest="traj_ttl_sec", type=float, default=1.5)
     parser.add_argument("--traj-max-stale-sec", dest="traj_max_stale_sec", type=float, default=4.0)
-    parser.add_argument("--internvla-forward-step-m", dest="internvla_forward_step_m", type=float, default=0.25)
-    parser.add_argument("--internvla-turn-step-deg", dest="internvla_turn_step_deg", type=float, default=20.0)
-    parser.add_argument("--internvla-action-timeout-s", dest="internvla_action_timeout_s", type=float, default=1.5)
-    parser.add_argument("--internvla-goal-depth-window", dest="internvla_goal_depth_window", type=int, default=11)
-    parser.add_argument("--internvla-goal-depth-min", dest="internvla_goal_depth_min", type=float, default=0.1)
-    parser.add_argument("--internvla-goal-depth-max", dest="internvla_goal_depth_max", type=float, default=6.0)
+    parser.add_argument("--navdp-replan-hz", "--navdp_replan_hz", dest="navdp_replan_hz", type=float, default=3.0)
+    parser.add_argument("--navdp-plan-timeout", "--navdp_plan_timeout", dest="navdp_plan_timeout", type=float, default=1.5)
+    parser.add_argument(
+        "--navdp-hold-last-plan-timeout",
+        "--navdp_hold_last_plan_timeout",
+        dest="navdp_hold_last_plan_timeout",
+        type=float,
+        default=4.0,
+    )
+    parser.add_argument(
+        "--internvla-forward-step-m",
+        "--internvla_forward_step_m",
+        dest="internvla_forward_step_m",
+        type=float,
+        default=0.5,
+    )
+    parser.add_argument(
+        "--internvla-turn-step-deg",
+        "--internvla_turn_step_deg",
+        dest="internvla_turn_step_deg",
+        type=float,
+        default=30.0,
+    )
+    parser.add_argument(
+        "--internvla-action-timeout-s",
+        "--internvla_action_timeout_s",
+        dest="internvla_action_timeout_s",
+        type=float,
+        default=3.0,
+    )
+    parser.add_argument(
+        "--internvla-goal-depth-window",
+        "--internvla_goal_depth_window",
+        dest="internvla_goal_depth_window",
+        type=int,
+        default=5,
+    )
+    parser.add_argument(
+        "--internvla-goal-depth-min",
+        "--internvla_goal_depth_min",
+        dest="internvla_goal_depth_min",
+        type=float,
+        default=0.25,
+    )
+    parser.add_argument(
+        "--internvla-goal-depth-max",
+        "--internvla_goal_depth_max",
+        dest="internvla_goal_depth_max",
+        type=float,
+        default=6.0,
+    )
+    parser.add_argument(
+        "--internvla-goal-update-min-dist",
+        "--internvla_goal_update_min_dist",
+        dest="internvla_goal_update_min_dist",
+        type=float,
+        default=0.35,
+    )
+    parser.add_argument(
+        "--internvla-goal-filter-alpha",
+        "--internvla_goal_filter_alpha",
+        dest="internvla_goal_filter_alpha",
+        type=float,
+        default=0.35,
+    )
+    parser.add_argument(
+        "--internvla-goal-confirm-samples",
+        "--internvla_goal_confirm_samples",
+        dest="internvla_goal_confirm_samples",
+        type=int,
+        default=2,
+    )
+    parser.add_argument(
+        "--internvla-goal-min-stable-time",
+        "--internvla_goal_min_stable_time",
+        dest="internvla_goal_min_stable_time",
+        type=float,
+        default=0.6,
+    )
+    parser.add_argument("--nav-command-api-host", "--nav_command_api_host", dest="nav_command_api_host", type=str, default="127.0.0.1")
+    parser.add_argument("--nav-command-api-port", "--nav_command_api_port", dest="nav_command_api_port", type=int, default=8892)
+    parser.add_argument("--camera-api-host", "--camera_api_host", dest="camera_api_host", type=str, default="127.0.0.1")
+    parser.add_argument("--camera-api-port", "--camera_api_port", dest="camera_api_port", type=int, default=8891)
+    parser.add_argument("--camera-pitch-deg", "--camera_pitch_deg", dest="camera_pitch_deg", type=float, default=0.0)
     parser.add_argument("--timeout-sec", dest="timeout_sec", type=float, default=5.0)
     parser.add_argument("--reset-timeout-sec", dest="reset_timeout_sec", type=float, default=15.0)
     parser.add_argument("--retry", type=int, default=1)
@@ -200,6 +304,26 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--recovery-turn-retry-limit must be non-negative")
     if int(getattr(args, "s2_retry_backoff_ms", 1000)) < 0:
         raise ValueError("--s2-retry-backoff-ms must be non-negative")
+    if str(getattr(args, "nav_instruction_language", DEFAULT_NAV_INSTRUCTION_LANGUAGE)).strip() == "":
+        raise ValueError("--nav-instruction-language must be non-empty")
+    if float(getattr(args, "navdp_replan_hz", 3.0)) <= 0.0:
+        raise ValueError("--navdp-replan-hz must be positive")
+    if float(getattr(args, "navdp_plan_timeout", 1.5)) <= 0.0:
+        raise ValueError("--navdp-plan-timeout must be positive")
+    if float(getattr(args, "navdp_hold_last_plan_timeout", 4.0)) < float(getattr(args, "navdp_plan_timeout", 1.5)):
+        raise ValueError("--navdp-hold-last-plan-timeout must be greater than or equal to --navdp-plan-timeout")
+    if float(getattr(args, "internvla_goal_update_min_dist", 0.35)) < 0.0:
+        raise ValueError("--internvla-goal-update-min-dist must be non-negative")
+    if not 0.0 <= float(getattr(args, "internvla_goal_filter_alpha", 0.35)) <= 1.0:
+        raise ValueError("--internvla-goal-filter-alpha must be within [0, 1]")
+    if int(getattr(args, "internvla_goal_confirm_samples", 2)) <= 0:
+        raise ValueError("--internvla-goal-confirm-samples must be positive")
+    if float(getattr(args, "internvla_goal_min_stable_time", 0.6)) < 0.0:
+        raise ValueError("--internvla-goal-min-stable-time must be non-negative")
+    if int(getattr(args, "nav_command_api_port", 8892)) < 0:
+        raise ValueError("--nav-command-api-port must be non-negative")
+    if int(getattr(args, "camera_api_port", 8891)) < 0:
+        raise ValueError("--camera-api-port must be non-negative")
     global_map_image = str(getattr(args, "global_map_image", "")).strip()
     global_map_config = str(getattr(args, "global_map_config", "")).strip()
     if global_map_config != "" and global_map_image == "":
@@ -259,6 +383,7 @@ __all__ = [
     "BOOTSTRAP_ARGS",
     "BOOTSTRAP_PARSER",
     "DEFAULT_NAV_INSTRUCTION",
+    "DEFAULT_NAV_INSTRUCTION_LANGUAGE",
     "DEFAULT_INTERACTIVE_PROMPT",
     "DEFAULT_OBJECT_SEARCH_INSTRUCTION",
     "DEFAULT_VIEWER_CONTROL_ENDPOINT",

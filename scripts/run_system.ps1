@@ -2,6 +2,7 @@ param(
     [ValidateSet("all", "nav", "s2", "runtime")]
     [string]$Component = "all",
     [int]$StartupTimeoutSec = 180,
+    [switch]$PrintConfigJson,
     [Parameter(ValueFromRemainingArguments = $true)]
     [object[]]$ComponentArgs
 )
@@ -16,6 +17,70 @@ $PathSep = [System.IO.Path]::PathSeparator
 $ProcessLogDir = Join-Path $RepoDir "tmp\process_logs\system"
 $PowerShellExe = Join-Path $PSHOME "powershell.exe"
 
+function Get-PreferredEnvValue {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Names,
+        [string]$DefaultValue = ""
+    )
+
+    foreach ($Name in $Names) {
+        $Value = [Environment]::GetEnvironmentVariable($Name, "Process")
+        if (-not [string]::IsNullOrWhiteSpace($Value)) {
+            return [string]$Value
+        }
+    }
+    return [string]$DefaultValue
+}
+
+function Resolve-PortFromUrl {
+    param(
+        [string]$Url,
+        [int]$DefaultPort
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return [int]$DefaultPort
+    }
+    try {
+        $Parsed = [Uri]$Url
+        if ($Parsed.Port -gt 0) {
+            return [int]$Parsed.Port
+        }
+    }
+    catch {
+    }
+    return [int]$DefaultPort
+}
+
+function Resolve-CondaExeFromBat {
+    param(
+        [string]$CondaBatPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($CondaBatPath)) {
+        return $null
+    }
+    try {
+        $ResolvedBat = [System.IO.Path]::GetFullPath($CondaBatPath)
+    }
+    catch {
+        return $null
+    }
+    $BatDir = Split-Path -Parent $ResolvedBat
+    $Candidates = @(
+        (Join-Path $BatDir "conda.exe"),
+        (Join-Path $BatDir "..\Scripts\conda.exe"),
+        (Join-Path $BatDir "..\conda.exe")
+    )
+    foreach ($Candidate in $Candidates) {
+        if (Test-Path -LiteralPath $Candidate) {
+            return [System.IO.Path]::GetFullPath($Candidate)
+        }
+    }
+    return $null
+}
+
 $DefaultCondaExe = "C:\Users\mango\anaconda3\Scripts\conda.exe"
 $DefaultCondaEnv = "fa2-cu130-py312"
 $DefaultIsaacPython = "C:\isaac-sim\python.bat"
@@ -24,14 +89,24 @@ $NavEntryModule = "apps.navdp_server_app"
 $System2EntryModule = "apps.system2_app"
 $RuntimeEntryModule = "runtime.aura_runtime"
 
-$NavPort = if ($env:NAVDP_PORT) { [int]$env:NAVDP_PORT } else { 8888 }
-$System2Host = if ($env:INTERNVLA_HOST) { $env:INTERNVLA_HOST } else { "127.0.0.1" }
-$System2Port = if ($env:INTERNVLA_PORT) { [int]$env:INTERNVLA_PORT } else { 15801 }
+$NavBaseUrl = Get-PreferredEnvValue -Names @("NAVDP_URL", "G1_POINTGOAL_SERVER_URL") -DefaultValue "http://127.0.0.1:8888"
+$NavPort = if ($env:NAVDP_PORT) { [int]$env:NAVDP_PORT } else { Resolve-PortFromUrl -Url $NavBaseUrl -DefaultPort 8888 }
+$System2BaseUrl = Get-PreferredEnvValue -Names @("INTERNVLA_URL", "G1_POINTGOAL_SYSTEM2_URL") -DefaultValue "http://127.0.0.1:15801"
+$System2Host = if ($env:INTERNVLA_HOST) { $env:INTERNVLA_HOST } else { try { ([Uri]$System2BaseUrl).Host } catch { "127.0.0.1" } }
+$System2Port = if ($env:INTERNVLA_PORT) { [int]$env:INTERNVLA_PORT } else { Resolve-PortFromUrl -Url $System2BaseUrl -DefaultPort 15801 }
 $NavBaseUrl = "http://127.0.0.1:$NavPort"
 $System2BaseUrl = "http://$System2Host`:$System2Port"
-$CondaExe = if ($env:AURA_CONDA_EXE) { $env:AURA_CONDA_EXE } else { $DefaultCondaExe }
-$CondaEnv = if ($env:AURA_CONDA_ENV) { $env:AURA_CONDA_ENV } else { $DefaultCondaEnv }
-$IsaacPython = if ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
+$CondaBat = Get-PreferredEnvValue -Names @("CONDA_BAT") -DefaultValue ""
+$CondaExe = Get-PreferredEnvValue -Names @("CONDA_EXE", "AURA_CONDA_EXE") -DefaultValue ""
+if ([string]::IsNullOrWhiteSpace($CondaExe) -and -not [string]::IsNullOrWhiteSpace($CondaBat)) {
+    $CondaExe = Resolve-CondaExeFromBat -CondaBatPath $CondaBat
+}
+if ([string]::IsNullOrWhiteSpace($CondaExe)) {
+    $CondaExe = $DefaultCondaExe
+}
+$CondaEnv = Get-PreferredEnvValue -Names @("CONDA_ENV_NAME", "AURA_CONDA_ENV") -DefaultValue $DefaultCondaEnv
+$IsaacSimRoot = Get-PreferredEnvValue -Names @("ISAACSIM_PATH") -DefaultValue ""
+$IsaacPython = if (-not [string]::IsNullOrWhiteSpace($IsaacSimRoot)) { Join-Path $IsaacSimRoot "python.bat" } elseif ($env:ISAAC_SIM_PYTHON) { $env:ISAAC_SIM_PYTHON } else { $DefaultIsaacPython }
 
 $ForwardArgs = @()
 foreach ($Arg in @($ComponentArgs)) {
@@ -504,8 +579,15 @@ function Build-RuntimeLaunchArgs {
     $ScenePreset = if ($env:G1_POINTGOAL_SCENE_PRESET) { $env:G1_POINTGOAL_SCENE_PRESET } else { "warehouse" }
     $PlannerMode = if ($env:G1_POINTGOAL_PLANNER_MODE) { $env:G1_POINTGOAL_PLANNER_MODE } else { "IDLE" }
     $LaunchMode = if ($env:G1_POINTGOAL_LAUNCH_MODE) { $env:G1_POINTGOAL_LAUNCH_MODE } else { "" }
-    $ServerUrl = if ($env:G1_POINTGOAL_SERVER_URL) { $env:G1_POINTGOAL_SERVER_URL } else { $NavBaseUrl }
-    $System2Url = if ($env:G1_POINTGOAL_SYSTEM2_URL) { $env:G1_POINTGOAL_SYSTEM2_URL } else { $System2BaseUrl }
+    $ServerUrl = Get-PreferredEnvValue -Names @("NAVDP_URL", "G1_POINTGOAL_SERVER_URL") -DefaultValue $NavBaseUrl
+    $System2Url = Get-PreferredEnvValue -Names @("INTERNVLA_URL", "G1_POINTGOAL_SYSTEM2_URL") -DefaultValue $System2BaseUrl
+    $Instruction = Get-PreferredEnvValue -Names @("NAV_INSTRUCTION") -DefaultValue ""
+    $InstructionLanguage = Get-PreferredEnvValue -Names @("NAV_INSTRUCTION_LANGUAGE") -DefaultValue "auto"
+    $NavCommandApiHost = Get-PreferredEnvValue -Names @("NAV_COMMAND_API_HOST") -DefaultValue "127.0.0.1"
+    $NavCommandApiPort = Get-PreferredEnvValue -Names @("NAV_COMMAND_API_PORT") -DefaultValue "8892"
+    $CameraApiHost = Get-PreferredEnvValue -Names @("CAMERA_API_HOST") -DefaultValue "127.0.0.1"
+    $CameraApiPort = Get-PreferredEnvValue -Names @("CAMERA_API_PORT") -DefaultValue "8891"
+    $CameraPitchDeg = Get-PreferredEnvValue -Names @("CAMERA_PITCH_DEG") -DefaultValue "0.0"
     $ViewerControlEndpoint = if ($env:G1_POINTGOAL_VIEWER_CONTROL_ENDPOINT) { $env:G1_POINTGOAL_VIEWER_CONTROL_ENDPOINT } else { "tcp://127.0.0.1:5580" }
     $ViewerTelemetryEndpoint = if ($env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT) { $env:G1_POINTGOAL_VIEWER_TELEMETRY_ENDPOINT } else { "tcp://127.0.0.1:5581" }
     $ViewerShmName = if ($env:G1_POINTGOAL_VIEWER_SHM_NAME) { $env:G1_POINTGOAL_VIEWER_SHM_NAME } else { "g1_view_frames" }
@@ -557,11 +639,32 @@ function Build-RuntimeLaunchArgs {
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--planner-mode"))) {
         $RuntimeArgs += @("--planner-mode", $EffectivePlannerMode)
     }
-    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--server-url"))) {
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--server-url", "--server_url", "--navdp-url", "--navdp_url"))) {
         $RuntimeArgs += @("--server-url", $ServerUrl)
     }
-    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--system2-url"))) {
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--system2-url", "--internvla-url", "--system2_url", "--internvla_url"))) {
         $RuntimeArgs += @("--system2-url", $System2Url)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Instruction) -and -not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--instruction", "--nav-instruction", "--nav_instruction"))) {
+        $RuntimeArgs += @("--nav-instruction", $Instruction)
+    }
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--nav-instruction-language", "--nav_instruction_language"))) {
+        $RuntimeArgs += @("--nav-instruction-language", $InstructionLanguage)
+    }
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--nav-command-api-host", "--nav_command_api_host"))) {
+        $RuntimeArgs += @("--nav-command-api-host", $NavCommandApiHost)
+    }
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--nav-command-api-port", "--nav_command_api_port"))) {
+        $RuntimeArgs += @("--nav-command-api-port", $NavCommandApiPort)
+    }
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--camera-api-host", "--camera_api_host"))) {
+        $RuntimeArgs += @("--camera-api-host", $CameraApiHost)
+    }
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--camera-api-port", "--camera_api_port"))) {
+        $RuntimeArgs += @("--camera-api-port", $CameraApiPort)
+    }
+    if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--camera-pitch-deg", "--camera_pitch_deg"))) {
+        $RuntimeArgs += @("--camera-pitch-deg", $CameraPitchDeg)
     }
     if (-not (Test-LaunchArgPresent -InputArgs $InputArgs -Names @("--viewer-control-endpoint"))) {
         $RuntimeArgs += @("--viewer-control-endpoint", $ViewerControlEndpoint)
@@ -760,23 +863,20 @@ function Invoke-AllComponent {
         [string[]]$Arguments = @()
     )
 
-    $Processes = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
-    try {
-        $NavProcess = Start-BackgroundSelf -Name "nav" -TargetComponent "nav"
-        $Processes.Add($NavProcess) | Out-Null
-        Wait-TcpReady -Host "127.0.0.1" -Port $NavPort -Name "Nav module" -TimeoutSec $StartupTimeoutSec -Process $NavProcess
-
-        $S2Process = Start-BackgroundSelf -Name "s2" -TargetComponent "s2"
-        $Processes.Add($S2Process) | Out-Null
-        Wait-TcpReady -Host $System2Host -Port $System2Port -Name "S2 module" -TimeoutSec $StartupTimeoutSec -Process $S2Process
-
-        return (Invoke-RuntimeComponent -Arguments $Arguments)
+    $HelperScript = Join-Path $ScriptDir "run_windows_fullstack.ps1"
+    if (-not (Test-Path -LiteralPath $HelperScript)) {
+        throw "Windows full-stack helper not found: $HelperScript"
     }
-    finally {
-        for ($Index = $Processes.Count - 1; $Index -ge 0; $Index -= 1) {
-            Stop-ManagedProcess -Process $Processes[$Index]
-        }
+    if ($PrintConfigJson) {
+        & $HelperScript -StartupTimeoutSec $StartupTimeoutSec -NoExit -PrintConfigJson @Arguments
     }
+    else {
+        & $HelperScript -StartupTimeoutSec $StartupTimeoutSec -NoExit @Arguments
+    }
+    if ($null -ne $LASTEXITCODE) {
+        return [int]$LASTEXITCODE
+    }
+    return 0
 }
 
 $ExitCode = 0

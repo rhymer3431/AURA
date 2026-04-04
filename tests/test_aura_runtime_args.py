@@ -13,6 +13,7 @@ if str(SRC) not in sys.path:
 from runtime.aura_runtime_args import (
     DEFAULT_NATIVE_VIEWER,
     DEFAULT_OBJECT_SEARCH_INSTRUCTION,
+    DEFAULT_NAV_INSTRUCTION_LANGUAGE,
     DEFAULT_VIEWER_CONTROL_ENDPOINT,
     DEFAULT_VIEWER_SHM_NAME,
     apply_demo_defaults,
@@ -167,6 +168,23 @@ def test_build_arg_parser_exposes_viewer_transport_defaults() -> None:
     assert args.global_waypoint_spacing_m == 0.75
     assert args.global_inflation_radius_m == 0.25
     assert args.system2_url == "http://127.0.0.1:15801"
+    assert args.nav_instruction_language == DEFAULT_NAV_INSTRUCTION_LANGUAGE
+    assert args.navdp_replan_hz == 3.0
+    assert args.navdp_plan_timeout == 1.5
+    assert args.navdp_hold_last_plan_timeout == 4.0
+    assert args.internvla_forward_step_m == 0.5
+    assert args.internvla_turn_step_deg == 30.0
+    assert args.internvla_action_timeout_s == 3.0
+    assert args.internvla_goal_depth_window == 5
+    assert args.internvla_goal_depth_min == 0.25
+    assert args.internvla_goal_update_min_dist == 0.35
+    assert args.internvla_goal_confirm_samples == 2
+    assert args.internvla_goal_min_stable_time == 0.6
+    assert args.nav_command_api_host == "127.0.0.1"
+    assert args.nav_command_api_port == 8892
+    assert args.camera_api_host == "127.0.0.1"
+    assert args.camera_api_port == 8891
+    assert args.camera_pitch_deg == 0.0
 
 
 def test_build_arg_parser_accepts_skip_detection_flag() -> None:
@@ -231,3 +249,68 @@ def test_build_arg_parser_accepts_use_navdp_follower_flag() -> None:
     args = _parse_args("--use-navdp-follower")
 
     assert args.use_navdp_follower is True
+
+
+def test_build_arg_parser_accepts_source_style_aliases() -> None:
+    args = _parse_args(
+        "--navdp_url",
+        "http://127.0.0.1:9999",
+        "--internvla_url",
+        "http://127.0.0.1:19999",
+        "--nav_instruction",
+        "go to dock",
+        "--nav_instruction_language",
+        "en",
+        "--navdp_replan_hz",
+        "4.0",
+        "--navdp_plan_timeout",
+        "2.0",
+        "--navdp_hold_last_plan_timeout",
+        "5.0",
+        "--internvla_forward_step_m",
+        "0.7",
+        "--internvla_turn_step_deg",
+        "45",
+        "--internvla_action_timeout_s",
+        "4.0",
+        "--nav_command_api_host",
+        "0.0.0.0",
+        "--nav_command_api_port",
+        "9000",
+        "--camera_api_host",
+        "0.0.0.0",
+        "--camera_api_port",
+        "9001",
+        "--camera_pitch_deg",
+        "-10.0",
+    )
+
+    assert args.server_url == "http://127.0.0.1:9999"
+    assert args.system2_url == "http://127.0.0.1:19999"
+    assert args.instruction == "go to dock"
+    assert args.nav_instruction_language == "en"
+    assert args.navdp_replan_hz == 4.0
+    assert args.navdp_plan_timeout == 2.0
+    assert args.navdp_hold_last_plan_timeout == 5.0
+    assert args.internvla_forward_step_m == 0.7
+    assert args.internvla_turn_step_deg == 45.0
+    assert args.internvla_action_timeout_s == 4.0
+    assert args.nav_command_api_host == "0.0.0.0"
+    assert args.nav_command_api_port == 9000
+    assert args.camera_api_host == "0.0.0.0"
+    assert args.camera_api_port == 9001
+    assert args.camera_pitch_deg == -10.0
+
+
+def test_validate_args_rejects_invalid_nav_runtime_thresholds() -> None:
+    args = _parse_args("--navdp-plan-timeout", "0")
+
+    with pytest.raises(ValueError, match="--navdp-plan-timeout must be positive"):
+        validate_args(args)
+
+
+def test_validate_args_rejects_empty_nav_instruction_language() -> None:
+    args = _parse_args("--nav-instruction-language", "   ")
+
+    with pytest.raises(ValueError, match="--nav-instruction-language must be non-empty"):
+        validate_args(args)

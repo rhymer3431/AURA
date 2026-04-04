@@ -38,6 +38,7 @@ def create_app(args: argparse.Namespace | None = None) -> Flask:
     app = Flask(__name__)
 
     @app.route("/health", methods=["GET"])
+    @app.route("/healthz", methods=["GET"])
     def health() -> Any:
         return jsonify({"status": "ok", "service": "navdp_server"})
 

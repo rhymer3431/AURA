@@ -6,13 +6,13 @@ from typing import Any
 
 import numpy as np
 
-from common.geometry import within_xy_radius, world_goal_to_robot_frame
+from common.geometry import within_xy_radius, world_goal_to_robot_frame, wrap_to_pi
 from control.async_planners import (
     NoGoalPlannerInput,
     PlannerInput,
     PlannerOutput,
 )
-from inference.vlm import AsyncSystem2Input, System2Result, resolve_goal_world_xy_from_pixel
+from inference.vlm import AsyncSystem2Input, System2Result, normalized_uv_to_pixel_xy, resolve_goal_world_xy_from_pixel
 from ipc.messages import ActionCommand
 from runtime.global_route import GlobalRoutePlanner
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
@@ -48,26 +48,18 @@ class PlannerRuntimeEngine:
             raise ValueError("navigation instruction must be non-empty")
         if getattr(self._transport, "system2_client", None) is None or getattr(self._transport, "pointgoal_planner", None) is None:
             raise RuntimeError("NAV task planner is not initialized")
-        self._transport.system2_client.reset(text)
+        self._transport.system2_client.reset(
+            text,
+            language=str(getattr(self._args, "nav_instruction_language", "auto")).strip() or "auto",
+        )
         try:
             self._transport.navdp_client.navigator_reset(self._transport._intrinsic.copy(), batch_size=1)
         except Exception:
             pass
+        self._state.reset_navigation_state()
         self._state.goal.nav_instruction = text
-        self._state.trajectory.plan_version = -1
-        self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
-        self._state.reset_planner_control()
-        self._state.trajectory.stale_sec = -1.0
-        self._state.goal.goal_version = -1
-        self._state.goal.traj_version = -1
-        self._state.goal.system2_result_version = -1
-        self._state.goal.system2_pixel_goal = None
-        self._state.goal.system2_submit_ts = 0.0
-        self._state.goal.system2_response_ts = time.perf_counter()
-        self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
         self._state.interactive.last_nogoal_plan_version = -1
         self._state.interactive.last_nav_plan_version = -1
-        self._state.trajectory.stats = PlannerStats()
         if getattr(self._transport, "system2_planner", None) is not None:
             self._transport.system2_planner.reset_state()
 
@@ -447,6 +439,10 @@ class PlannerRuntimeEngine:
                 stop=True,
                 sensor_meta=dict(observation.sensor_meta),
             )
+        self._advance_action_override(
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
+        )
         self._maybe_update_system2(
             observation,
             robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
@@ -474,6 +470,8 @@ class PlannerRuntimeEngine:
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> None:
+        if self._state.action_override.mode is not None:
+            return
         planner = getattr(self._transport, "system2_planner", None)
         if planner is not None:
             self._consume_async_system2_result(
@@ -508,6 +506,7 @@ class PlannerRuntimeEngine:
                 stamp_s=now,
             )
         except Exception as exc:  # noqa: BLE001
+            self._state.system2.last_error = f"{type(exc).__name__}: {exc}"
             self._state.trajectory.stats = PlannerStats(
                 successful_calls=int(self._state.trajectory.stats.successful_calls),
                 failed_calls=int(self._state.trajectory.stats.failed_calls) + 1,
@@ -527,7 +526,7 @@ class PlannerRuntimeEngine:
         )
 
     def _system2_query_due(self, *, now: float) -> bool:
-        interval = max(float(getattr(self._args, "s2_period_sec", 1.0)), 0.05)
+        interval = max(float(getattr(self._args, "s2_period_sec", 1.0)), 0.0)
         last_query_ts = max(float(self._state.goal.system2_submit_ts), float(self._state.goal.system2_response_ts))
         return self._state.goal.system2_result_version < 0 or (float(now) - last_query_ts) >= interval
 
@@ -553,6 +552,262 @@ class PlannerRuntimeEngine:
             robot_yaw=float(robot_yaw),
         )
 
+    @staticmethod
+    def _direct_action_modes() -> tuple[str, ...]:
+        return ("forward", "yaw_left", "yaw_right")
+
+    @staticmethod
+    def _result_status(result: System2Result) -> str:
+        return str(getattr(result, "status", "")).strip().lower()
+
+    @staticmethod
+    def _result_text(result: System2Result) -> str:
+        return str(getattr(result, "text", "")).strip()
+
+    @staticmethod
+    def _result_decision_mode(result: System2Result) -> str:
+        return str(getattr(result, "decision_mode", "wait")).strip().lower() or "wait"
+
+    @staticmethod
+    def _result_needs_requery(result: System2Result) -> bool:
+        return bool(getattr(result, "needs_requery", False))
+
+    @staticmethod
+    def _result_action_sequence(result: System2Result) -> tuple[str, ...]:
+        raw_sequence = getattr(result, "action_sequence", ()) or ()
+        return tuple(str(item).strip().lower() for item in raw_sequence if str(item).strip() != "")
+
+    @staticmethod
+    def _result_stamp_s(result: System2Result) -> float:
+        raw_stamp = getattr(result, "stamp_s", time.monotonic())
+        try:
+            return float(raw_stamp)
+        except (TypeError, ValueError):
+            return time.monotonic()
+
+    def _system2_result_signature(self, observation: ExecutionObservation, result: System2Result) -> str:
+        pixel_xy = self._normalize_result_pixel_xy(observation, result)
+        pixel_token = "" if pixel_xy is None else f"{int(pixel_xy[0])},{int(pixel_xy[1])}"
+        action_sequence = self._result_action_sequence(result)
+        return "|".join(
+            (
+                self._result_status(result),
+                self._result_decision_mode(result),
+                self._result_text(result),
+                pixel_token,
+                ",".join(action_sequence),
+                "1" if self._result_needs_requery(result) else "0",
+            )
+        )
+
+    def _normalize_result_pixel_xy(self, observation: ExecutionObservation, result: System2Result) -> np.ndarray | None:
+        if result.pixel_xy is not None:
+            return np.asarray(result.pixel_xy, dtype=np.float32).reshape(2)
+        if result.uv_norm is None:
+            return None
+        pixel_xy = normalized_uv_to_pixel_xy(
+            np.asarray(result.uv_norm, dtype=np.float32).reshape(2),
+            image_width=int(observation.rgb.shape[1]),
+            image_height=int(observation.rgb.shape[0]),
+        )
+        return np.asarray(pixel_xy, dtype=np.float32)
+
+    def _record_system2_result(self, observation: ExecutionObservation, result: System2Result, *, error: str = "") -> str:
+        pixel_xy = self._normalize_result_pixel_xy(observation, result)
+        signature = self._system2_result_signature(observation, result)
+        action_sequence = self._result_action_sequence(result)
+        payload: dict[str, object] = {
+            "status": self._result_status(result),
+            "text": self._result_text(result),
+            "decision_mode": self._result_decision_mode(result),
+            "needs_requery": self._result_needs_requery(result),
+            "latency_ms": float(getattr(result, "latency_ms", 0.0) or 0.0),
+            "stamp_s": self._result_stamp_s(result),
+            "action_sequence": list(action_sequence),
+        }
+        if pixel_xy is not None:
+            payload["pixel_xy"] = [int(round(float(pixel_xy[0]))), int(round(float(pixel_xy[1])))]
+        self._state.system2.last_signature = signature
+        self._state.system2.last_result = payload
+        self._state.system2.last_error = str(error)
+        self._state.system2.latest_decision_mode = str(payload["decision_mode"])
+        self._state.goal.system2_pixel_goal = payload.get("pixel_xy") if isinstance(payload.get("pixel_xy"), list) else None
+        return signature
+
+    def _begin_goal_candidate(self, *, world_xy: np.ndarray, pixel_xy: np.ndarray, stamp_s: float) -> None:
+        goal = self._state.goal
+        world = np.asarray(world_xy, dtype=np.float32).reshape(2)
+        pixel = np.asarray(pixel_xy, dtype=np.float32).reshape(2)
+        goal.candidate_kind = "point"
+        goal.raw_candidate_world_xy = world.copy()
+        goal.filtered_candidate_world_xy = world.copy()
+        goal.raw_candidate_pixel_xy = pixel.copy()
+        goal.filtered_candidate_pixel_xy = pixel.copy()
+        goal.candidate_started_at_s = float(stamp_s)
+        goal.candidate_last_stamp_s = float(stamp_s)
+        goal.candidate_sample_count = 1
+
+    def _update_goal_candidate(self, *, world_xy: np.ndarray, pixel_xy: np.ndarray, stamp_s: float) -> None:
+        goal = self._state.goal
+        world = np.asarray(world_xy, dtype=np.float32).reshape(2)
+        pixel = np.asarray(pixel_xy, dtype=np.float32).reshape(2)
+        if goal.candidate_kind != "point" or goal.filtered_candidate_world_xy is None or goal.filtered_candidate_pixel_xy is None:
+            self._begin_goal_candidate(world_xy=world, pixel_xy=pixel, stamp_s=stamp_s)
+            return
+        alpha = float(np.clip(float(getattr(self._args, "internvla_goal_filter_alpha", 0.35)), 0.0, 1.0))
+        goal.raw_candidate_world_xy = world.copy()
+        goal.filtered_candidate_world_xy = ((1.0 - alpha) * goal.filtered_candidate_world_xy) + (alpha * world)
+        goal.raw_candidate_pixel_xy = pixel.copy()
+        goal.filtered_candidate_pixel_xy = ((1.0 - alpha) * goal.filtered_candidate_pixel_xy) + (alpha * pixel)
+        goal.candidate_last_stamp_s = float(stamp_s)
+        goal.candidate_sample_count += 1
+
+    def _goal_candidate_ready(self) -> bool:
+        goal = self._state.goal
+        if goal.candidate_kind != "point" or goal.filtered_candidate_world_xy is None:
+            return False
+        stable_time = max(0.0, float(goal.candidate_last_stamp_s - goal.candidate_started_at_s))
+        return (
+            int(goal.candidate_sample_count) >= max(int(getattr(self._args, "internvla_goal_confirm_samples", 2)), 1)
+            or stable_time >= max(float(getattr(self._args, "internvla_goal_min_stable_time", 0.6)), 0.0)
+        )
+
+    def _clear_goal(self, reason: str) -> None:
+        had_goal = self._state.has_active_goal() or self._state.has_pending_goal()
+        self._state.goal.target_world_xy = None
+        self._state.goal.target_pixel_xy = None
+        self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
+        self._state.goal.last_clear_reason = str(reason)
+        self._state.clear_goal_candidate()
+        if had_goal:
+            self._state.goal.goal_version += 1
+        self._state.goal.traj_version = -1
+
+    def _commit_world_goal(
+        self,
+        *,
+        world_xy: np.ndarray,
+        pixel_xy: np.ndarray,
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+    ) -> None:
+        world = np.asarray(world_xy, dtype=np.float32).reshape(2)
+        pixel = np.asarray(np.rint(pixel_xy), dtype=np.float32).reshape(2)
+        self._state.goal.target_world_xy = world.copy()
+        self._state.goal.target_pixel_xy = pixel.copy()
+        self._state.goal.local_xy = world_goal_to_robot_frame(
+            goal_xy=world,
+            robot_xy=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
+        ).astype(np.float32)
+        self._state.goal.goal_version += 1
+        self._state.goal.last_clear_reason = ""
+        self._state.clear_goal_candidate()
+        self._state.navdp.last_discard_reason = ""
+        self._state.trajectory.planner_control_mode = "trajectory"
+        self._state.trajectory.planner_control_reason = "pixel_goal"
+        self._state.trajectory.planner_control_queue = ()
+        self._state.trajectory.planner_control_progress = 0.0
+        self._state.trajectory.planner_yaw_delta_rad = None
+        self._state.trajectory.stale_hold_reason = ""
+
+    def _set_direct_action_override(
+        self,
+        *,
+        modes: tuple[str, ...],
+        robot_pos_world: np.ndarray,
+        robot_yaw: float,
+        reason: str,
+    ) -> None:
+        active_mode = str(modes[0])
+        pending_modes = tuple(str(item) for item in modes[1:])
+        self._state.action_override.mode = active_mode
+        self._state.action_override.pending_modes = pending_modes
+        self._state.action_override.started_at_s = time.monotonic()
+        self._state.action_override.start_pos_xy = np.asarray(robot_pos_world, dtype=np.float32).reshape(-1)[:2].copy()
+        self._state.action_override.start_yaw_rad = float(robot_yaw)
+        self._state.action_override.progress = 0.0
+        self._state.action_override.target_distance_m = (
+            max(0.05, float(getattr(self._args, "internvla_forward_step_m", 0.5)))
+            if active_mode == "forward"
+            else 0.0
+        )
+        self._state.action_override.target_yaw_rad = (
+            float(np.deg2rad(max(1.0, float(getattr(self._args, "internvla_turn_step_deg", 30.0)))))
+            if active_mode in {"yaw_left", "yaw_right"}
+            else 0.0
+        )
+        self._state.trajectory.planner_control_version += 1
+        self._state.trajectory.planner_control_mode = active_mode
+        self._state.trajectory.planner_control_queue = pending_modes
+        self._state.trajectory.planner_control_progress = 0.0
+        self._state.trajectory.planner_control_reason = str(reason)
+        self._state.trajectory.planner_yaw_delta_rad = None
+        self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+        self._state.trajectory.used_cached_traj = False
+        self._state.trajectory.stale_hold_reason = ""
+        self._state.locomotion.state_label = "waiting"
+        self._state.locomotion.last_command = np.zeros(3, dtype=np.float32)
+        self._state.locomotion.last_command_stamp = time.monotonic()
+
+    def _clear_action_override(self) -> None:
+        self._state.action_override.mode = None
+        self._state.action_override.pending_modes = ()
+        self._state.action_override.started_at_s = 0.0
+        self._state.action_override.start_pos_xy = None
+        self._state.action_override.start_yaw_rad = 0.0
+        self._state.action_override.target_distance_m = 0.0
+        self._state.action_override.target_yaw_rad = 0.0
+        self._state.action_override.progress = 0.0
+
+    def _advance_action_override(self, *, robot_pos_world: np.ndarray, robot_yaw: float) -> None:
+        mode = self._state.action_override.mode
+        if mode is None:
+            self._state.trajectory.planner_control_queue = ()
+            self._state.trajectory.planner_control_progress = 0.0
+            return
+        now = time.monotonic()
+        progress = 0.0
+        completed = False
+        if mode == "forward":
+            start_xy = self._state.action_override.start_pos_xy
+            target_distance = max(float(self._state.action_override.target_distance_m), 1.0e-6)
+            if start_xy is not None:
+                distance = float(np.linalg.norm(np.asarray(robot_pos_world, dtype=np.float32)[:2] - np.asarray(start_xy, dtype=np.float32)))
+                progress = min(distance, target_distance) / target_distance
+                completed = distance >= (target_distance - 1.0e-4)
+        elif mode in {"yaw_left", "yaw_right"}:
+            target_yaw = max(float(self._state.action_override.target_yaw_rad), 1.0e-6)
+            yaw_delta = abs(float(wrap_to_pi(float(robot_yaw) - float(self._state.action_override.start_yaw_rad))))
+            progress = min(yaw_delta, target_yaw) / target_yaw
+            completed = yaw_delta >= (target_yaw - 1.0e-4)
+        elapsed = max(0.0, now - float(self._state.action_override.started_at_s))
+        timeout_s = max(0.1, float(getattr(self._args, "internvla_action_timeout_s", 3.0)))
+        self._state.action_override.progress = float(progress)
+        self._state.trajectory.planner_control_progress = float(progress)
+        self._state.trajectory.planner_control_queue = tuple(self._state.action_override.pending_modes)
+        if not completed and progress < 1.0 and elapsed <= timeout_s:
+            return
+        pending_modes = tuple(self._state.action_override.pending_modes)
+        if pending_modes:
+            self._set_direct_action_override(
+                modes=pending_modes,
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+                reason="direct_action_queue",
+            )
+            return
+        self._clear_action_override()
+        self._state.trajectory.planner_control_version += 1
+        self._state.trajectory.planner_control_mode = "wait"
+        self._state.trajectory.planner_control_queue = ()
+        self._state.trajectory.planner_control_progress = 1.0
+        self._state.trajectory.planner_control_reason = "direct_action_complete"
+        self._state.trajectory.planner_yaw_delta_rad = None
+        self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+        self._state.trajectory.used_cached_traj = False
+        self._state.trajectory.stale_hold_reason = ""
+
     def _apply_system2_result(
         self,
         observation: ExecutionObservation,
@@ -561,53 +816,146 @@ class PlannerRuntimeEngine:
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> None:
-        decision_mode = str(result.decision_mode or "wait").strip().lower() or "wait"
-        self._state.goal.system2_pixel_goal = None
-        if result.pixel_xy is not None:
-            pixel_xy = np.asarray(result.pixel_xy, dtype=np.float32).reshape(2)
-            self._state.goal.system2_pixel_goal = [
-                int(round(float(pixel_xy[0]))),
-                int(round(float(pixel_xy[1]))),
-            ]
-        if decision_mode == "pixel_goal" and result.pixel_xy is not None:
-            pixel_xy = tuple(int(round(float(v))) for v in np.asarray(result.pixel_xy, dtype=np.float32).reshape(2))
+        previous_signature = str(self._state.system2.last_signature)
+        decision_mode = self._result_decision_mode(result)
+        result_signature = self._record_system2_result(observation, result)
+        same_signature = result_signature == previous_signature
+        pixel_xy = self._normalize_result_pixel_xy(observation, result)
+        if decision_mode == "pixel_goal":
+            self._clear_action_override()
+            if pixel_xy is None:
+                self._state.system2.last_error = "InternVLA pixel goal is missing both pixel_xy and uv_norm."
+                return
             world_xy = resolve_goal_world_xy_from_pixel(
-                pixel_xy=pixel_xy,
+                pixel_xy=(int(round(float(pixel_xy[0]))), int(round(float(pixel_xy[1])))),
                 depth_image=observation.depth,
                 intrinsic=observation.intrinsic,
                 camera_pos_world=observation.cam_pos,
                 camera_quat_wxyz=observation.cam_quat,
-                window_size=int(getattr(self._args, "internvla_goal_depth_window", 11)),
-                depth_min_m=float(getattr(self._args, "internvla_goal_depth_min", 0.1)),
+                window_size=int(getattr(self._args, "internvla_goal_depth_window", 5)),
+                depth_min_m=float(getattr(self._args, "internvla_goal_depth_min", 0.25)),
                 depth_max_m=float(getattr(self._args, "internvla_goal_depth_max", 6.0)),
             )
-            if world_xy is not None:
-                self._state.goal.goal_version += 1
-                self._state.goal.local_xy = world_goal_to_robot_frame(
-                    goal_xy=np.asarray(world_xy, dtype=np.float32),
-                    robot_xy=np.asarray(robot_pos_world, dtype=np.float32),
-                    robot_yaw=float(robot_yaw),
-                ).astype(np.float32)
-                self._state.trajectory.planner_control_mode = "trajectory"
-                self._state.trajectory.planner_yaw_delta_rad = None
-                self._state.trajectory.planner_control_reason = "pixel_goal"
+            if world_xy is None:
+                self._state.system2.last_error = (
+                    "InternVLA goal projection failed: "
+                    f"no valid depth near pixel={[int(round(float(pixel_xy[0]))), int(round(float(pixel_xy[1])))]}"
+                )
+                return
+            current_goal_world = self._state.goal.target_world_xy
+            min_goal_dist = max(float(getattr(self._args, "internvla_goal_update_min_dist", 0.35)), 0.0)
+            if current_goal_world is not None:
+                active_distance = float(
+                    np.linalg.norm(np.asarray(world_xy, dtype=np.float32).reshape(2) - np.asarray(current_goal_world, dtype=np.float32).reshape(2))
+                )
+                if active_distance < min_goal_dist:
+                    self._state.clear_goal_candidate()
+                    self._state.trajectory.planner_control_mode = "trajectory"
+                self._state.trajectory.planner_control_reason = "pixel_goal_unchanged"
+                return
+            candidate_world = self._state.goal.filtered_candidate_world_xy
+            if candidate_world is None:
+                self._begin_goal_candidate(
+                    world_xy=np.asarray(world_xy, dtype=np.float32),
+                    pixel_xy=pixel_xy,
+                    stamp_s=self._result_stamp_s(result),
+                )
+            else:
+                candidate_distance = float(
+                    np.linalg.norm(np.asarray(world_xy, dtype=np.float32).reshape(2) - np.asarray(candidate_world, dtype=np.float32).reshape(2))
+                )
+                if candidate_distance >= min_goal_dist:
+                    self._begin_goal_candidate(
+                        world_xy=np.asarray(world_xy, dtype=np.float32),
+                        pixel_xy=pixel_xy,
+                        stamp_s=self._result_stamp_s(result),
+                    )
+                else:
+                    self._update_goal_candidate(
+                        world_xy=np.asarray(world_xy, dtype=np.float32),
+                        pixel_xy=pixel_xy,
+                        stamp_s=self._result_stamp_s(result),
+                    )
+            if not self._goal_candidate_ready():
+                self._state.trajectory.planner_control_mode = "wait"
+                self._state.trajectory.planner_control_reason = "pixel_goal_pending"
+                self._state.trajectory.planner_control_queue = ()
+                self._state.trajectory.planner_control_progress = 0.0
+                return
+            stabilized_world = self._state.goal.filtered_candidate_world_xy
+            stabilized_pixel = self._state.goal.filtered_candidate_pixel_xy
+            if stabilized_world is None or stabilized_pixel is None:
+                return
+            self._commit_world_goal(
+                world_xy=np.asarray(stabilized_world, dtype=np.float32),
+                pixel_xy=np.asarray(stabilized_pixel, dtype=np.float32),
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+            )
             return
-        if decision_mode in {"forward", "yaw_left", "yaw_right", "stop", "wait"}:
+        if decision_mode in self._direct_action_modes():
+            action_sequence = tuple(mode for mode in (self._result_action_sequence(result) or (decision_mode,)) if mode in self._direct_action_modes())
+            if not action_sequence:
+                action_sequence = (decision_mode,)
+            self._clear_goal(f"system2_{decision_mode}")
+            self._state.navdp.request_active = False
+            self._state.navdp.last_discard_reason = ""
+            self._state.navdp.error = ""
+            self._set_direct_action_override(
+                modes=action_sequence,
+                robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+                robot_yaw=float(robot_yaw),
+                reason=self._result_text(result),
+            )
+            return
+        if decision_mode == "stop" or self._result_status(result) == "stop":
+            self._clear_action_override()
+            self._clear_goal("stop")
+            self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+            self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.stale_hold_reason = ""
             self._state.trajectory.planner_control_version += 1
-            if decision_mode in {"forward", "yaw_left", "yaw_right", "stop"}:
-                self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
-                self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
-            self._state.trajectory.planner_control_mode = decision_mode
-            self._state.trajectory.planner_yaw_delta_rad = None
-            self._state.trajectory.planner_control_reason = str(result.text)
-            if decision_mode in {"stop", "wait"}:
-                self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.planner_control_mode = "stop"
+            self._state.trajectory.planner_control_queue = ()
+            self._state.trajectory.planner_control_progress = 0.0
+            self._state.trajectory.planner_control_reason = self._result_text(result)
+            self._state.navdp.request_active = False
+            self._state.navdp.last_discard_reason = ""
             return
-        if decision_mode == "look_down":
-            if self._state.trajectory.trajectory_world.shape[0] == 0:
+        if decision_mode in {"wait", "look_down"}:
+            self._clear_action_override()
+            if self._state.has_active_goal():
+                self._state.trajectory.planner_control_mode = "trajectory"
+                self._state.trajectory.planner_control_reason = "wait_preserve_goal"
+                self._state.trajectory.planner_control_queue = ()
+                self._state.trajectory.planner_control_progress = 0.0
+                if decision_mode == "look_down":
+                    self._state.trajectory.stale_hold_reason = "look_down_requery"
+            elif self._state.has_pending_goal():
                 self._state.trajectory.planner_control_version += 1
                 self._state.trajectory.planner_control_mode = "wait"
-                self._state.trajectory.planner_control_reason = str(result.text)
+                self._state.trajectory.planner_control_reason = "wait_pending_goal"
+                self._state.trajectory.planner_control_queue = ()
+                self._state.trajectory.planner_control_progress = 0.0
+                self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+                self._state.trajectory.used_cached_traj = False
+                if decision_mode == "look_down":
+                    self._state.trajectory.stale_hold_reason = "look_down_requery"
+            else:
+                self._clear_goal("wait")
+                self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+                self._state.trajectory.used_cached_traj = False
+                self._state.trajectory.stale_hold_reason = "look_down_requery" if decision_mode == "look_down" else ""
+                self._state.trajectory.planner_control_version += 1
+                self._state.trajectory.planner_control_mode = "wait"
+                self._state.trajectory.planner_control_queue = ()
+                self._state.trajectory.planner_control_progress = 0.0
+                self._state.trajectory.planner_control_reason = self._result_text(result) or decision_mode
+            return
+        if self._result_status(result) == "error":
+            self._state.system2.last_error = f"InternVLA server error: {self._result_text(result)}"
+        if same_signature and self._state.system2.last_error == "":
+            self._state.system2.latest_decision_mode = decision_mode
 
     def _maybe_submit_navdp_plan(
         self,
@@ -618,17 +966,49 @@ class PlannerRuntimeEngine:
     ) -> None:
         if self._state.trajectory.planner_control_mode not in {None, "trajectory"}:
             return
+        if self._state.action_override.mode is not None:
+            return
+        if self._state.goal.target_world_xy is None:
+            self._state.navdp.request_active = False
+            return
+        goal_tolerance = max(float(getattr(self._args, "goal_tolerance_m", 0.4)), 0.0)
+        if within_xy_radius(
+            np.asarray([float(robot_pos_world[0]), float(robot_pos_world[1]), 0.0], dtype=np.float32),
+            np.asarray([float(self._state.goal.target_world_xy[0]), float(self._state.goal.target_world_xy[1]), 0.0], dtype=np.float32),
+            goal_tolerance,
+        ):
+            self._state.goal.local_xy = np.zeros(2, dtype=np.float32)
+            self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
+            self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.stale_hold_reason = ""
+            self._state.trajectory.planner_control_mode = "wait"
+            self._state.trajectory.planner_control_reason = "goal_reached"
+            self._state.trajectory.planner_control_queue = ()
+            self._state.trajectory.planner_control_progress = 0.0
+            self._state.navdp.request_active = False
+            return
+        self._state.goal.local_xy = world_goal_to_robot_frame(
+            goal_xy=np.asarray(self._state.goal.target_world_xy, dtype=np.float32),
+            robot_xy=np.asarray(robot_pos_world, dtype=np.float32)[:2],
+            robot_yaw=float(robot_yaw),
+        ).astype(np.float32)
         if not np.any(np.isfinite(self._state.goal.local_xy)):
             return
-        if not np.any(np.abs(self._state.goal.local_xy) > 0.0):
-            return
         now = time.monotonic()
+        replan_period = 1.0 / max(float(getattr(self._args, "navdp_replan_hz", 3.0)), 0.1)
         should_plan = (
             self._state.trajectory.trajectory_world.shape[0] == 0
-            or (now - float(self._state.trajectory.last_plan_stamp_s)) >= max(float(getattr(self._args, "s1_period_sec", 0.2)), 0.05)
+            or int(self._state.navdp.last_request_goal_version) != int(self._state.goal.goal_version)
+            or (now - float(self._state.navdp.last_request_started_at_s)) >= replan_period
         )
         if not should_plan:
             return
+        self._state.navdp.request_active = True
+        self._state.navdp.last_request_goal_version = int(self._state.goal.goal_version)
+        self._state.navdp.last_request_mode = str(self._state.goal_mode())
+        self._state.navdp.last_request_started_at_s = float(now)
+        self._state.navdp.last_request_source_frame_id = int(observation.frame_id)
+        self._state.navdp.error = ""
         self._transport.pointgoal_planner.submit(
             PlannerInput(
                 frame_id=int(observation.frame_id),
@@ -651,17 +1031,48 @@ class PlannerRuntimeEngine:
         latest = self._transport.pointgoal_planner.consume_latest(self._state.trajectory.plan_version)
         success, failed, error, latency_ms = self._transport.pointgoal_planner.snapshot_status()
         if latest is not None:
-            self._state.trajectory.plan_version = int(latest.plan_version)
-            self._state.trajectory.trajectory_world = np.asarray(latest.trajectory_world, dtype=np.float32).copy()
-            self._state.trajectory.last_plan_stamp_s = time.monotonic()
-            self._state.goal.traj_version = int(latest.plan_version)
-            self._state.trajectory.planner_control_mode = "trajectory"
-            self._state.trajectory.planner_control_reason = ""
-            self._state.trajectory.used_cached_traj = False
-            self._state.trajectory.stale_sec = 0.0
-            last_plan_step = int(latest.source_frame_id)
+            current_goal_version = int(self._state.goal.goal_version)
+            request_goal_version = int(self._state.navdp.last_request_goal_version)
+            request_source_frame_id = int(self._state.navdp.last_request_source_frame_id)
+            request_mode = str(self._state.navdp.last_request_mode)
+            current_goal_mode = self._state.goal_mode()
+            discard_reason = ""
+            if request_mode not in {"point", "pixel"}:
+                discard_reason = f"unsupported_goal_mode:{request_mode or 'none'}"
+            elif current_goal_version != request_goal_version:
+                discard_reason = f"goal_version_changed:{request_goal_version}->{current_goal_version}"
+            elif current_goal_mode != request_mode:
+                discard_reason = "active_goal_changed"
+            elif request_source_frame_id >= 0 and int(latest.source_frame_id) != request_source_frame_id:
+                discard_reason = f"request_frame_mismatch:{request_source_frame_id}->{int(latest.source_frame_id)}"
+
+            if discard_reason == "":
+                self._state.trajectory.plan_version = int(latest.plan_version)
+                self._state.trajectory.trajectory_world = np.asarray(latest.trajectory_world, dtype=np.float32).copy()
+                self._state.trajectory.last_plan_stamp_s = time.monotonic()
+                self._state.goal.traj_version = int(latest.plan_version)
+                self._state.trajectory.planner_control_mode = "trajectory"
+                self._state.trajectory.planner_control_reason = ""
+                self._state.trajectory.planner_control_queue = ()
+                self._state.trajectory.planner_control_progress = 0.0
+                self._state.trajectory.used_cached_traj = False
+                self._state.trajectory.stale_sec = 0.0
+                self._state.trajectory.stale_hold_reason = ""
+                self._state.navdp.last_committed_goal_version = current_goal_version
+                self._state.navdp.last_committed_plan_version = int(latest.plan_version)
+                self._state.navdp.last_discard_reason = ""
+                self._state.navdp.request_active = False
+                self._state.navdp.error = ""
+                last_plan_step = int(latest.source_frame_id)
+            else:
+                self._state.navdp.last_discarded_goal_version = request_goal_version
+                self._state.navdp.last_discard_reason = discard_reason
+                self._state.navdp.request_active = False
+                last_plan_step = int(frame_id)
         else:
             last_plan_step = int(frame_id)
+            if error != "":
+                self._state.navdp.error = str(error)
         self._state.trajectory.stats = PlannerStats(
             successful_calls=int(success),
             failed_calls=int(failed),
@@ -674,20 +1085,32 @@ class PlannerRuntimeEngine:
         if self._state.trajectory.planner_control_mode not in {None, "trajectory"}:
             self._state.trajectory.stale_sec = -1.0
             return
+        if self._state.goal.target_world_xy is None:
+            self._state.trajectory.used_cached_traj = False
+            self._state.trajectory.stale_sec = -1.0
+            self._state.trajectory.stale_hold_reason = ""
+            return
         if self._state.trajectory.trajectory_world.shape[0] == 0 or float(self._state.trajectory.last_plan_stamp_s) <= 0.0:
             self._state.trajectory.used_cached_traj = False
             self._state.trajectory.stale_sec = -1.0
+            if self._state.trajectory.trajectory_world.shape[0] == 0 and str(self._state.trajectory.stale_hold_reason).strip() == "":
+                self._state.trajectory.stale_hold_reason = "no_plan"
             return
         stale_sec = max(0.0, time.monotonic() - float(self._state.trajectory.last_plan_stamp_s))
         self._state.trajectory.stale_sec = float(stale_sec)
-        max_stale = float(getattr(self._args, "traj_max_stale_sec", 4.0))
-        if stale_sec > max_stale:
+        plan_timeout = max(0.1, float(getattr(self._args, "navdp_plan_timeout", 1.5)))
+        hold_timeout = max(plan_timeout, float(getattr(self._args, "navdp_hold_last_plan_timeout", 4.0)))
+        if stale_sec > hold_timeout:
             self._state.trajectory.trajectory_world = np.zeros((0, 3), dtype=np.float32)
             self._state.trajectory.used_cached_traj = False
-            self._state.trajectory.planner_control_mode = "wait"
-            self._state.trajectory.planner_control_reason = "stale_hold_timeout"
+            self._state.trajectory.stale_hold_reason = "hold_timeout"
             return
-        self._state.trajectory.used_cached_traj = bool(stale_sec > 0.0)
+        if stale_sec > plan_timeout:
+            self._state.trajectory.used_cached_traj = True
+            self._state.trajectory.stale_hold_reason = "stale_hold"
+            return
+        self._state.trajectory.used_cached_traj = False
+        self._state.trajectory.stale_hold_reason = ""
 
     def _run_interactive(
         self,
@@ -861,6 +1284,10 @@ class PlannerRuntimeEngine:
         robot_pos_world: np.ndarray,
         robot_yaw: float,
     ) -> bool:
+        self._advance_action_override(
+            robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
+            robot_yaw=float(robot_yaw),
+        )
         self._maybe_update_system2(
             observation,
             robot_pos_world=np.asarray(robot_pos_world, dtype=np.float32),
@@ -970,16 +1397,23 @@ class PlannerRuntimeEngine:
             plan_version=int(self._state.trajectory.plan_version),
             stats=self._state.trajectory.stats,
             source_frame_id=int(frame_id),
-            goal_local_xy=np.asarray(self._state.goal.local_xy, dtype=np.float32).copy() if self._state.mode == "MEM_NAV" else None,
+            goal_local_xy=np.asarray(self._state.goal.local_xy, dtype=np.float32).copy()
+            if self._state.mode in {"NAV", "MEM_NAV"}
+            else None,
             action_command=action_command,
             stop=bool(stop),
             planner_control_mode=self._state.trajectory.planner_control_mode,
             planner_control_version=int(self._state.trajectory.planner_control_version),
+            planner_control_reason=str(self._state.trajectory.planner_control_reason),
             planner_yaw_delta_rad=self._state.trajectory.planner_yaw_delta_rad,
+            planner_control_queue=tuple(self._state.trajectory.planner_control_queue),
+            planner_control_progress=float(self._state.trajectory.planner_control_progress),
             stale_sec=float(self._state.trajectory.stale_sec),
+            stale_hold_reason=str(self._state.trajectory.stale_hold_reason),
             goal_version=int(self._state.goal.goal_version),
             traj_version=int(self._state.goal.traj_version),
             used_cached_traj=bool(self._state.trajectory.used_cached_traj),
+            locomotion_state_label=str(self._state.locomotion.state_label),
             sensor_meta=dict(sensor_meta) if isinstance(sensor_meta, dict) else {},
             interactive_phase=interactive_phase,
             interactive_command_id=interactive_command_id,

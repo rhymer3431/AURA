@@ -21,6 +21,18 @@ def _pose_xyz(payload: object) -> tuple[float, float, float]:
     return (0.0, 0.0, 0.0)
 
 
+def _float_pair(payload: object) -> list[float] | None:
+    if isinstance(payload, (list, tuple)) and len(payload) >= 2:
+        return [float(payload[0]), float(payload[1])]
+    return None
+
+
+def _int_pair(payload: object) -> list[int] | None:
+    if isinstance(payload, (list, tuple)) and len(payload) >= 2:
+        return [int(payload[0]), int(payload[1])]
+    return None
+
+
 @dataclass(frozen=True)
 class TaskSnapshot:
     task_id: str = ""
@@ -131,6 +143,22 @@ class PlanningStateSnapshot:
     planner_control_reason: str = ""
     planner_yaw_delta_rad: float | None = None
     system2_pixel_goal: list[int] | None = None
+    system2_decision_mode: str = ""
+    system2_error: str = ""
+    active_goal_mode: str = ""
+    active_goal_world_xy: list[float] | None = None
+    active_goal_local_xy: list[float] | None = None
+    active_pixel_goal: list[int] | None = None
+    pending_goal_kind: str = ""
+    pending_goal_world_xy: list[float] | None = None
+    pending_pixel_goal: list[int] | None = None
+    goal_candidate_sample_count: int = 0
+    direct_action_mode: str = ""
+    direct_action_queue: list[str] = field(default_factory=list)
+    direct_action_progress: float = 0.0
+    stale_hold_reason: str = ""
+    navdp_state: dict[str, Any] = field(default_factory=dict)
+    locomotion: dict[str, Any] = field(default_factory=dict)
     stale_info: dict[str, Any] = field(default_factory=dict)
     global_route: dict[str, Any] = field(default_factory=dict)
 
@@ -141,6 +169,8 @@ class PlanningStateSnapshot:
         system2_pixel_goal = None
         if isinstance(raw_goal, list) and len(raw_goal) >= 2:
             system2_pixel_goal = [int(raw_goal[0]), int(raw_goal[1])]
+        active_pixel_goal = _int_pair(data.get("active_pixel_goal"))
+        pending_pixel_goal = _int_pair(data.get("pending_pixel_goal"))
         return cls(
             last_s2_result=_dict(data.get("last_s2_result")),
             active_nav_plan=_dict(data.get("active_nav_plan")),
@@ -156,6 +186,22 @@ class PlanningStateSnapshot:
             if data.get("planner_yaw_delta_rad") is None
             else float(data.get("planner_yaw_delta_rad", 0.0)),
             system2_pixel_goal=system2_pixel_goal,
+            system2_decision_mode=str(data.get("system2_decision_mode", "")),
+            system2_error=str(data.get("system2_error", "")),
+            active_goal_mode=str(data.get("active_goal_mode", "")),
+            active_goal_world_xy=_float_pair(data.get("active_goal_world_xy")),
+            active_goal_local_xy=_float_pair(data.get("active_goal_local_xy")),
+            active_pixel_goal=active_pixel_goal,
+            pending_goal_kind=str(data.get("pending_goal_kind", "")),
+            pending_goal_world_xy=_float_pair(data.get("pending_goal_world_xy")),
+            pending_pixel_goal=pending_pixel_goal,
+            goal_candidate_sample_count=int(data.get("goal_candidate_sample_count", 0) or 0),
+            direct_action_mode=str(data.get("direct_action_mode", "")),
+            direct_action_queue=_list(data.get("direct_action_queue")),
+            direct_action_progress=float(data.get("direct_action_progress", 0.0) or 0.0),
+            stale_hold_reason=str(data.get("stale_hold_reason", "")),
+            navdp_state=_dict(data.get("navdp_state")),
+            locomotion=_dict(data.get("locomotion")),
             stale_info=_dict(data.get("stale_info")),
             global_route=_dict(data.get("global_route")),
         )
