@@ -9,22 +9,17 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from apps.runtime_common import RuntimeIo, build_runtime_io
-from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
-from common.geometry import quat_wxyz_to_yaw
 from ipc.inproc_bus import InprocBus
 from ipc.messages import (
     ActionCommand,
     ActionStatus,
-    CapabilityReport,
-    FrameHeader,
-    HealthPing,
     RuntimeControlRequest,
-    RuntimeNotice,
     TaskRequest,
 )
 from ipc.zmq_bus import ZmqBus
-from schemas.events import FrameEvent, WorkerMetadata
-from server.snapshot_adapter import SnapshotAdapter
+from runtime_pipeline.bootstrap import RuntimeBootstrapper
+from runtime_pipeline.ingestion import FrameIngestor
+from runtime_pipeline.publication import RuntimePublisher
 
 from .aura_runtime_args import (
     apply_demo_defaults,
@@ -100,6 +95,9 @@ class AuraRuntimeCommandSource:
         self._last_viewer_overlay: dict[str, object] = {}
         self._last_runtime_snapshot_frame = -1
         self._server = None
+        self._runtime_bootstrapper = None
+        self._frame_ingestor = None
+        self._runtime_publisher = None
 
     @property
     def supervisor(self):
@@ -119,111 +117,38 @@ class AuraRuntimeCommandSource:
         return self._planning_session
 
     def initialize(self, simulation_app, stage, controller) -> None:
-        self._controller = controller
-        for _ in range(max(int(self.args.startup_updates), 0)):
-            simulation_app.update()
-        self._ensure_runtime_bridge()
-        self._ensure_control_server()
-        assert self._server is not None
-        self._server.initialize(simulation_app, stage)
-        self._bootstrap_mode()
-        self._seed_planner_overlay()
-        self._publish_detector_capability()
-        self._publish_notice(
-            level="info",
-            notice="aura runtime ready",
-            details={
-                "launchMode": self._launch_mode,
-                "viewerPublish": bool(self._viewer_publish),
-                "nativeViewer": self._native_viewer,
-            },
-        )
+        self._bootstrap_service().initialize(simulation_app, stage, controller)
 
     def update(self, frame_idx: int) -> None:
-        if self._controller is None:
-            raise RuntimeError("AuraRuntimeCommandSource.initialize() must be called before update().")
         self._seed_planner_overlay()
-
-        base_state = self._controller.get_base_state()
-        robot_pose = tuple(float(v) for v in np.asarray(base_state.position_w, dtype=np.float32).reshape(-1)[:3])
-        robot_quat = np.asarray(base_state.quat_wxyz, dtype=np.float32)
-        robot_yaw = float(quat_wxyz_to_yaw(robot_quat))
-        self._last_robot_pose_xyz = robot_pose
-        runtime_events = self._drain_external_runtime_requests()
-
-        observation = self.planning_session.capture_observation(frame_idx)
-        batch = None
-        if observation is not None:
-            batch = IsaacObservationBatch(
-                frame_header=FrameHeader(
-                    frame_id=int(observation.frame_id),
-                    timestamp_ns=time.time_ns(),
-                    source="aura_runtime",
-                    width=int(observation.rgb.shape[1]),
-                    height=int(observation.rgb.shape[0]),
-                    camera_pose_xyz=tuple(float(v) for v in observation.cam_pos[:3]),
-                    camera_quat_wxyz=tuple(float(v) for v in observation.cam_quat[:4]),
-                    robot_pose_xyz=robot_pose,
-                    robot_yaw_rad=float(robot_yaw),
-                    sim_time_s=float(time.time()),
-                    metadata={
-                        **dict(observation.sensor_meta),
-                        "planner_overlay": dict(self._last_viewer_overlay),
-                        "active_command_overlay": self._command_overlay_metadata(),
-                    },
-                ),
-                robot_pose_xyz=robot_pose,
-                robot_yaw_rad=float(robot_yaw),
-                sim_time_s=float(time.time()),
-                rgb_image=observation.rgb,
-                depth_image_m=observation.depth,
-                camera_intrinsic=observation.intrinsic,
-                capture_report=dict(observation.sensor_meta),
-            )
-        frame_event = FrameEvent(
-            metadata=WorkerMetadata(
-                task_id=self.supervisor.memory_service.scratchpad.task_id,
-                frame_id=int(frame_idx),
-                timestamp_ns=time.time_ns(),
-                source="aura_runtime",
-                timeout_ms=int(max(float(getattr(self.args, "timeout_sec", 5.0)) * 1000.0, 0.0)),
-            ),
-            frame_id=int(frame_idx),
-            timestamp_ns=time.time_ns(),
-            source="aura_runtime",
-            robot_pose_xyz=robot_pose,
-            robot_yaw_rad=float(robot_yaw),
-            sim_time_s=float(time.time()),
-            observation=observation,
-            batch=batch,
-            sensor_meta={} if observation is None else dict(observation.sensor_meta),
-            planner_overlay={} if observation is None else dict(batch.frame_header.metadata.get("planner_overlay", {})),
-            publish_observation=bool(self._viewer_publish),
-        )
+        capture = self._frame_ingestion_service().capture(frame_idx)
+        if capture.batch is not None:
+            capture.batch.frame_header.metadata["active_command_overlay"] = self._command_overlay_metadata()
+        self._last_robot_pose_xyz = capture.robot_pose_xyz
         self._ensure_control_server()
         assert self._server is not None
         incoming_status = self._pending_status
         tick_result = self._server.tick(
-            frame_event=frame_event,
-            task_events=runtime_events,
+            frame_event=capture.frame_event,
+            task_events=capture.runtime_events,
             runtime_status=incoming_status,
-            robot_pos_world=np.asarray(base_state.position_w, dtype=np.float32),
-            robot_lin_vel_world=np.asarray(base_state.lin_vel_w, dtype=np.float32),
-            robot_ang_vel_world=np.asarray(base_state.ang_vel_w, dtype=np.float32),
-            robot_yaw=robot_yaw,
-            robot_quat_wxyz=robot_quat,
+            robot_pos_world=np.asarray(capture.base_state.position_w, dtype=np.float32),
+            robot_lin_vel_world=np.asarray(capture.base_state.lin_vel_w, dtype=np.float32),
+            robot_ang_vel_world=np.asarray(capture.base_state.ang_vel_w, dtype=np.float32),
+            robot_yaw=capture.robot_yaw_rad,
+            robot_quat_wxyz=capture.robot_quat_wxyz,
         )
-        for notice in tick_result.notices:
-            self.supervisor.bridge.publish_notice(notice)
         update = tick_result.trajectory_update
         evaluation = tick_result.evaluation
         self._command = tick_result.command_vector.copy()
         self._pending_status = tick_result.status
         self._active_command = tick_result.action_command
         self._last_viewer_overlay = dict(tick_result.viewer_overlay)
-        if self._pending_status is not None and self._runtime_io is not None:
-            self.supervisor.bridge.publish_status(self._pending_status)
-        self._publish_runtime_snapshot(frame_idx)
+        self._publisher_service().publish_tick(
+            frame_idx=frame_idx,
+            notices=tick_result.notices,
+            status=self._pending_status,
+        )
 
         if self._pending_exit_code is not None:
             if self._pending_exit_frames <= 0:
@@ -255,7 +180,101 @@ class AuraRuntimeCommandSource:
     def _bootstrap_mode(self) -> None:
         assert self._server is not None
         for notice in self._server.bootstrap():
-            self.supervisor.bridge.publish_notice(notice)
+            self._publish_notice(
+                level=str(getattr(notice, "level", "info")),
+                notice=str(getattr(notice, "notice", "")),
+                details=getattr(notice, "details", {}),
+            )
+
+    def _bootstrap_service(self) -> RuntimeBootstrapper:
+        bootstrapper = getattr(self, "_runtime_bootstrapper", None)
+        if bootstrapper is None:
+            bootstrapper = RuntimeBootstrapper(
+                startup_updates=max(int(getattr(self.args, "startup_updates", 0)), 0),
+                controller_setter=self._set_controller,
+                ensure_runtime_bridge=self._ensure_runtime_bridge,
+                ensure_control_server=self._ensure_control_server,
+                initialize_server=self._initialize_control_server,
+                bootstrap_mode=self._bootstrap_mode,
+                seed_planner_overlay=self._seed_planner_overlay,
+                publish_detector_capability=self._publish_detector_capability,
+                publish_ready_notice=self._publish_runtime_ready_notice,
+            )
+            self._runtime_bootstrapper = bootstrapper
+        return bootstrapper
+
+    def _frame_ingestion_service(self) -> FrameIngestor:
+        ingestor = getattr(self, "_frame_ingestor", None)
+        if ingestor is None:
+            ingestor = FrameIngestor(
+                controller_provider=lambda: self._controller,
+                planning_session_provider=lambda: self.planning_session,
+                supervisor_provider=lambda: self.supervisor,
+                runtime_events_provider=self._drain_external_runtime_requests,
+                planner_overlay_provider=lambda: dict(self._last_viewer_overlay),
+                viewer_publish=bool(self._viewer_publish),
+                timeout_sec=float(getattr(self.args, "timeout_sec", 5.0)),
+            )
+            self._frame_ingestor = ingestor
+        return ingestor
+
+    def _publisher_service(self) -> RuntimePublisher:
+        publisher = getattr(self, "_runtime_publisher", None)
+        if publisher is None:
+            publisher = RuntimePublisher(
+                runtime_io_provider=lambda: self._runtime_io,
+                bridge_provider=self._bridge,
+                detector_report_provider=self._detector_runtime_report,
+                detector_backend_provider=self._detector_backend_name,
+                snapshot_provider=self._server_snapshot,
+                snapshot_interval_provider=self._snapshot_interval,
+                last_snapshot_frame_getter=lambda: int(self._last_runtime_snapshot_frame),
+                last_snapshot_frame_setter=self._set_last_runtime_snapshot_frame,
+            )
+            self._runtime_publisher = publisher
+        return publisher
+
+    def _set_controller(self, controller) -> None:  # noqa: ANN001
+        self._controller = controller
+
+    def _initialize_control_server(self, simulation_app, stage) -> None:  # noqa: ANN001
+        assert self._server is not None
+        self._server.initialize(simulation_app, stage)
+
+    def _publish_runtime_ready_notice(self) -> None:
+        self._publish_notice(
+            level="info",
+            notice="aura runtime ready",
+            details={
+                "launchMode": self._launch_mode,
+                "viewerPublish": bool(self._viewer_publish),
+                "nativeViewer": self._native_viewer,
+            },
+        )
+
+    def _bridge(self):  # noqa: ANN201
+        if self._supervisor is None:
+            return None
+        return self._supervisor.bridge
+
+    def _detector_runtime_report(self):  # noqa: ANN201
+        if self._supervisor is None:
+            return None
+        return self._supervisor.perception_pipeline.detector.runtime_report
+
+    def _detector_backend_name(self) -> str:
+        if self._supervisor is None:
+            return ""
+        return str(self._supervisor.perception_pipeline.detector.info.backend_name)
+
+    def _server_snapshot(self):  # noqa: ANN201
+        return None if self._server is None else self._server.snapshot()
+
+    def _snapshot_interval(self) -> int:
+        return max(int(getattr(self.args, "log_interval", 30)), 1)
+
+    def _set_last_runtime_snapshot_frame(self, frame_idx: int) -> None:
+        self._last_runtime_snapshot_frame = int(frame_idx)
 
     def _seed_planner_overlay(self) -> None:
         if self._last_viewer_overlay:
@@ -437,46 +456,13 @@ class AuraRuntimeCommandSource:
             )
 
     def _publish_detector_capability(self) -> None:
-        if self._runtime_io is None:
-            return
-        detector_report = self.supervisor.perception_pipeline.detector.runtime_report
-        if detector_report is None:
-            return
-        self.supervisor.bridge.publish_capability(
-            CapabilityReport(
-                component="detector",
-                status="ready" if detector_report.ready_for_inference else "fallback",
-                backend_name=self.supervisor.perception_pipeline.detector.info.backend_name,
-                details=detector_report.as_dict(),
-                warnings=list(detector_report.warnings),
-                errors=list(detector_report.errors),
-            )
-        )
+        self._publisher_service().publish_detector_capability()
 
     def _publish_notice(self, *, level: str, notice: str, details: dict[str, object] | None = None) -> None:
-        if self._runtime_io is None or self._supervisor is None:
-            return
-        self._supervisor.bridge.publish_notice(
-            RuntimeNotice(component="aura_runtime", level=level, notice=notice, details=dict(details or {}))
-        )
+        self._publisher_service().publish_notice(level=level, notice=notice, details=details)
 
     def _publish_runtime_snapshot(self, frame_idx: int) -> None:
-        if self._runtime_io is None:
-            return
-        interval = max(int(getattr(self.args, "log_interval", 30)), 1)
-        if self._last_runtime_snapshot_frame >= 0 and (frame_idx - self._last_runtime_snapshot_frame) < interval:
-            return
-        self._last_runtime_snapshot_frame = int(frame_idx)
-        snapshot = None if self._server is None else self._server.snapshot()
-        self.supervisor.bridge.publish_health(
-            HealthPing(
-                component="aura_runtime",
-                details={
-                    "worldState": {} if snapshot is None else snapshot.to_dict(),
-                    "snapshot": SnapshotAdapter.to_legacy_runtime_payload(snapshot),
-                },
-            )
-        )
+        self._publisher_service().publish_runtime_snapshot(frame_idx=frame_idx)
 
     def _log_step(
         self,
