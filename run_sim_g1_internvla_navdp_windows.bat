@@ -128,6 +128,12 @@ if /I "%PLANNER_AUTOSTART%"=="1" if not exist "%PLANNER_SERVER_LAUNCHER%" (
     echo [ERROR] Planner server launcher not found: %PLANNER_SERVER_LAUNCHER%
     exit /b 1
 )
+if /I "%PLANNER_AUTOSTART%"=="1" if not exist "%PLANNER_MODEL_PATH%" (
+    echo [WARN] Planner model not found: %PLANNER_MODEL_PATH%
+    echo [WARN] Disabling planner autostart and remote planner URL. Runtime will use deterministic planning only.
+    set "PLANNER_AUTOSTART=0"
+    set "PLANNER_BASE_URL="
+)
 if /I not "%INTERNVLA_BACKEND%"=="llama_cpp" (
     echo [ERROR] This launcher only supports INTERNVLA_BACKEND=llama_cpp. Got: %INTERNVLA_BACKEND%
     exit /b 1
@@ -238,7 +244,7 @@ if not "%RC%"=="0" pause
 exit /b %RC%
 
 :ensure_navdp_server
-call :wait_for_http "%NAVDP_HEALTH_URL%" "NavDP server" 1 1
+call :wait_for_http "%NAVDP_HEALTH_URL%" "NavDP server" 1 1 1
 if not errorlevel 1 (
     echo [INFO] NavDP server already ready: %NAVDP_HEALTH_URL%
     exit /b 0
@@ -255,13 +261,14 @@ exit /b %ERRORLEVEL%
 
 :ensure_planner_server
 if "%PLANNER_BASE_URL%"=="" exit /b 0
-call :wait_for_http "%PLANNER_HEALTH_URL%" "Planner server" 1 1
+call :wait_for_http "%PLANNER_HEALTH_URL%" "Planner server" 1 1 1
 if not errorlevel 1 (
     echo [INFO] Planner server already ready: %PLANNER_HEALTH_URL%
     exit /b 0
 )
 if /I not "%PLANNER_AUTOSTART%"=="1" (
     echo [WARN] Planner server is not reachable. Runtime will use deterministic planning only.
+    set "PLANNER_BASE_URL="
     exit /b 0
 )
 echo [INFO] Starting Planner server window...
@@ -269,12 +276,13 @@ start "Planner Server" powershell -NoProfile -ExecutionPolicy Bypass -File "%PLA
 call :wait_for_http "%PLANNER_HEALTH_URL%" "Planner server" 90 2
 if errorlevel 1 (
     echo [WARN] Planner server did not become ready. Runtime will use deterministic planning only.
+    set "PLANNER_BASE_URL="
     exit /b 0
 )
 exit /b 0
 
 :ensure_internvla_server
-call :wait_for_http "%INTERNVLA_HEALTH_URL%" "InternVLA server" 1 1
+call :wait_for_http "%INTERNVLA_HEALTH_URL%" "InternVLA server" 1 1 1
 if not errorlevel 1 (
     echo [INFO] InternVLA server already ready: %INTERNVLA_HEALTH_URL%
     exit /b 0
@@ -295,6 +303,7 @@ set "WAIT_URL=%~1"
 set "WAIT_NAME=%~2"
 set "WAIT_ATTEMPTS=%~3"
 set "WAIT_DELAY=%~4"
+set "WAIT_SILENT=%~5"
 if not defined WAIT_ATTEMPTS set "WAIT_ATTEMPTS=60"
 if not defined WAIT_DELAY set "WAIT_DELAY=2"
 for /l %%N in (1,1,%WAIT_ATTEMPTS%) do (
@@ -306,7 +315,7 @@ for /l %%N in (1,1,%WAIT_ATTEMPTS%) do (
         timeout /t %WAIT_DELAY% /nobreak >nul
     )
 )
-echo [ERROR] Timed out waiting for %WAIT_NAME%: %WAIT_URL%
+if /I not "%WAIT_SILENT%"=="1" echo [ERROR] Timed out waiting for %WAIT_NAME%: %WAIT_URL%
 endlocal & exit /b 1
 
 :resolve_port_from_url
