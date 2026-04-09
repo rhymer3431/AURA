@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from systems.world_state.domain.constants import (
+from simulation.domain.observation_constants import (
     LEGACY_HEIGHT_SCAN_RESOLUTION,
     LEGACY_HEIGHT_SCAN_SIZE,
     TUNED_HEIGHT_SCAN_RESOLUTION,

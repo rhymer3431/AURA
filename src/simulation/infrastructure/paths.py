@@ -8,7 +8,7 @@ from typing import Optional
 
 
 def repo_dir() -> str:
-    return str(Path(__file__).resolve().parents[4])
+    return str(Path(__file__).resolve().parents[3])
 
 
 def resolve_default_policy_path(base_dir: str) -> str:

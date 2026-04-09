@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from systems.world_state.api.paths import repo_dir, resolve_default_policy_path, resolve_default_robot_usd_path
+from simulation.api.paths import repo_dir, resolve_default_policy_path, resolve_default_robot_usd_path
 
 
 def test_repo_dir_and_default_assets_resolve_from_repo_root() -> None:

@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 import traceback
 
+from simulation.infrastructure.paths import repo_dir
 from systems.control.api.runtime_args import BOOTSTRAP_ARGS, build_arg_parser
-from systems.world_state.api.paths import repo_dir
 
 
 def main():
@@ -16,7 +16,7 @@ def main():
     try:
         args = build_arg_parser().parse_args()
 
-        from systems.control.application.runtime_orchestrator import run
+        from simulation.application.runtime_orchestrator import run
 
         run(args, simulation_app)
     except Exception:  # noqa: BLE001

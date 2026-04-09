@@ -7,21 +7,21 @@ import os
 import numpy as np
 from isaacsim.core.api import World
 
-from systems.control.application.runtime_controller import InternVlaNavDpController, NavDpPointGoalController
-from systems.control.domain.constants import DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
-from systems.control.infrastructure.operator_input import ConsoleCmdVelController, KeyboardCmdVelController
-from systems.control.infrastructure.policy_controller import G1PolicyController
-from systems.control.infrastructure.policy_session import infer_policy_backend
-from systems.control.infrastructure.training_config import RuntimeTrainingConfig, load_runtime_training_config
-from systems.world_state.api.camera_api import RuntimeCameraPitchService
-from systems.world_state.api.paths import (
+from simulation.application.runtime_controller import InternVlaNavDpController, NavDpPointGoalController
+from simulation.domain.constants import DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
+from simulation.infrastructure.paths import (
     repo_dir,
     resolve_default_policy_path,
     resolve_default_robot_usd_path,
     resolve_environment_reference,
     select_onnx_providers,
 )
-from systems.world_state.api.scene import spawn_environment
+from simulation.infrastructure.policy_controller import G1PolicyController
+from simulation.infrastructure.policy_session import infer_policy_backend
+from simulation.infrastructure.scene import spawn_environment
+from simulation.infrastructure.training_config import RuntimeTrainingConfig, load_runtime_training_config
+from systems.control.infrastructure.operator_input import ConsoleCmdVelController, KeyboardCmdVelController
+from systems.perception.api.camera_api import RuntimeCameraPitchService
 
 
 def _resolve_runtime_paths(args) -> tuple[str, str, str | None, str | None]:

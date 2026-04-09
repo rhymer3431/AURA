@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from systems.control.domain.constants import DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
+from simulation.domain.constants import DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
 
 
 BOOTSTRAP_PARSER = argparse.ArgumentParser(add_help=False)

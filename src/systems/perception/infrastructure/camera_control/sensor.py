@@ -124,7 +124,7 @@ class G1NavCameraSensor:
             "prim_path": self.prim_path,
             "control_prim_path": self.control_prim_path,
             "camera_prim_path": self.camera_prim_path,
-            "ready": self._control_prim is not None,
+            "ready": self._camera is not None,
             "target_pitch_deg": target_pitch_deg,
             "applied_pitch_deg": applied_pitch_deg,
             "min_pitch_deg": lower_limit,
@@ -146,7 +146,7 @@ class G1NavCameraSensor:
         return next_pitch_deg
 
     def apply_pending_pitch(self) -> bool:
-        if self._control_prim is None:
+        if self._camera is None:
             return False
 
         with self._pitch_lock:
@@ -158,17 +158,13 @@ class G1NavCameraSensor:
 
         orientation = self._orientation_for_pitch(target_pitch_deg)
         try:
-            if self._control_prim is self._camera:
-                self._camera.set_local_pose(
-                    translation=np.asarray(self._control_translation, dtype=np.float32),
-                    orientation=orientation,
-                    camera_axes="world",
-                )
-            else:
-                self._control_prim.set_local_pose(
-                    translation=np.asarray(self._control_translation, dtype=np.float32),
-                    orientation=orientation,
-                )
+            # Avoid writing pose changes to articulation-linked rig roots while PhysX is running.
+            # We only rotate the Camera prim itself, which keeps the pitch control local to perception.
+            self._camera.set_local_pose(
+                translation=np.asarray(self._control_translation, dtype=np.float32),
+                orientation=orientation,
+                camera_axes="world",
+            )
         except Exception:
             with self._pitch_lock:
                 self._pitch_dirty = True
@@ -190,25 +186,14 @@ class G1NavCameraSensor:
 
         self._enable_camera_extension()
 
-        from isaacsim.core.prims import SingleXFormPrim
         from isaacsim.core.utils.prims import get_prim_at_path
         from isaacsim.sensors.camera import Camera
 
         existing_root = self._resolve_existing_paths()
         existing_camera = False if self.camera_prim_path is None else bool(get_prim_at_path(self.camera_prim_path).IsValid())
 
-        if existing_root and self.control_prim_path != self.camera_prim_path:
-            self._control_prim = SingleXFormPrim(prim_path=self.control_prim_path, name="navdp_camera_control")
-            self._control_prim.initialize()
-            control_translation, control_orientation = self._control_prim.get_local_pose()
-            self._control_translation = np.asarray(control_translation, dtype=np.float32)
-            self._base_orientation_wxyz = np.asarray(control_orientation, dtype=np.float32)
-
-            if self.attach_streams:
-                if not self.camera_prim_path or not existing_camera:
-                    raise RuntimeError(
-                        f"No Camera prim was found under existing camera rig root: {self.control_prim_path}"
-                    )
+        if existing_root:
+            if existing_camera and self.camera_prim_path:
                 self._camera = Camera(
                     prim_path=self.camera_prim_path,
                     name="navdp_camera",
@@ -218,12 +203,38 @@ class G1NavCameraSensor:
                 if hasattr(self._camera, "set_clipping_range"):
                     self._camera.set_clipping_range(*self.clipping_range)
                 self._camera.initialize(attach_rgb_annotator=False)
+                if self.attach_streams:
+                    self._camera.add_rgb_to_frame()
+                    self._camera.add_distance_to_image_plane_to_frame()
+                control_translation, control_orientation = self._camera.get_local_pose(camera_axes="world")
+                self._control_translation = np.asarray(control_translation, dtype=np.float32)
+                self._base_orientation_wxyz = np.asarray(control_orientation, dtype=np.float32)
+                self.control_prim_path = self._camera.prim_path
+                self.camera_prim_path = self._camera.prim_path
+                print(f"[INFO] Using existing camera prim for pitch control: {self.control_prim_path}")
+                self.apply_pending_pitch()
+                return
+
+            runtime_camera_path = f"{self.control_prim_path.rstrip('/')}/AuraRuntimeCamera"
+            self._camera = Camera(
+                prim_path=runtime_camera_path,
+                name="navdp_camera",
+                resolution=self.resolution,
+                translation=np.asarray(self.translation, dtype=np.float32),
+                orientation=np.asarray(self.orientation_wxyz, dtype=np.float32),
+                annotator_device=self.annotator_device,
+            )
+            if hasattr(self._camera, "set_clipping_range"):
+                self._camera.set_clipping_range(*self.clipping_range)
+            self._camera.initialize(attach_rgb_annotator=False)
+            if self.attach_streams:
                 self._camera.add_rgb_to_frame()
                 self._camera.add_distance_to_image_plane_to_frame()
-            print(
-                f"[INFO] Using existing camera rig root for pitch control: {self.control_prim_path}"
-                + (f" (stream camera: {self.camera_prim_path})" if self.camera_prim_path else "")
-            )
+            self.camera_prim_path = self._camera.prim_path
+            self.control_prim_path = self._camera.prim_path
+            self._control_translation = np.asarray(self.translation, dtype=np.float32)
+            self._base_orientation_wxyz = np.asarray(self.orientation_wxyz, dtype=np.float32)
+            print(f"[INFO] Using runtime child camera for pitch control: {self.control_prim_path}")
             self.apply_pending_pitch()
             return
 
@@ -243,7 +254,6 @@ class G1NavCameraSensor:
         if self.attach_streams:
             self._camera.add_rgb_to_frame()
             self._camera.add_distance_to_image_plane_to_frame()
-        self._control_prim = self._camera
         self.camera_prim_path = self._camera.prim_path
         self.control_prim_path = self._camera.prim_path
         if existing_camera:

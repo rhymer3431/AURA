@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from systems.control.application.entrypoint import main
+from simulation.api.entrypoint import main
 
 
 if __name__ == "__main__":

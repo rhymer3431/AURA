@@ -6,7 +6,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYSTEMS_ROOT = REPO_ROOT / "src" / "systems"
-SUBSYSTEMS = {"navigation", "inference", "world_state", "planner", "control"}
+SIMULATION_ROOT = REPO_ROOT / "src" / "simulation"
+SUBSYSTEMS = {"navigation", "inference", "world_state", "planner", "control", "perception"}
 LAYERS = {"api", "application", "domain", "infrastructure"}
 
 
@@ -33,9 +34,10 @@ def _import_targets(module: ast.AST) -> list[str]:
     return targets
 
 
-def test_five_subsystems_exist_with_expected_bins() -> None:
+def test_runtime_subsystems_and_simulation_package_exist() -> None:
     for subsystem in SUBSYSTEMS:
         assert (SYSTEMS_ROOT / subsystem).is_dir()
+    assert SIMULATION_ROOT.is_dir()
     assert (SYSTEMS_ROOT / "control" / "bin" / "run_sim_g1_internvla_navdp_windows.bat").is_file()
     assert (SYSTEMS_ROOT / "navigation" / "bin" / "run_navdp_server_windows.bat").is_file()
     assert (SYSTEMS_ROOT / "inference" / "bin" / "run_internvla_nav_server_windows.bat").is_file()
@@ -47,6 +49,9 @@ def test_legacy_runtime_packages_are_not_imported_from_systems_tree() -> None:
         assert "g1_play" not in text, path
         assert "from navdp " not in text, path
         assert "from navdp." not in text, path
+        assert "systems.world_state.api.camera_api" not in text, path
+        assert "systems.world_state.api.paths" not in text, path
+        assert "systems.world_state.api.scene" not in text, path
 
 
 def test_cross_subsystem_imports_only_use_api_or_shared_contracts() -> None:
@@ -72,3 +77,10 @@ def test_cross_subsystem_imports_only_use_api_or_shared_contracts() -> None:
                 assert target_layer == "api", (path, target)
             if current_layer == "domain" and target_subsystem == current_subsystem:
                 assert target_layer == "domain", (path, target)
+
+
+def test_world_state_focuses_on_runtime_state_contracts() -> None:
+    assert (SYSTEMS_ROOT / "world_state" / "api" / "runtime_state.py").is_file()
+    assert not (SYSTEMS_ROOT / "world_state" / "api" / "paths.py").exists()
+    assert not (SYSTEMS_ROOT / "world_state" / "api" / "scene.py").exists()
+    assert not (SYSTEMS_ROOT / "world_state" / "api" / "observation_layout.py").exists()

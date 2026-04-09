@@ -50,6 +50,8 @@ include = [
     "runtime.*",
     "services",
     "services.*",
+    "simulation",
+    "simulation.*",
     "systems",
     "systems.*",
     "vendor",

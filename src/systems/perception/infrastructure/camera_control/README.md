@@ -21,7 +21,8 @@ The pitch API selects the control target in this order:
 2. `<robot_prim_path>/head_link/Realsense` when the existing D455 rig is present
 3. `<robot_prim_path>/NavCamera` as a runtime fallback camera
 
-If the chosen path is a camera rig root instead of a `Camera` prim, `sensor.py` keeps pitch control on the rig root and discovers a descendant `Camera` prim for RGB-D streaming.
+If the chosen path is a camera rig root instead of a `Camera` prim, `sensor.py` resolves or creates a child `Camera` prim and applies pitch there.
+This avoids PhysX articulation warnings from writing pose updates to an articulation-linked rig root while simulation is running.
 
 ## API
 
@@ -44,9 +45,9 @@ Pitch convention:
 
 ## Runtime Integration
 
-- `systems.control.application.runtime_orchestrator`
+- `simulation.application.runtime_orchestrator`
   - Uses `RuntimeCameraPitchService` while the main control runtime is active
 - `systems.navigation.api.navdp_sensors`
   - Uses the same package while NavDP camera capture is active
 
-There are no compatibility wrappers for the removed `g1_play` package. Active runtime imports now resolve through `systems.world_state.api.*`.
+There are no compatibility wrappers for the removed `g1_play` package. Active runtime imports now resolve through `systems.perception.api.*`.

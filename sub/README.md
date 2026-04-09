@@ -1,6 +1,6 @@
 # Subsystem Architecture
 
-`run_sim_g1_internvla_navdp` now runs on a hard-cut subsystem layout under `src/systems`.
+`run_sim_g1_internvla_navdp` now runs on subsystem packages under `src/systems`, with Isaac Sim runtime assembly isolated under `src/simulation`.
 
 Each subsystem is layered as:
 
@@ -11,14 +11,14 @@ Each subsystem is layered as:
 - `domain`
   - pure models, rules, and algorithms
 - `infrastructure`
-  - filesystem, subprocess, Isaac Sim, llama.cpp, and backend adapters
+  - filesystem, subprocess, sensor, and backend adapters
 
 Cross-subsystem imports are restricted to:
 
 - `systems.shared.contracts.*`
 - `systems.<subsystem>.api.*`
 
-The five runtime subsystems are:
+The runtime subsystems are:
 
 1. `Navigation Subsystem`
    - Owns NavDP client/server, navigation geometry, goal expansion, follower logic, and the backend policy stack.
@@ -28,17 +28,27 @@ The five runtime subsystems are:
    - Owns the InternVLA HTTP server, llama.cpp sidecar process management, session probing, and multimodal response parsing.
    - Primary code roots: `src/systems/inference/api`, `src/systems/inference/infrastructure`.
 
-3. `World State Subsystem`
-   - Owns camera sensing, camera pitch control, observation layout, scene/asset resolution, and world-facing runtime data capture.
-   - Primary code roots: `src/systems/world_state/api`, `src/systems/world_state/domain`, `src/systems/world_state/infrastructure`.
+3. `Perception Subsystem`
+   - Owns camera APIs, camera pitch runtime services, camera prim attachment, and sensor capture helpers.
+   - Primary code roots: `src/systems/perception/api`, `src/systems/perception/application`, `src/systems/perception/infrastructure`.
 
-4. `Planner Subsystem`
+4. `World State Subsystem`
+   - Owns current runtime state snapshots and shared state contracts across planner, navigation, inference, and control.
+   - Primary code roots: `src/systems/world_state/api`.
+
+5. `Planner Subsystem`
    - Owns task-frame normalization, planner HTTP calls, ontology/schema validation, reporting, and subgoal orchestration.
    - Primary code roots: `src/systems/planner/api`, `src/systems/planner/application`, `src/systems/planner/domain`, `src/systems/planner/infrastructure`.
 
-5. `Control Subsystem`
-   - Owns the runtime orchestrator, operator command ingress, locomotion policy binding, and the main simulation launch surface.
-   - Primary code roots: `src/systems/control/api`, `src/systems/control/application`, `src/systems/control/domain`, `src/systems/control/infrastructure`, `src/systems/control/bin`.
+6. `Control Subsystem`
+   - Owns operator command ingress, runtime command API, and non-simulation control coordination.
+   - Primary code roots: `src/systems/control/api`, `src/systems/control/infrastructure`, `src/systems/control/bin`.
+
+The Isaac Sim runtime package is:
+
+- `Simulation Runtime`
+  - Owns the play entrypoint, runtime orchestrator, controller implementations, scene spawn, policy execution, asset resolution, and observation layout.
+  - Primary code roots: `src/simulation/api`, `src/simulation/application`, `src/simulation/domain`, `src/simulation/infrastructure`.
 
 Shared DTOs and runtime contracts live in `src/systems/shared/contracts`.
 

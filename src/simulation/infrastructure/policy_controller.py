@@ -13,7 +13,7 @@ from isaacsim.core.utils.rotations import quat_to_rot_matrix
 from isaacsim.core.utils.types import ArticulationAction
 from omni.physx import get_physx_scene_query_interface, get_physx_simulation_interface
 
-from systems.control.domain.constants import (
+from simulation.domain.constants import (
     DEFAULT_JOINT_POS_PATTERNS,
     DEFAULT_PHYSICS_DT,
     FEET_CONTACT_HISTORY_LENGTH,
@@ -32,8 +32,8 @@ from systems.control.domain.constants import (
     TUNED_HEIGHT_SCAN_SIZE,
     TUNED_STIFFNESS_PATTERNS,
 )
-from systems.control.infrastructure.policy_session import create_policy_session, infer_policy_backend
-from systems.world_state.api.observation_layout import PolicyObservationLayout, infer_policy_observation_layout
+from simulation.domain.observation_layout import PolicyObservationLayout, infer_policy_observation_layout
+from simulation.infrastructure.policy_session import create_policy_session, infer_policy_backend
 
 
 def _pattern_matches(name: str, pattern: str) -> bool:

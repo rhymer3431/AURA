@@ -1,6 +1,6 @@
-"""Path-resolution facade for control and entrypoints."""
+"""Public simulation path facade."""
 
-from systems.world_state.domain.paths import (
+from simulation.infrastructure.paths import (
     repo_dir,
     resolve_default_policy_path,
     resolve_default_robot_usd_path,
