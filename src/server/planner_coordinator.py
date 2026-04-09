@@ -12,7 +12,7 @@ from clients.worker_clients import (
     PerceptionClient,
     PlanningSessionNavClient,
 )
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from locomotion.types import CommandEvaluation
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from schemas.commands import LocomotionProposal

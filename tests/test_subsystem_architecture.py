@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYSTEMS_ROOT = REPO_ROOT / "src" / "systems"
 SIMULATION_ROOT = REPO_ROOT / "src" / "simulation"
-SUBSYSTEMS = {"navigation", "inference", "world_state", "planner", "control", "perception"}
+SUBSYSTEMS = {"navigation", "inference", "world_state", "planner", "control", "perception", "transport"}
 LAYERS = {"api", "application", "domain", "infrastructure"}
 
 
@@ -49,6 +49,8 @@ def test_legacy_runtime_packages_are_not_imported_from_systems_tree() -> None:
         assert "g1_play" not in text, path
         assert "from navdp " not in text, path
         assert "from navdp." not in text, path
+        assert "from ipc." not in text, path
+        assert "import ipc" not in text, path
         assert "systems.world_state.api.camera_api" not in text, path
         assert "systems.world_state.api.paths" not in text, path
         assert "systems.world_state.api.scene" not in text, path
@@ -72,6 +74,8 @@ def test_cross_subsystem_imports_only_use_api_or_shared_contracts() -> None:
             target_layer = target_parts[2]
             if target_subsystem == "shared":
                 assert target_parts[:3] == ("systems", "shared", "contracts"), (path, target)
+                continue
+            if target_subsystem == "transport":
                 continue
             if target_subsystem != current_subsystem:
                 assert target_layer == "api", (path, target)

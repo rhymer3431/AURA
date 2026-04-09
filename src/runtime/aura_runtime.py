@@ -9,14 +9,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from apps.runtime_common import RuntimeIo, build_runtime_io
-from ipc.inproc_bus import InprocBus
-from ipc.messages import (
+from systems.transport.bus.inproc_bus import InprocBus
+from systems.transport.messages import (
     ActionCommand,
     ActionStatus,
     RuntimeControlRequest,
     TaskRequest,
 )
-from ipc.zmq_bus import ZmqBus
+from systems.transport.bus.zmq_bus import ZmqBus
 from runtime_pipeline.bootstrap import RuntimeBootstrapper
 from runtime_pipeline.ingestion import FrameIngestor
 from runtime_pipeline.publication import RuntimePublisher

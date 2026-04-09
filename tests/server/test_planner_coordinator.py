@@ -11,7 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from locomotion.types import CommandEvaluation
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 from schemas.commands import LocomotionProposal

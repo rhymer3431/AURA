@@ -12,7 +12,7 @@ from clients.worker_clients import (
     SupervisorPerceptionClient,
     SupervisorTaskCommandClient,
 )
-from ipc.messages import TaskRequest
+from systems.transport.messages import TaskRequest
 from locomotion.types import CommandEvaluation
 from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from ipc.messages import CapabilityReport, HealthPing, RuntimeNotice
+from systems.transport.messages import CapabilityReport, HealthPing, RuntimeNotice
 from server.snapshot_adapter import SnapshotAdapter
 
 

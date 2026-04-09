@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from .messages import MessagePayload
+from ..messages import MessagePayload
 
 
 @dataclass(frozen=True)

@@ -1,7 +1,7 @@
-from .base import BusRecord, MessageBus
+from .bus import BusRecord, InprocBus, MessageBus, ZmqBus
 from .codec import decode_envelope, decode_message, encode_envelope, encode_message
 from .frame_codec import decode_ndarray, encode_ndarray, ref_from_dict, ref_to_dict
-from .inproc_bus import InprocBus
+from .health import SocketHealth, TransportHealthTracker
 from .messages import (
     ActionCommand,
     ActionStatus,
@@ -12,9 +12,7 @@ from .messages import (
     RuntimeNotice,
     TaskRequest,
 )
-from .shm_ring import SharedMemoryRing, ShmSlotRef
-from .transport_health import SocketHealth, TransportHealthTracker
-from .zmq_bus import ZmqBus
+from .shm import SharedMemoryRing, ShmSlotRef
 
 __all__ = [
     "ActionCommand",

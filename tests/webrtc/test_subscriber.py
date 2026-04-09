@@ -12,8 +12,8 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacObservationBatch
-from ipc.inproc_bus import InprocBus
-from ipc.messages import ActionStatus, CapabilityReport, FrameHeader, HealthPing, RuntimeNotice
+from systems.transport.bus.inproc_bus import InprocBus
+from systems.transport.messages import ActionStatus, CapabilityReport, FrameHeader, HealthPing, RuntimeNotice
 from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (
     ExecutionStateSnapshot,

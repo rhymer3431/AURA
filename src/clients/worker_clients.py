@@ -4,7 +4,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from ipc.messages import ActionCommand, ActionStatus
+from systems.transport.messages import ActionCommand, ActionStatus
 from runtime.planning_session import PlanningSession
 from runtime.subgoal_executor import SubgoalExecutor
 from runtime.supervisor import Supervisor

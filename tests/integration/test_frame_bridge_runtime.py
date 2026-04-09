@@ -13,8 +13,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.inproc_bus import InprocBus
-from ipc.messages import ActionCommand
+from systems.transport.bus.inproc_bus import InprocBus
+from systems.transport.messages import ActionCommand
 from runtime.frame_bridge_runtime import FrameBridgeCommandSource
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 

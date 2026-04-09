@@ -18,7 +18,7 @@ from apps.dashboard_backend_app import parse_args
 from dashboard_backend.app import DashboardWebApp
 from dashboard_backend.config import DashboardBackendConfig
 from dashboard_backend.models import DashboardSessionRequest
-from ipc.messages import RuntimeControlRequest, TaskRequest
+from systems.transport.messages import RuntimeControlRequest, TaskRequest
 
 
 def _free_tcp_port() -> int:

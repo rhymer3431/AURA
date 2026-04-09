@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from ipc.messages import FrameHeader, MessagePayload, message_to_dict
+from systems.transport.messages import FrameHeader, MessagePayload, message_to_dict
 
 
 @dataclass(frozen=True)

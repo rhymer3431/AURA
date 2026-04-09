@@ -6,7 +6,7 @@ import numpy as np
 
 from common.geometry import within_xy_radius, wrap_to_pi, xy_distance
 from control.trajectory_tracker import TrajectoryTracker, TrajectoryTrackerConfig
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from locomotion.types import CommandEvaluation
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 from schemas.commands import LocomotionProposal

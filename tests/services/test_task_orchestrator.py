@@ -12,7 +12,7 @@ if str(SRC) not in sys.path:
 
 from aura_config.memory_policy_config import MemoryPolicyConfig
 from control.behavior_fsm import BehaviorState
-from ipc.messages import ActionStatus, TaskRequest
+from systems.transport.messages import ActionStatus, TaskRequest
 from memory.models import ObsObject
 from perception.speaker_events import SpeakerEvent
 from services.memory_policy_types import MemoryPolicyContext, MemoryPolicyDecision, MemoryPolicyLabel

@@ -8,11 +8,11 @@ import numpy as np
 from adapters.sensors.frame_source import AutoFrameSource, FrameSample, SyntheticFrameSource, build_synthetic_frame_sample
 from adapters.sensors.isaac_live_source import IsaacLiveFrameSource, IsaacLiveSourceConfig
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
-from ipc.base import MessageBus
-from ipc.inproc_bus import InprocBus
-from ipc.messages import FrameHeader
-from ipc.shm_ring import SharedMemoryRing
-from ipc.zmq_bus import ZmqBus
+from systems.transport.bus.base import MessageBus
+from systems.transport.bus.inproc_bus import InprocBus
+from systems.transport.messages import FrameHeader
+from systems.transport.shm import SharedMemoryRing
+from systems.transport.bus.zmq_bus import ZmqBus
 
 
 @dataclass(frozen=True)

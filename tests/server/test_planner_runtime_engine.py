@@ -15,7 +15,7 @@ if str(SRC) not in sys.path:
 from control.async_planners import PlannerInput, PlannerOutput
 from inference.vlm import AsyncSystem2Output
 from inference.vlm.system2_session import System2Result
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from runtime.planning_session import ExecutionObservation, PlanningSession
 from server.planner_runtime_engine import PlannerRuntimeEngine
 from server.planner_runtime_state import PlannerRuntimeState

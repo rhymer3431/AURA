@@ -8,7 +8,7 @@ import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from common.geometry import quat_wxyz_to_yaw
-from ipc.messages import FrameHeader
+from systems.transport.messages import FrameHeader
 from schemas.events import FrameEvent, WorkerMetadata
 
 

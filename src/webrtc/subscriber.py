@@ -7,10 +7,10 @@ import time
 import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
-from ipc.base import MessageBus
-from ipc.messages import ActionCommand
-from ipc.shm_ring import SharedMemoryRing
-from ipc.zmq_bus import ZmqBus
+from systems.transport.bus.base import MessageBus
+from systems.transport.messages import ActionCommand
+from systems.transport.shm import SharedMemoryRing
+from systems.transport.bus.zmq_bus import ZmqBus
 from schemas.world_state import WorldStateSnapshot
 from server.snapshot_adapter import SnapshotAdapter
 

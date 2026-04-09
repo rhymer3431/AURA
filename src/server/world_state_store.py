@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
-from ipc.messages import ActionCommand, ActionStatus
+from systems.transport.messages import ActionCommand, ActionStatus
 from runtime.planning_session import TrajectoryUpdate
 from schemas.recovery import RecoveryState, RecoveryStateSnapshot
 from schemas.execution_mode import normalize_execution_mode

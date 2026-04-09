@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from perception.speaker_events import SpeakerEvent
 
 

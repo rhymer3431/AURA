@@ -11,8 +11,8 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import HealthPing
-from ipc.messages import FrameHeader
+from systems.transport.messages import HealthPing
+from systems.transport.messages import FrameHeader
 from webrtc.models import (
     FrameCache,
     build_frame_meta_message,

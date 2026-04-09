@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacBridgeAdapterConfig
 from apps.runtime_common import build_frame_source, frame_sample_to_batch, infer_demo_scene
-from ipc.messages import TaskRequest
+from systems.transport.messages import TaskRequest
 from runtime.supervisor import BusCycleResult, Supervisor, SupervisorConfig
 
 

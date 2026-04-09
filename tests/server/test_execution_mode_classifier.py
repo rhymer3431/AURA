@@ -8,7 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import TaskRequest
+from systems.transport.messages import TaskRequest
 from server.execution_mode_classifier import ExecutionModeClassifier
 
 

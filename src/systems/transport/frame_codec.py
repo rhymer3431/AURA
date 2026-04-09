@@ -5,7 +5,7 @@ from dataclasses import asdict
 
 import numpy as np
 
-from .shm_ring import ShmSlotRef
+from .shm import ShmSlotRef
 
 
 def encode_ndarray(array: np.ndarray) -> bytes:

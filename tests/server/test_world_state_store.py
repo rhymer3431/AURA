@@ -12,7 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
-from ipc.messages import FrameHeader
+from systems.transport.messages import FrameHeader
 from runtime.planning_session import PlannerStats, TrajectoryUpdate
 from schemas.commands import ResolvedCommand
 from schemas.events import FrameEvent, WorkerMetadata

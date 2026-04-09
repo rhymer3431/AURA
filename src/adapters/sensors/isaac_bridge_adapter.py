@@ -4,9 +4,9 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ipc.base import MessageBus
-from ipc.frame_codec import decode_ndarray, encode_ndarray, ref_from_dict, ref_to_dict
-from ipc.messages import (
+from systems.transport.bus.base import MessageBus
+from systems.transport.frame_codec import decode_ndarray, encode_ndarray, ref_from_dict, ref_to_dict
+from systems.transport.messages import (
     ActionCommand,
     ActionStatus,
     CapabilityReport,
@@ -16,7 +16,7 @@ from ipc.messages import (
     RuntimeNotice,
     TaskRequest,
 )
-from ipc.shm_ring import SharedMemoryRing
+from systems.transport.shm import SharedMemoryRing
 from memory.models import ObsObject
 from perception.speaker_events import SpeakerEvent
 

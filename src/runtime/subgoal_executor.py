@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from locomotion.types import CommandEvaluation, ObstacleDefenseConfig, ObstacleDefenseResult
 from locomotion.worker import LocomotionWorker
 from runtime.planning_session import ExecutionObservation, TrajectoryUpdate

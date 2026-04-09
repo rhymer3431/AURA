@@ -8,8 +8,8 @@ import numpy as np
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
 from common.cv2_compat import cv2
 from common.depth_visualization import build_rgb_depth_panel, compute_depth_display_range
-from ipc.shm_ring import SharedMemoryRing
-from ipc.zmq_bus import ZmqBus
+from systems.transport.shm import SharedMemoryRing
+from systems.transport.bus.zmq_bus import ZmqBus
 from runtime.aura_runtime_args import (
     DEFAULT_VIEWER_CONTROL_ENDPOINT,
     DEFAULT_VIEWER_SHM_CAPACITY,

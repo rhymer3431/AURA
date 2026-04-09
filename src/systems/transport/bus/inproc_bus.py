@@ -4,7 +4,7 @@ from collections import defaultdict, deque
 from threading import Lock
 
 from .base import BusRecord, MessageBus
-from .messages import MessagePayload
+from ..messages import MessagePayload
 
 
 class InprocBus(MessageBus):

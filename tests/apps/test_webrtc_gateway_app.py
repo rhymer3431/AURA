@@ -17,8 +17,8 @@ if str(SRC) not in sys.path:
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacObservationBatch
 from apps.webrtc_gateway_app import create_app, parse_args
-from ipc.inproc_bus import InprocBus
-from ipc.messages import FrameHeader
+from systems.transport.bus.inproc_bus import InprocBus
+from systems.transport.messages import FrameHeader
 from webrtc.config import WebRTCGatewayConfig
 from webrtc.subscriber import ObservationSubscriber
 

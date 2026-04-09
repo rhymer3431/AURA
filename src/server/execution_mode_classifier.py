@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ipc.messages import TaskRequest
+from systems.transport.messages import TaskRequest
 from schemas.execution_mode import ExecutionMode
 from services.intent_service import IntentService
 

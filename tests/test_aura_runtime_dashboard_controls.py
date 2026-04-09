@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import ActionCommand, HealthPing, RuntimeControlRequest, RuntimeNotice, TaskRequest
+from systems.transport.messages import ActionCommand, HealthPing, RuntimeControlRequest, RuntimeNotice, TaskRequest
 from runtime.aura_runtime import AuraRuntimeCommandSource
 from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import PlanningStateSnapshot, RuntimeStateSnapshot, SafetyStateSnapshot, TaskSnapshot, WorldStateSnapshot

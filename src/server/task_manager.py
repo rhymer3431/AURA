@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ipc.messages import ActionCommand, RuntimeControlRequest, RuntimeNotice, TaskRequest
+from systems.transport.messages import ActionCommand, RuntimeControlRequest, RuntimeNotice, TaskRequest
 from runtime.planning_session import TrajectoryUpdate
 from schemas.execution_mode import ExecutionMode, normalize_execution_mode
 from schemas.world_state import TaskSnapshot

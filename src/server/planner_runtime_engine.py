@@ -13,7 +13,7 @@ from control.async_planners import (
     PlannerOutput,
 )
 from inference.vlm import AsyncSystem2Input, System2Result, normalized_uv_to_pixel_xy, resolve_goal_world_xy_from_pixel
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from runtime.global_route import GlobalRoutePlanner
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 from schemas.execution_mode import normalize_execution_mode

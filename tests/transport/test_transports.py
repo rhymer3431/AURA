@@ -13,9 +13,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import ActionCommand, CapabilityReport, FrameHeader, TaskRequest
-from ipc.shm_ring import SharedMemoryRing
-from ipc.zmq_bus import ZmqBus
+from systems.transport.messages import ActionCommand, CapabilityReport, FrameHeader, TaskRequest
+from systems.transport.shm import SharedMemoryRing
+from systems.transport.bus.zmq_bus import ZmqBus
 
 
 def _free_tcp_port() -> int:

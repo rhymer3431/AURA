@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ipc.messages import ActionStatus
+from systems.transport.messages import ActionStatus
 
 
 @dataclass(frozen=True)

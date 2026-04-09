@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import FrameHeader
+from systems.transport.messages import FrameHeader
 from server.snapshot_adapter import SnapshotAdapter
 from schemas.recovery import RecoveryStateSnapshot
 from schemas.world_state import (

@@ -8,7 +8,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from ipc.messages import ActionStatus, TaskRequest
+from systems.transport.messages import ActionStatus, TaskRequest
 from memory.models import ObsObject
 from perception.speaker_events import SpeakerEvent
 from services.memory_service import MemoryService

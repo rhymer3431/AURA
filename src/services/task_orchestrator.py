@@ -8,7 +8,7 @@ from control.behavior_fsm import BehaviorFSM, BehaviorState
 from control.critic import PlanCritic
 from control.recovery import RecoveryPlanner
 from control.subgoal_planner import SubgoalPlanner
-from ipc.messages import ActionCommand, ActionStatus, TaskRequest
+from systems.transport.messages import ActionCommand, ActionStatus, TaskRequest
 from perception.person_tracker import PersonTracker
 from perception.speaker_events import SpeakerEvent
 

@@ -4,8 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from ipc.base import MessageBus
-from ipc.shm_ring import SharedMemoryRing
+from systems.transport.bus.base import MessageBus
+from systems.transport.shm import SharedMemoryRing
 
 from .frame_bridge_runtime import FrameBridgeCommandSource
 

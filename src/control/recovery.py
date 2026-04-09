@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from memory.temporal_store import TemporalMemoryStore
 
 from .subgoal_planner import SubgoalPlanner

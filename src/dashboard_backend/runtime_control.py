@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter
-from ipc.messages import RuntimeControlRequest, TaskRequest
-from ipc.zmq_bus import ZmqBus
+from systems.transport.messages import RuntimeControlRequest, TaskRequest
+from systems.transport.bus.zmq_bus import ZmqBus
 
 
 class RuntimeControlClient:

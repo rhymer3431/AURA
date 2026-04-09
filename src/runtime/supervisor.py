@@ -4,10 +4,10 @@ from dataclasses import dataclass, replace
 
 from adapters.sensors.isaac_bridge_adapter import IsaacBridgeAdapter, IsaacBridgeAdapterConfig, IsaacObservationBatch
 from inference.detectors.factory import DetectorFactoryConfig
-from ipc.base import MessageBus
-from ipc.inproc_bus import InprocBus
-from ipc.messages import ActionCommand, ActionStatus, CapabilityReport, HealthPing, RuntimeNotice, TaskRequest
-from ipc.shm_ring import SharedMemoryRing
+from systems.transport.bus.base import MessageBus
+from systems.transport.bus.inproc_bus import InprocBus
+from systems.transport.messages import ActionCommand, ActionStatus, CapabilityReport, HealthPing, RuntimeNotice, TaskRequest
+from systems.transport.shm import SharedMemoryRing
 from perception.pipeline import PerceptionPipeline
 from perception.viewer_overlay import build_viewer_overlay_payload
 from services.memory_service import MemoryService

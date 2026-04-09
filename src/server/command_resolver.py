@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ipc.messages import ActionCommand, ActionStatus
+from systems.transport.messages import ActionCommand, ActionStatus
 from schemas.recovery import RecoveryState, RecoveryStateSnapshot
 from schemas.commands import CommandProposal, LocomotionProposal, ResolvedCommand
 

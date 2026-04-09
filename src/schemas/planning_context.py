@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 
 from .execution_mode import ExecutionMode
 from .events import WorkerMetadata

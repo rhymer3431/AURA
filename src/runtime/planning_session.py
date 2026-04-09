@@ -15,7 +15,7 @@ from adapters.sensors.d455_sensor import D455SensorAdapter, D455SensorAdapterCon
 from control.async_planners import AsyncNoGoalPlanner, AsyncPointGoalPlanner
 from inference.navdp import InProcessNavDPClient, create_inprocess_navdp_client
 from inference.vlm import AsyncSystem2Planner, System2Session, System2SessionConfig
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from memory.models import MemoryContextBundle
 
 

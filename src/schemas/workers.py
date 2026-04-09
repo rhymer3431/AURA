@@ -8,7 +8,7 @@ import numpy as np
 
 from adapters.sensors.isaac_bridge_adapter import IsaacObservationBatch
 from inference.vlm import System2Request
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from memory.models import MemoryContextBundle
 from runtime.planning_session import ExecutionObservation, TrajectoryUpdate
 from schemas.commands import LocomotionProposal

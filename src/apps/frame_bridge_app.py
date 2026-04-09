@@ -5,7 +5,7 @@ import importlib
 import time
 
 from apps.runtime_common import build_frame_source, build_runtime_io, frame_sample_to_batch, infer_demo_scene
-from ipc.messages import HealthPing, RuntimeNotice, TaskRequest
+from systems.transport.messages import HealthPing, RuntimeNotice, TaskRequest
 from locomotion.args import BOOTSTRAP_PARSER, add_runtime_args
 from runtime.aura_runtime_args import add_subgoal_executor_args
 from runtime.frame_bridge_runtime import run_live_frame_bridge

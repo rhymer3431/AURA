@@ -13,7 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from control.navdp_follower import NavDPFollowerResult
-from ipc.messages import ActionCommand
+from systems.transport.messages import ActionCommand
 from locomotion.worker import LocomotionWorker
 from runtime.planning_session import ExecutionObservation, PlannerStats, TrajectoryUpdate
 

@@ -91,7 +91,7 @@ Resolved command + WorldStateSnapshot
   object search, follow, attention, semantic consolidation, memory policy 같은 task-level service를 제공한다
 - `src/inference`
   detector, nav, VLM, training entrypoint를 포함한다
-- `src/dashboard_backend`, `src/webrtc`, `src/ipc`
+- `src/dashboard_backend`, `src/webrtc`, `src/systems/transport`
   운영 제어, 상태 관찰, 스트리밍, transport abstraction을 담당한다
 
 ## 메모리와 자연어 태스크
@@ -168,7 +168,7 @@ python -m pip install -e .[dashboard,webrtc]
   object search, memory policy, semantic consolidation, task-level behavior 검증
 - `tests/memory`, `tests/perception`
   저장 및 관측 하위 계층 검증
-- `tests/dashboard_backend`, `tests/webrtc`, `tests/ipc`
+- `tests/dashboard_backend`, `tests/webrtc`, `tests/transport`
   observability와 transport surface 검증
 - `tests/integration`
   runtime 연결부와 회귀 위험이 큰 흐름 검증
@@ -204,7 +204,7 @@ pytest tests/services tests/memory
   detector, nav, VLM, training entrypoint
 - `src/dashboard_backend`, `src/webrtc`
   운영 및 관찰 surface
-- `src/ipc`
+- `src/systems/transport`
   in-process, ZMQ, shared memory transport
 - `scripts`
   Windows 기준 주요 런처

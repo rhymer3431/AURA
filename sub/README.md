@@ -44,6 +44,10 @@ The runtime subsystems are:
    - Owns operator command ingress, runtime command API, and non-simulation control coordination.
    - Primary code roots: `src/systems/control/api`, `src/systems/control/infrastructure`, `src/systems/control/bin`.
 
+7. `Transport Subsystem`
+   - Owns runtime message contracts, in-process and ZMQ buses, shared-memory frame transport, and transport health tracking.
+   - Primary code roots: `src/systems/transport`, `src/systems/transport/bus`.
+
 The Isaac Sim runtime package is:
 
 - `Simulation Runtime`
