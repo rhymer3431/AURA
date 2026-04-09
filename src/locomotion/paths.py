@@ -53,7 +53,6 @@ def resolve_default_follower_policy_path(base_dir: str) -> str:
 def resolve_default_robot_usd_path(base_dir: str) -> str:
     candidates = [
         os.path.abspath(os.path.join(base_dir, "src", "locomotion", "g1", "g1_d455.usd")),
-        os.path.abspath(os.path.join(base_dir, "g1_play", "g1", "g1_d455.usd")),
         os.path.abspath(os.path.join(base_dir, "g1", "g1_d455.usd")),
         os.path.abspath(os.path.join(base_dir, "robots", "g1", "g1_d455.usd")),
         os.path.abspath(os.path.join(base_dir, "robots", "g1", "g1.usd")),

@@ -124,7 +124,7 @@ def test_run_system_all_delegates_to_fullstack_helper() -> None:
 
 
 def test_batch_launcher_uses_same_contract() -> None:
-    launcher = ROOT / "run_sim_g1_internvla_navdp_windows.bat"
+    launcher = ROOT / "src" / "systems" / "control" / "bin" / "run_sim_g1_internvla_navdp_windows.bat"
     env = _base_env()
     env.update(
         {

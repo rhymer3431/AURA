@@ -38,7 +38,7 @@ def add_runtime_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser
         dest="robot_usd",
         type=str,
         default=None,
-        help="Path to G1 USD. Defaults to src/locomotion/g1/g1_d455.usd with fallback to g1_play/g1/g1_d455.usd.",
+        help="Path to G1 USD. Defaults to src/locomotion/g1/g1_d455.usd with fallback to robots/g1/g1_d455.usd.",
     )
     parser.add_argument(
         "--scene_usd",

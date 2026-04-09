@@ -1,0 +1,1 @@
+"""World-state infrastructure adapters."""

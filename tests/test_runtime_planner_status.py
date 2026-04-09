@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from g1_play.args import build_arg_parser
-from g1_play.navdp_runtime import InternVlaNavDpController
+from systems.control.api.runtime_args import build_arg_parser
+from systems.control.api.runtime_controller import InternVlaNavDpController
 
 
 class RuntimePlannerStatusTests(unittest.TestCase):

@@ -4,7 +4,7 @@ import importlib.util
 from pathlib import Path
 import sys
 
-from g1_play.args import build_arg_parser
+from systems.control.api.runtime_args import build_arg_parser
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -34,8 +34,14 @@ def test_runtime_arg_parser_exposes_transplanted_flags() -> None:
 
 
 def test_root_entrypoints_import_without_target_layout() -> None:
-    play_module = _load_module("play_g1_internvla_navdp_smoke", REPO_ROOT / "play_g1_internvla_navdp.py")
-    server_module = _load_module("serve_internvla_nav_server_smoke", REPO_ROOT / "serve_internvla_nav_server.py")
+    play_module = _load_module(
+        "play_g1_internvla_navdp_smoke",
+        REPO_ROOT / "src" / "systems" / "control" / "api" / "play_g1_internvla_navdp.py",
+    )
+    server_module = _load_module(
+        "serve_internvla_nav_server_smoke",
+        REPO_ROOT / "src" / "systems" / "inference" / "api" / "serve_internvla_nav_server.py",
+    )
 
     assert callable(play_module.main)
     parsed = server_module.parse_args(["--host", "127.0.0.1", "--port", "15801"])

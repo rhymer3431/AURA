@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from g1_play.tasking.aura_adapter import AuraTaskingAdapter
+from systems.planner.api.runtime import AuraTaskingAdapter
 
 
 class PlannerTaskingTests(unittest.TestCase):
