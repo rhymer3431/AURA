@@ -52,6 +52,8 @@ include = [
     "perception.*",
     "runtime",
     "runtime.*",
+    "sub",
+    "sub.*",
     "services",
     "services.*",
     "vendor",
