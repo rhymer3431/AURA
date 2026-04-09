@@ -43,6 +43,33 @@ def test_runtime_subsystems_and_simulation_package_exist() -> None:
     assert (SYSTEMS_ROOT / "inference" / "bin" / "run_internvla_nav_server_windows.bat").is_file()
 
 
+def test_legacy_top_level_source_packages_are_removed() -> None:
+    removed = {
+        "adapters",
+        "apps",
+        "aura_config",
+        "clients",
+        "common",
+        "config",
+        "control",
+        "dashboard_backend",
+        "inference",
+        "locomotion",
+        "memory",
+        "perception",
+        "planning",
+        "runtime",
+        "runtime_pipeline",
+        "schemas",
+        "server",
+        "services",
+        "vendor",
+        "webrtc",
+    }
+    for name in removed:
+        assert not (REPO_ROOT / "src" / name).exists(), name
+
+
 def test_legacy_runtime_packages_are_not_imported_from_systems_tree() -> None:
     for path in _iter_python_files():
         text = path.read_text(encoding="utf-8")

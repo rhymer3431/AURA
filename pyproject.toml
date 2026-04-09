@@ -5,18 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "isaac-aura"
 version = "0.0.0"
-description = "Function-oriented Isaac Aura runtime and service packages."
+description = "Subsystem-oriented Isaac Aura runtime packages."
 requires-python = ">=3.10"
-
-[project.optional-dependencies]
-dashboard = [
-    "aiohttp>=3.9",
-]
-webrtc = [
-    "aiohttp>=3.9",
-    "aiortc>=1.6",
-    "av>=10.0",
-]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -24,42 +14,8 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = [
-    "adapters",
-    "adapters.*",
-    "apps",
-    "apps.*",
-    "common",
-    "common.*",
-    "config",
-    "config.*",
-    "control",
-    "control.*",
-    "dashboard_backend",
-    "dashboard_backend.*",
-    "ipc",
-    "ipc.*",
-    "inference",
-    "inference.*",
-    "locomotion",
-    "locomotion.*",
-    "memory",
-    "memory.*",
-    "perception",
-    "perception.*",
-    "runtime",
-    "runtime.*",
-    "services",
-    "services.*",
     "simulation",
     "simulation.*",
     "systems",
     "systems.*",
-    "vendor",
-    "vendor.*",
-    "webrtc",
-    "webrtc.*",
 ]
-
-[tool.setuptools.package-data]
-locomotion = ["g1/*.usd"]
-vendor = ["depth_anything/DEPTH_ANYTHING_LICENSE"]
