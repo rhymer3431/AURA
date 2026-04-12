@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 import math
-from .depth_anything.depth_anything_v2.dpt import DepthAnythingV2
+
+from .depth_anything_encoder import build_depth_anything_v2_encoder
 
 
 def _to_device_float_tensor(value, device):
@@ -48,9 +49,7 @@ class NavDP_RGBD_Backbone(nn.Module):
         self.memory_size = memory_size
         self.image_size = image_size
         self.embed_size = embed_size
-        model_configs = {'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]}}
-        self.rgb_model = DepthAnythingV2(**model_configs['vits'])
-        self.rgb_model = self.rgb_model.pretrained.float()
+        self.rgb_model = build_depth_anything_v2_encoder("vits").float()
         self.rgb_model.eval()
         self.register_buffer(
             "preprocess_mean",
@@ -61,8 +60,7 @@ class NavDP_RGBD_Backbone(nn.Module):
             torch.tensor([0.229,0.224,0.225], dtype=torch.float32).view(1, 3, 1, 1),
         )
 
-        self.depth_model = DepthAnythingV2(**model_configs['vits'])
-        self.depth_model = self.depth_model.pretrained.float()
+        self.depth_model = build_depth_anything_v2_encoder("vits").float()
         self.depth_model.eval()
         self.former_query = LearnablePositionalEncoding(384,self.memory_size*16)
         self.former_pe = LearnablePositionalEncoding(384,(self.memory_size+1)*256)
@@ -115,9 +113,7 @@ class NavDP_ImageGoal_Backbone(nn.Module):
         self.device = device
         self.image_size = image_size
         self.embed_size = embed_size
-        model_configs = {'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]}}
-        self.imagegoal_encoder = DepthAnythingV2(**model_configs['vits'])
-        self.imagegoal_encoder = self.imagegoal_encoder.pretrained.float()
+        self.imagegoal_encoder = build_depth_anything_v2_encoder("vits").float()
         self.imagegoal_encoder.patch_embed.proj = nn.Conv2d(in_channels=6,
                                                             out_channels = self.imagegoal_encoder.patch_embed.proj.out_channels,
                                                             kernel_size = self.imagegoal_encoder.patch_embed.proj.kernel_size,
@@ -144,9 +140,7 @@ class NavDP_PixelGoal_Backbone(nn.Module):
         self.device = device
         self.image_size = image_size
         self.embed_size = embed_size
-        model_configs = {'vits': {'encoder': 'vits', 'features': 64, 'out_channels': [48, 96, 192, 384]}}
-        self.pixelgoal_encoder = DepthAnythingV2(**model_configs['vits'])
-        self.pixelgoal_encoder = self.pixelgoal_encoder.pretrained.float()
+        self.pixelgoal_encoder = build_depth_anything_v2_encoder("vits").float()
         self.pixelgoal_encoder.patch_embed.proj = nn.Conv2d(in_channels=4,
                                                             out_channels = self.pixelgoal_encoder.patch_embed.proj.out_channels,
                                                             kernel_size = self.pixelgoal_encoder.patch_embed.proj.kernel_size,
