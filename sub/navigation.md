@@ -1,11 +1,12 @@
 # Navigation Subsystem
 
-- Scope: NavDP client/server boundary, path planning output, goal geometry, follower state, and the navigation backend policy stack.
+- Scope: runtime geometry, follower logic, goal providers, and the NavDP client surface consumed by control/world-state.
 - Package root: `src/systems/navigation`
-- Layers:
-  - `api`: `navdp_server.py`, `runtime.py`, `geometry.py`, `navdp_sensors.py`
-  - `domain`: `navdp_geometry.py`, `navdp_goals.py`, `navdp_follower.py`
-  - `infrastructure`: `navdp_client.py`, `navdp_backend/*`
-- Entry points:
-  - `python -m systems.navigation.api.navdp_server`
-  - `src/systems/navigation/bin/run_navdp_server_windows.bat`
+- Modules:
+  - `api`: `runtime.py`, `geometry.py`, `navdp_sensors.py`
+  - `geometry.py`
+  - `goals.py`
+  - `follower.py`
+  - `client.py`
+- Runtime note:
+  - standalone NavDP server launching moved into the inference subsystem and is exposed through `systems.inference.navdp.server`

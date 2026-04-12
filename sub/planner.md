@@ -1,11 +1,9 @@
 # Planner Subsystem
 
-- Scope: task-frame generation, planner endpoint calls, ontology/normalization, schema validation, subgoal orchestration, and reporting.
+- Scope: public planner facade kept for compatibility while planner execution now runs inside the inference stack and task decomposition logic lives under `systems.control.tasking`.
 - Package root: `src/systems/planner`
-- Layers:
-  - `api`: `runtime.py`
-  - `application`: `aura_adapter.py`, `orchestration.py`, `planner_service.py`
-  - `domain`: `schemas.py`, `task_frames.py`, `normalizer.py`, `ontology.py`, `validator.py`, `reporting.py`
-  - `infrastructure`: `llm_client.py`
-- Entry points:
-  - `scripts/serve_planner_qwen3_nothink.ps1`
+- Public surface:
+  - `api/runtime.py`
+- Runtime note:
+  - planner serving moved to `systems.inference.planner.server`
+  - planner tasking moved to `systems.control.tasking`

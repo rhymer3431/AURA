@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 import sys
 
-from simulation.api.entrypoint import main
+
+def main(argv: list[str] | None = None) -> None:
+    args = sys.argv[1:] if argv is None else list(argv)
+    if "--control_mode" not in args:
+        args.extend(["--control_mode", "internvla_navdp"])
+    sys.argv = [sys.argv[0], *args]
+    import_module("simulation.api.entrypoint").main()
 
 
 if __name__ == "__main__":
-    if "--control_mode" not in sys.argv:
-        sys.argv.extend(["--control_mode", "internvla_navdp"])
     main()

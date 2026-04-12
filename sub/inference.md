@@ -1,12 +1,15 @@
 # Inference Subsystem
 
-- Scope: InternVLA grounding, llama.cpp-backed HTTP serving, sidecar/session health management, and multimodal inference helpers.
+- Scope: managed inference stack for NavDP, InternVLA System2, planner LLM serving, health aggregation, and inference clients.
 - Package root: `src/systems/inference`
-- Layers:
-  - `api`: `serve_internvla_nav_server.py`, `check_internvla_session.py`, `runtime.py`
-  - `infrastructure`: `internvla_nav.py`
+- Modules:
+  - `api`: `runtime.py`, `serve_inference_stack.py`
+  - `client.py`
+  - `navdp/*`
+  - `system2/*`
+  - `planner/*`
+  - `stack/*`
 - Entry points:
-  - `python -m systems.inference.api.serve_internvla_nav_server`
-  - `python -m systems.inference.api.check_internvla_session`
-  - `src/systems/inference/bin/run_internvla_nav_server_windows.bat`
-  - `src/systems/inference/bin/check_internvla_session_windows.bat`
+  - `python -m systems.inference.api.serve_inference_stack`
+  - `python -m systems.inference.system2.check_session`
+  - `scripts/run_system/inference_stack_windows.bat`

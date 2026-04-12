@@ -10,7 +10,7 @@ import uuid
 
 import numpy as np
 
-from systems.control.api.nav_command_api import RuntimeNavCommandApiServer
+from systems.control.runtime_control_api import RuntimeControlApiServer
 from systems.inference.api.runtime import (
     InternVlaNavClient,
     System2Result,
@@ -489,7 +489,7 @@ class InternVlaNavDpController:
         self._controller = None
         self._sensor: G1NavCameraSensor | None = None
         self._camera_api_server: CameraPitchApiServer | None = None
-        self._command_api_server: RuntimeNavCommandApiServer | None = None
+        self._command_api_server: RuntimeControlApiServer | None = None
         self._session_id = (
             str(args.internvla_session_id).strip()
             if args.internvla_session_id
@@ -577,10 +577,10 @@ class InternVlaNavDpController:
                 "[INFO]   camera pitch api  : "
                 f"http://{self._args.camera_api_host}:{self._args.camera_api_port}/camera/pitch"
             )
-        if self._args.nav_command_api_port > 0:
+        if self._args.runtime_control_api_port > 0:
             print(
-                "[INFO]   nav command api   : "
-                f"http://{self._args.nav_command_api_host}:{self._args.nav_command_api_port}/nav/command"
+                "[INFO]   runtime control   : "
+                f"http://{self._args.runtime_control_api_host}:{self._args.runtime_control_api_port}/runtime/status"
             )
 
     def bind_controller(self, controller):
@@ -607,11 +607,12 @@ class InternVlaNavDpController:
                 camera_sensor=self._sensor,
             )
             self._camera_api_server.start()
-        if self._args.nav_command_api_port > 0 and self._command_api_server is None:
-            self._command_api_server = RuntimeNavCommandApiServer(
-                host=self._args.nav_command_api_host,
-                port=self._args.nav_command_api_port,
+        if self._args.runtime_control_api_port > 0 and self._command_api_server is None:
+            self._command_api_server = RuntimeControlApiServer(
+                host=self._args.runtime_control_api_host,
+                port=self._args.runtime_control_api_port,
                 command_handler=self,
+                camera_sensor=self._sensor,
             )
             self._command_api_server.start()
 

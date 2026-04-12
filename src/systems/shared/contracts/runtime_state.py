@@ -6,8 +6,8 @@ from systems.world_state.api.runtime_state import (
     LocomotionState,
     NavDpState,
     NavigationPipelineState,
-    PlannerInput,
     StatusState,
     System2RuntimeState,
     TaskExecutionState,
 )
+from .observation import PlannerInput

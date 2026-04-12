@@ -1,6 +1,6 @@
 """Navigation geometry facade for cross-subsystem consumers."""
 
-from systems.navigation.domain.navdp_geometry import (
+from systems.navigation.geometry import (
     camera_plan_to_world_xy,
     point_goal_body_from_world,
     point_goal_world_from_frame,

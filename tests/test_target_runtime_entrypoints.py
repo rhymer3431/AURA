@@ -20,30 +20,59 @@ def _load_module(name: str, path: Path):
     return module
 
 
-def test_runtime_arg_parser_exposes_transplanted_flags() -> None:
+def test_runtime_arg_parser_exposes_runtime_control_flags() -> None:
     args = build_arg_parser().parse_args([])
-
     assert args.control_mode == "cmd_vel"
-    assert hasattr(args, "planner_base_url")
-    assert hasattr(args, "planner_model")
-    assert hasattr(args, "planner_timeout")
-    assert hasattr(args, "nav_command_api_host")
-    assert hasattr(args, "nav_command_api_port")
+    assert hasattr(args, "navigation_url")
+    assert hasattr(args, "navigation_timeout")
+    assert hasattr(args, "navigation_trajectory_timeout")
+    assert hasattr(args, "runtime_control_api_host")
+    assert hasattr(args, "runtime_control_api_port")
     assert hasattr(args, "camera_api_host")
     assert hasattr(args, "camera_api_port")
+    assert args.camera_width == 448
+    assert args.camera_height == 448
 
 
-def test_root_entrypoints_import_without_target_layout() -> None:
+def test_root_entrypoints_import_without_old_launcher_layout() -> None:
     play_module = _load_module(
         "play_g1_internvla_navdp_smoke",
         REPO_ROOT / "src" / "systems" / "control" / "api" / "play_g1_internvla_navdp.py",
     )
-    server_module = _load_module(
-        "serve_internvla_nav_server_smoke",
-        REPO_ROOT / "src" / "systems" / "inference" / "api" / "serve_internvla_nav_server.py",
+    inference_module = _load_module(
+        "serve_inference_system_smoke",
+        REPO_ROOT / "src" / "systems" / "inference" / "api" / "serve_inference_system.py",
+    )
+    navigation_module = _load_module(
+        "serve_navigation_system_smoke",
+        REPO_ROOT / "src" / "systems" / "navigation" / "api" / "serve_navigation_system.py",
+    )
+    planner_module = _load_module(
+        "serve_planner_system_smoke",
+        REPO_ROOT / "src" / "systems" / "planner" / "api" / "serve_planner_system.py",
+    )
+    backend_module = _load_module(
+        "serve_backend_smoke",
+        REPO_ROOT / "src" / "backend" / "api" / "serve_backend.py",
+    )
+    runtime_module = _load_module(
+        "serve_runtime_smoke",
+        REPO_ROOT / "src" / "runtime" / "api" / "serve_runtime.py",
     )
 
     assert callable(play_module.main)
-    parsed = server_module.parse_args(["--host", "127.0.0.1", "--port", "15801"])
-    assert parsed.host == "127.0.0.1"
-    assert parsed.port == 15801
+    inference_args = inference_module.build_arg_parser().parse_args(["--host", "127.0.0.1", "--port", "15880"])
+    assert inference_args.host == "127.0.0.1"
+    assert inference_args.port == 15880
+    navigation_args = navigation_module.build_arg_parser().parse_args(["--host", "127.0.0.1", "--port", "17882"])
+    assert navigation_args.host == "127.0.0.1"
+    assert navigation_args.port == 17882
+    planner_args = planner_module.build_arg_parser().parse_args(["--host", "127.0.0.1", "--port", "17881"])
+    assert planner_args.host == "127.0.0.1"
+    assert planner_args.port == 17881
+    backend_args = backend_module.build_arg_parser().parse_args(["--host", "127.0.0.1", "--port", "18095"])
+    assert backend_args.host == "127.0.0.1"
+    assert backend_args.port == 18095
+    runtime_args = runtime_module.build_arg_parser().parse_args(["--host", "127.0.0.1", "--port", "18096"])
+    assert runtime_args.host == "127.0.0.1"
+    assert runtime_args.port == 18096

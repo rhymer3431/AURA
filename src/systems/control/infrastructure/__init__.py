@@ -1,1 +1,0 @@
-"""Control infrastructure adapters."""

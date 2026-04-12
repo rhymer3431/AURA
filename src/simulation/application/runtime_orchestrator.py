@@ -7,7 +7,6 @@ import os
 import numpy as np
 from isaacsim.core.api import World
 
-from simulation.application.runtime_controller import InternVlaNavDpController, NavDpPointGoalController
 from simulation.domain.constants import DEFAULT_DECIMATION, DEFAULT_PHYSICS_DT
 from simulation.infrastructure.paths import (
     repo_dir,
@@ -20,7 +19,9 @@ from simulation.infrastructure.policy_controller import G1PolicyController
 from simulation.infrastructure.policy_session import infer_policy_backend
 from simulation.infrastructure.scene import spawn_environment
 from simulation.infrastructure.training_config import RuntimeTrainingConfig, load_runtime_training_config
-from systems.control.infrastructure.operator_input import ConsoleCmdVelController, KeyboardCmdVelController
+from simulation.application.runtime_coordinator import NavigationRuntimeCoordinator
+from systems.control.api.runtime_controller import InternVlaNavDpController
+from systems.control.operator_input import ConsoleCmdVelController, KeyboardCmdVelController
 from systems.perception.api.camera_api import RuntimeCameraPitchService
 
 
@@ -183,9 +184,6 @@ def _build_physics_step_callback(world: World, controller: G1PolicyController, o
             state["step"] = 0
             return
 
-        for service in services:
-            if hasattr(service, "step"):
-                service.step()
         controller.forward(state["step"], operator_input.command())
         state["step"] += 1
 
@@ -204,8 +202,6 @@ def _create_operator_input(args):
             yaw_speed=args.yaw_speed,
             require_focus=args.require_keyboard_focus,
         )
-    elif args.control_mode == "navdp_pointgoal":
-        operator_input = NavDpPointGoalController(args)
     elif args.control_mode == "internvla_navdp":
         operator_input = InternVlaNavDpController(args)
     else:
@@ -236,7 +232,9 @@ def run(args, simulation_app):
         spawn_environment(env_reference, args.scene_prim_path, tuple(args.scene_translate))
 
         operator_input = _create_operator_input(args)
-        if args.camera_api_port > 0 and args.control_mode not in {"navdp_pointgoal", "internvla_navdp"}:
+        if args.control_mode == "internvla_navdp":
+            services.append(NavigationRuntimeCoordinator(args, control_handler=operator_input))
+        if args.camera_api_port > 0 and args.control_mode != "internvla_navdp":
             services.append(RuntimeCameraPitchService(args))
 
         print(f"[INFO] Creating locomotion controller from: {policy_path}")
@@ -267,6 +265,10 @@ def run(args, simulation_app):
         world.add_physics_callback("physics_step", callback_fn=on_physics_step)
 
         while simulation_app.is_running() and not operator_input.quit_requested:
+            if not state["first_step"] and not state["reset_needed"]:
+                for service in services:
+                    if hasattr(service, "step"):
+                        service.step()
             should_render = (not args.headless) or bool(getattr(operator_input, "requires_render", False))
             world.step(render=should_render)
             if world.is_stopped():

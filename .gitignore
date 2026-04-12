@@ -1,36 +1,54 @@
-.pytest_cache/
+# Python cache and tooling
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
 
-logs/
-.logs/
-tmp/
-
-artifacts/
-
-llama.cpp/*.dll
-llama.cpp/*.exe
-llama.cpp/build/
-
+# Virtual environments
 .venv/
 venv/
 env/
-dashboard/node_modules/
-dashboard/dist/
-dashboard/src-tauri/target/
-dashboard/src-tauri/gen/
-dashboard/src/assets/
-dashboard/src/imports/
-datasets/
-/state/
-agents.md
-_cudart_extract/
+ENV/
+
+# Local editor and OS state
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime state, temp files, and local session artifacts
+.logs/
+logs/
+tmp/
+state/
+parent-session-runs/
+
+# Local-only orchestration and agent metadata
 .claude/
-!.claude/
-!.claude/skills/
-!.claude/skills/interface-design/
-!.claude/skills/interface-design/SKILL.md
-!.claude/skills/interface-design/references/
-!.claude/skills/interface-design/references/snowui-dashboard.md
-!.claude/skills/interface-design/references/snowui-design-system.md
-.gitignore
+.codex/
+AGENTS.md
+agents.md
+
+# Generated or externally managed assets
+artifacts/
+datasets/
+llama.cpp/
+/dashboard/
+
+# JavaScript package caches when present
+node_modules/
+*.tsbuildinfo
